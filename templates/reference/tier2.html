@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+
+{% block title %}Tier 2: Extensions - Reference{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto">
+  <nav class="mb-6 text-sm">
+    <a href="/reference" class="text-indigo-600 dark:text-indigo-400 hover:underline">&larr; Reference</a>
+  </nav>
+
+  <div class="flex items-center gap-3 mb-6">
+    <span class="bg-blue-500 text-white text-sm font-bold px-3 py-1 rounded-full">Tier 2</span>
+    <h1 class="text-3xl font-bold text-gray-900 dark:text-white">Extensions</h1>
+  </div>
+
+  <p class="text-gray-600 dark:text-gray-400 mb-8">
+    Building on the basics with Y-vowels and special rules.
+  </p>
+
+  <!-- The ㅇ Rules -->
+  <section class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6">
+    <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-4">
+      The ㅇ Rules
+    </h2>
+    <div class="grid md:grid-cols-2 gap-6">
+      <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+        <h3 class="font-bold text-gray-900 dark:text-white mb-2">Initial Position: Silent</h3>
+        <div class="text-4xl mb-2">아 어 오</div>
+        <p class="text-gray-600 dark:text-gray-400 text-sm">
+          When ㅇ starts a syllable, it makes no sound. It's just a placeholder because every syllable needs a consonant.
+        </p>
+      </div>
+      <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+        <h3 class="font-bold text-gray-900 dark:text-white mb-2">Final Position: "ng"</h3>
+        <div class="text-4xl mb-2">강 성 영</div>
+        <p class="text-gray-600 dark:text-gray-400 text-sm">
+          When ㅇ ends a syllable (as batchim), it sounds like 'ng' in "sing".
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Y-Vowels -->
+  <section class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6">
+    <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-4">
+      Y-Vowels (4)
+    </h2>
+    <p class="text-gray-600 dark:text-gray-400 mb-4">
+      <strong>Pattern:</strong> Add an extra line to the basic vowel = add a "y" sound at the start.
+    </p>
+    <div class="overflow-x-auto">
+      <table class="w-full">
+        <thead>
+          <tr class="border-b border-gray-200 dark:border-gray-700">
+            <th class="text-left py-2 text-gray-600 dark:text-gray-400">Letter</th>
+            <th class="text-left py-2 text-gray-600 dark:text-gray-400">Sound</th>
+            <th class="text-left py-2 text-gray-600 dark:text-gray-400">Base</th>
+            <th class="text-left py-2 text-gray-600 dark:text-gray-400">Hint</th>
+          </tr>
+        </thead>
+        <tbody class="text-gray-900 dark:text-white">
+          <tr class="border-b border-gray-100 dark:border-gray-700">
+            <td class="py-3 text-4xl">ㅑ</td>
+            <td class="py-3 font-mono">ya</td>
+            <td class="py-3 text-gray-500">ㅏ + line</td>
+            <td class="py-3 text-gray-600 dark:text-gray-400">Like 'ya' in yacht</td>
+          </tr>
+          <tr class="border-b border-gray-100 dark:border-gray-700">
+            <td class="py-3 text-4xl">ㅕ</td>
+            <td class="py-3 font-mono">yeo</td>
+            <td class="py-3 text-gray-500">ㅓ + line</td>
+            <td class="py-3 text-gray-600 dark:text-gray-400">Like 'yu' in yuck</td>
+          </tr>
+          <tr class="border-b border-gray-100 dark:border-gray-700">
+            <td class="py-3 text-4xl">ㅛ</td>
+            <td class="py-3 font-mono">yo</td>
+            <td class="py-3 text-gray-500">ㅗ + line</td>
+            <td class="py-3 text-gray-600 dark:text-gray-400">Like 'yo' in yoga</td>
+          </tr>
+          <tr>
+            <td class="py-3 text-4xl">ㅠ</td>
+            <td class="py-3 font-mono">yu</td>
+            <td class="py-3 text-gray-500">ㅜ + line</td>
+            <td class="py-3 text-gray-600 dark:text-gray-400">Like 'you'</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ㅐ and ㅔ -->
+  <section class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6">
+    <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-4">
+      The "Eh" Vowels
+    </h2>
+    <div class="bg-yellow-50 dark:bg-yellow-900/20 rounded-lg p-4 mb-4">
+      <p class="text-yellow-800 dark:text-yellow-200">
+        <strong>Good news:</strong> These two sound almost identical in modern Korean. Don't stress about the difference!
+      </p>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full">
+        <thead>
+          <tr class="border-b border-gray-200 dark:border-gray-700">
+            <th class="text-left py-2 text-gray-600 dark:text-gray-400">Letter</th>
+            <th class="text-left py-2 text-gray-600 dark:text-gray-400">Sound</th>
+            <th class="text-left py-2 text-gray-600 dark:text-gray-400">Hint</th>
+          </tr>
+        </thead>
+        <tbody class="text-gray-900 dark:text-white">
+          <tr class="border-b border-gray-100 dark:border-gray-700">
+            <td class="py-3 text-4xl">ㅐ</td>
+            <td class="py-3 font-mono">ae</td>
+            <td class="py-3 text-gray-600 dark:text-gray-400">Like 'a' in can or 'e' in bed</td>
+          </tr>
+          <tr>
+            <td class="py-3 text-4xl">ㅔ</td>
+            <td class="py-3 font-mono">e</td>
+            <td class="py-3 text-gray-600 dark:text-gray-400">Like 'e' in bed (same as ㅐ in practice)</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Navigation -->
+  <div class="flex justify-between mt-8">
+    <a href="/reference/tier1" class="text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white">
+      &larr; Tier 1: Basic Characters
+    </a>
+    <a href="/reference/tier3" class="text-indigo-600 dark:text-indigo-400 hover:underline">
+      Tier 3: Consonant Variants &rarr;
+    </a>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Hangul Learn{% endblock %}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+    }
+  </script>
+  <style>
+    .card-flip {
+      perspective: 1000px;
+    }
+    .card-inner {
+      transform-style: preserve-3d;
+      transition: transform 0.3s;
+    }
+    .card-inner.flipped {
+      transform: rotateY(180deg);
+    }
+    .card-front, .card-back {
+      backface-visibility: hidden;
+    }
+    .card-back {
+      transform: rotateY(180deg);
+      visibility: hidden;
+    }
+    .card-inner.flipped .card-back {
+      visibility: visible;
+    }
+  </style>
+</head>
+<body class="h-full bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
+  <div class="min-h-full">
+    <nav class="bg-white dark:bg-gray-800 shadow-sm">
+      <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <div class="flex h-16 justify-between items-center">
+          <div class="flex items-center">
+            <a href="/" class="text-xl font-bold text-indigo-600 dark:text-indigo-400">
+              Hangul Learn
+            </a>
+          </div>
+          <div class="flex items-center space-x-4">
+            <a href="/" class="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white px-3 py-2 text-sm font-medium">
+              Home
+            </a>
+            <a href="/study" class="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white px-3 py-2 text-sm font-medium">
+              Study
+            </a>
+            <a href="/progress" class="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white px-3 py-2 text-sm font-medium">
+              Progress
+            </a>
+            <a href="/reference" class="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white px-3 py-2 text-sm font-medium">
+              Reference
+            </a>
+            <a href="/guide" class="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white px-3 py-2 text-sm font-medium">
+              Guide
+            </a>
+          </div>
+        </div>
+      </div>
+    </nav>
+
+    <main class="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+</body>
+</html>

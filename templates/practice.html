@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+
+{% block title %}Practice - Hangul Learn{% endblock %}
+
+{% block content %}
+<div class="max-w-lg mx-auto" id="study-container">
+  <div class="mb-4 text-center">
+    <span class="inline-block bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200 text-sm font-medium px-3 py-1 rounded-full">
+      Practice Mode
+    </span>
+    <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+      Reviews don't affect scheduling
+    </p>
+  </div>
+  {% include "practice_card.html" %}
+</div>
+{% endblock %}

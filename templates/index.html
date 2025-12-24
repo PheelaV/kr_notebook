@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+
+{% block title %}Home - Hangul Learn{% endblock %}
+
+{% block content %}
+<div class="max-w-lg mx-auto">
+  <div class="text-center mb-8">
+    <h1 class="text-3xl font-bold text-gray-900 dark:text-white mb-2">
+      Learn Korean Hangul
+    </h1>
+    <p class="text-gray-600 dark:text-gray-400">
+      Master the Korean alphabet with spaced repetition
+    </p>
+  </div>
+
+  <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6">
+    <div class="text-center">
+      <div class="text-5xl font-bold text-indigo-600 dark:text-indigo-400 mb-2">
+        {{ due_count }}
+      </div>
+      <div class="text-gray-600 dark:text-gray-400">
+        Cards due for review
+      </div>
+    </div>
+
+    <div class="mt-6 space-y-3">
+      {% if due_count > 0 %}
+      <a href="/study" class="block w-full bg-indigo-600 hover:bg-indigo-700 text-white text-center font-semibold py-3 px-4 rounded-lg transition-colors">
+        Start Studying
+      </a>
+      {% else %}
+      <div class="text-center text-gray-500 dark:text-gray-400 py-2">
+        {% if let Some(next) = next_review %}
+        Next review {{ next }}
+        {% else %}
+        No cards due right now.
+        {% endif %}
+      </div>
+      <a href="/practice" class="block w-full bg-indigo-600 hover:bg-indigo-700 text-white text-center font-semibold py-3 px-4 rounded-lg transition-colors">
+        Practice Anyway
+      </a>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="grid grid-cols-2 gap-4">
+    <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-4 text-center">
+      <div class="text-2xl font-bold text-gray-900 dark:text-white">
+        {{ cards_learned }}
+      </div>
+      <div class="text-sm text-gray-600 dark:text-gray-400">
+        Cards Learned
+      </div>
+    </div>
+    <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-4 text-center">
+      <div class="text-2xl font-bold text-gray-900 dark:text-white">
+        {{ total_cards }}
+      </div>
+      <div class="text-sm text-gray-600 dark:text-gray-400">
+        Total Cards
+      </div>
+    </div>
+  </div>
+
+  <div class="mt-8 text-center">
+    <a href="/progress" class="text-indigo-600 dark:text-indigo-400 hover:underline">
+      View detailed progress &rarr;
+    </a>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,71 @@
+<div id="card-container" class="text-center">
+  <div class="mb-2 flex items-center justify-center gap-2">
+    <span class="text-sm text-gray-500 dark:text-gray-400">Tier {{ tier }}</span>
+    <form hx-post="/diagnostic" hx-target="body" hx-swap="beforeend" class="inline">
+      <input type="hidden" name="card_id" value="{{ card_id }}">
+      <input type="hidden" name="displayed_front" value="{{ front }}">
+      <input type="hidden" name="displayed_answer" value="{{ main_answer }}">
+      <button type="submit" class="text-xs text-gray-400 hover:text-red-500 dark:text-gray-500 dark:hover:text-red-400 transition-colors" title="Log diagnostic info">
+        [?]
+      </button>
+    </form>
+  </div>
+
+  <div class="card-flip mb-6">
+    <div id="card-inner" class="card-inner relative w-full h-72" onclick="this.classList.toggle('flipped')">
+      <div class="card-front absolute inset-0 bg-white dark:bg-gray-800 shadow-lg rounded-xl flex items-center justify-center cursor-pointer">
+        <div class="text-7xl font-bold text-gray-900 dark:text-white">
+          {{ front }}
+        </div>
+      </div>
+      <div class="card-back absolute inset-0 bg-white dark:bg-gray-800 shadow-lg rounded-xl flex flex-col items-center justify-center cursor-pointer p-6">
+        <div class="text-4xl font-bold text-indigo-600 dark:text-indigo-400 mb-3">
+          {{ main_answer }}
+        </div>
+        {% if let Some(desc) = description %}
+        <div class="text-base text-gray-500 dark:text-gray-400 text-center">
+          {{ desc }}
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">
+    Tap card to reveal answer
+  </p>
+
+  <div class="grid grid-cols-4 gap-2">
+    <form hx-post="/review" hx-target="#card-container" hx-swap="outerHTML">
+      <input type="hidden" name="card_id" value="{{ card_id }}">
+      <input type="hidden" name="quality" value="0">
+      <button type="submit" class="w-full bg-red-500 hover:bg-red-600 text-white font-semibold py-3 px-2 rounded-lg transition-colors text-sm">
+        Again
+      </button>
+    </form>
+
+    <form hx-post="/review" hx-target="#card-container" hx-swap="outerHTML">
+      <input type="hidden" name="card_id" value="{{ card_id }}">
+      <input type="hidden" name="quality" value="2">
+      <button type="submit" class="w-full bg-orange-500 hover:bg-orange-600 text-white font-semibold py-3 px-2 rounded-lg transition-colors text-sm">
+        Hard
+      </button>
+    </form>
+
+    <form hx-post="/review" hx-target="#card-container" hx-swap="outerHTML">
+      <input type="hidden" name="card_id" value="{{ card_id }}">
+      <input type="hidden" name="quality" value="4">
+      <button type="submit" class="w-full bg-green-500 hover:bg-green-600 text-white font-semibold py-3 px-2 rounded-lg transition-colors text-sm">
+        Good
+      </button>
+    </form>
+
+    <form hx-post="/review" hx-target="#card-container" hx-swap="outerHTML">
+      <input type="hidden" name="card_id" value="{{ card_id }}">
+      <input type="hidden" name="quality" value="5">
+      <button type="submit" class="w-full bg-blue-500 hover:bg-blue-600 text-white font-semibold py-3 px-2 rounded-lg transition-colors text-sm">
+        Easy
+      </button>
+    </form>
+  </div>
+</div>

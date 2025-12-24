@@ -1,0 +1,215 @@
+{% extends "base.html" %}
+
+{% block title %}How Hangul Works - Reference{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto">
+  <nav class="mb-6 text-sm">
+    <a href="/reference" class="text-indigo-600 dark:text-indigo-400 hover:underline">&larr; Reference</a>
+  </nav>
+
+  <h1 class="text-3xl font-bold text-gray-900 dark:text-white mb-6">
+    How Hangul Works
+  </h1>
+
+  <!-- Key Insight -->
+  <section class="bg-indigo-50 dark:bg-indigo-900/30 rounded-lg p-6 mb-8">
+    <h2 class="text-lg font-bold text-indigo-800 dark:text-indigo-200 mb-3">The Key Insight</h2>
+    <p class="text-indigo-700 dark:text-indigo-300">
+      Korean is written in <strong>syllable blocks</strong>. Each block contains 2-4 characters
+      arranged in a specific pattern based on the vowel's shape.
+    </p>
+  </section>
+
+  <!-- Did You Know -->
+  <details class="bg-purple-50 dark:bg-purple-900/20 rounded-lg mb-8">
+    <summary class="p-4 cursor-pointer font-semibold text-purple-800 dark:text-purple-200 hover:bg-purple-100 dark:hover:bg-purple-900/30 rounded-lg">
+      Did you know? The world's only designed alphabet
+    </summary>
+    <div class="px-4 pb-4 text-purple-700 dark:text-purple-300 text-sm space-y-3">
+      <p>
+        Unlike almost every other alphabet that evolved slowly over centuries, <strong>Hangul was invented in 1443</strong>
+        by King Sejong the Great and a team of scholars. It was designed from scratch to be easy to learn.
+      </p>
+      <p>
+        King Sejong's goal was literacy for common people. Legend says he wanted something so simple that
+        "a wise man could learn it in a morning, and even a fool could learn it in ten days."
+      </p>
+      <p>
+        The original name was <em>Hunminjeongeum</em> — "Proper Sounds to Instruct the People."
+      </p>
+      <p class="text-xs text-purple-500 dark:text-purple-400 mt-4 pt-3 border-t border-purple-200 dark:border-purple-700">
+        Sources: <a href="https://www.britannica.com/topic/Hangul-Korean-alphabet" class="underline" target="_blank">Britannica</a>,
+        <a href="https://en.wikipedia.org/wiki/Origin_of_Hangul" class="underline" target="_blank">Wikipedia</a>
+      </p>
+    </div>
+  </details>
+
+  <!-- Vowel Orientation -->
+  <section class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6">
+    <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-4">
+      Vowel Orientation Rule
+    </h2>
+    <p class="text-gray-700 dark:text-gray-300 mb-4">
+      The vowel's shape determines how the block is arranged:
+    </p>
+
+    <div class="grid md:grid-cols-2 gap-6">
+      <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+        <h3 class="font-bold text-gray-900 dark:text-white mb-2">Vertical Vowels</h3>
+        <div class="text-4xl mb-3 font-mono">ㅏ ㅓ ㅣ ㅐ ㅔ</div>
+        <p class="text-gray-600 dark:text-gray-400 text-sm mb-3">
+          Tall vowels go to the <strong>right</strong> of the consonant
+        </p>
+        <div class="flex items-center gap-4">
+          <div class="text-center">
+            <div class="text-5xl">가</div>
+            <div class="text-xs text-gray-500 mt-1">ㄱ + ㅏ</div>
+          </div>
+          <div class="text-center">
+            <div class="text-5xl">너</div>
+            <div class="text-xs text-gray-500 mt-1">ㄴ + ㅓ</div>
+          </div>
+          <div class="text-center">
+            <div class="text-5xl">미</div>
+            <div class="text-xs text-gray-500 mt-1">ㅁ + ㅣ</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+        <h3 class="font-bold text-gray-900 dark:text-white mb-2">Horizontal Vowels</h3>
+        <div class="text-4xl mb-3 font-mono">ㅗ ㅜ ㅡ</div>
+        <p class="text-gray-600 dark:text-gray-400 text-sm mb-3">
+          Wide vowels go <strong>below</strong> the consonant
+        </p>
+        <div class="flex items-center gap-4">
+          <div class="text-center">
+            <div class="text-5xl">고</div>
+            <div class="text-xs text-gray-500 mt-1">ㄱ + ㅗ</div>
+          </div>
+          <div class="text-center">
+            <div class="text-5xl">누</div>
+            <div class="text-xs text-gray-500 mt-1">ㄴ + ㅜ</div>
+          </div>
+          <div class="text-center">
+            <div class="text-5xl">그</div>
+            <div class="text-xs text-gray-500 mt-1">ㄱ + ㅡ</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Block Patterns -->
+  <section class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6">
+    <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-4">
+      Block Patterns
+    </h2>
+
+    <div class="grid md:grid-cols-2 gap-6">
+      <div>
+        <h3 class="font-semibold text-gray-900 dark:text-white mb-2">2-character blocks</h3>
+        <div class="space-y-2 text-gray-600 dark:text-gray-400">
+          <div class="flex items-center gap-2">
+            <span class="text-2xl">가</span>
+            <span>= consonant + vertical vowel</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="text-2xl">고</span>
+            <span>= consonant + horizontal vowel</span>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <h3 class="font-semibold text-gray-900 dark:text-white mb-2">3-character blocks</h3>
+        <div class="space-y-2 text-gray-600 dark:text-gray-400">
+          <div class="flex items-center gap-2">
+            <span class="text-2xl">간</span>
+            <span>= consonant + vowel + final consonant</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="text-2xl">곤</span>
+            <span>= consonant + vowel + final consonant</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- The Silent ㅇ -->
+  <section class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6">
+    <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-4">
+      The Silent Placeholder: ㅇ
+    </h2>
+    <p class="text-gray-700 dark:text-gray-300 mb-4">
+      Every syllable block needs a consonant. When a syllable starts with a vowel sound,
+      ㅇ is used as a silent placeholder.
+    </p>
+    <div class="flex items-center gap-6 text-center">
+      <div>
+        <div class="text-5xl">아</div>
+        <div class="text-sm text-gray-500 mt-1">= "a" (ㅇ is silent)</div>
+      </div>
+      <div>
+        <div class="text-5xl">오</div>
+        <div class="text-sm text-gray-500 mt-1">= "o" (ㅇ is silent)</div>
+      </div>
+      <div>
+        <div class="text-5xl">이</div>
+        <div class="text-sm text-gray-500 mt-1">= "i" (ㅇ is silent)</div>
+      </div>
+    </div>
+    <p class="text-gray-600 dark:text-gray-400 mt-4 text-sm">
+      <strong>Note:</strong> ㅇ only has a sound ("ng") when it appears at the <em>end</em> of a syllable.
+    </p>
+  </section>
+
+  <!-- Practice -->
+  <section class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6">
+    <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-4">
+      Try Reading These Loanwords
+    </h2>
+    <p class="text-gray-600 dark:text-gray-400 mb-4">
+      These are borrowed from English, so you can check if you read them right:
+    </p>
+    <div class="grid grid-cols-3 md:grid-cols-6 gap-4 text-center">
+      <div>
+        <div class="text-3xl">피자</div>
+        <div class="text-xs text-gray-500 mt-1">pizza</div>
+      </div>
+      <div>
+        <div class="text-3xl">버스</div>
+        <div class="text-xs text-gray-500 mt-1">bus</div>
+      </div>
+      <div>
+        <div class="text-3xl">호텔</div>
+        <div class="text-xs text-gray-500 mt-1">hotel</div>
+      </div>
+      <div>
+        <div class="text-3xl">택시</div>
+        <div class="text-xs text-gray-500 mt-1">taxi</div>
+      </div>
+      <div>
+        <div class="text-3xl">커피</div>
+        <div class="text-xs text-gray-500 mt-1">coffee</div>
+      </div>
+      <div>
+        <div class="text-3xl">바나나</div>
+        <div class="text-xs text-gray-500 mt-1">banana</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Navigation -->
+  <div class="flex justify-between mt-8">
+    <a href="/reference" class="text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white">
+      &larr; Reference Index
+    </a>
+    <a href="/reference/tier1" class="text-indigo-600 dark:text-indigo-400 hover:underline">
+      Tier 1: Basic Characters &rarr;
+    </a>
+  </div>
+</div>
+{% endblock %}

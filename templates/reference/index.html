@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+
+{% block title %}Reference - Hangul Learn{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto">
+  <h1 class="text-3xl font-bold text-gray-900 dark:text-white mb-6">
+    Hangul Reference
+  </h1>
+
+  <p class="text-gray-600 dark:text-gray-400 mb-8">
+    Quick reference guides for learning Korean Hangul. Start with the basics, then work through each tier.
+  </p>
+
+  <div class="grid gap-4">
+    <!-- Basics -->
+    <a href="/reference/basics" class="block bg-white dark:bg-gray-800 shadow rounded-lg p-6 hover:shadow-md transition-shadow">
+      <div class="flex items-center justify-between">
+        <div>
+          <h2 class="text-xl font-bold text-gray-900 dark:text-white">How Hangul Works</h2>
+          <p class="text-gray-600 dark:text-gray-400 mt-1">
+            Block structure, vowel orientation, and how syllables are built
+          </p>
+        </div>
+        <span class="text-indigo-600 dark:text-indigo-400 text-2xl">&rarr;</span>
+      </div>
+    </a>
+
+    <!-- Tier 1 -->
+    <a href="/reference/tier1" class="block bg-white dark:bg-gray-800 shadow rounded-lg p-6 hover:shadow-md transition-shadow border-l-4 border-green-500">
+      <div class="flex items-center justify-between">
+        <div>
+          <h2 class="text-xl font-bold text-gray-900 dark:text-white">Tier 1: Basic Characters</h2>
+          <p class="text-gray-600 dark:text-gray-400 mt-1">
+            9 basic consonants and 6 basic vowels
+          </p>
+        </div>
+        <span class="text-indigo-600 dark:text-indigo-400 text-2xl">&rarr;</span>
+      </div>
+    </a>
+
+    <!-- Tier 2 -->
+    <a href="/reference/tier2" class="block bg-white dark:bg-gray-800 shadow rounded-lg p-6 hover:shadow-md transition-shadow border-l-4 border-blue-500">
+      <div class="flex items-center justify-between">
+        <div>
+          <h2 class="text-xl font-bold text-gray-900 dark:text-white">Tier 2: Extensions</h2>
+          <p class="text-gray-600 dark:text-gray-400 mt-1">
+            Y-vowels, special ieung rules, and ae/e vowels
+          </p>
+        </div>
+        <span class="text-indigo-600 dark:text-indigo-400 text-2xl">&rarr;</span>
+      </div>
+    </a>
+
+    <!-- Tier 3 -->
+    <a href="/reference/tier3" class="block bg-white dark:bg-gray-800 shadow rounded-lg p-6 hover:shadow-md transition-shadow border-l-4 border-purple-500">
+      <div class="flex items-center justify-between">
+        <div>
+          <h2 class="text-xl font-bold text-gray-900 dark:text-white">Tier 3: Consonant Variants</h2>
+          <p class="text-gray-600 dark:text-gray-400 mt-1">
+            Aspirated and tense (doubled) consonants
+          </p>
+        </div>
+        <span class="text-indigo-600 dark:text-indigo-400 text-2xl">&rarr;</span>
+      </div>
+    </a>
+
+    <!-- Tier 4 -->
+    <a href="/reference/tier4" class="block bg-white dark:bg-gray-800 shadow rounded-lg p-6 hover:shadow-md transition-shadow border-l-4 border-orange-500">
+      <div class="flex items-center justify-between">
+        <div>
+          <h2 class="text-xl font-bold text-gray-900 dark:text-white">Tier 4: Compound Vowels</h2>
+          <p class="text-gray-600 dark:text-gray-400 mt-1">
+            Diphthongs and combined vowel sounds
+          </p>
+        </div>
+        <span class="text-indigo-600 dark:text-indigo-400 text-2xl">&rarr;</span>
+      </div>
+    </a>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,236 @@
+{% extends "base.html" %}
+
+{% block title %}Tier 3: Consonant Variants - Reference{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto">
+  <nav class="mb-6 text-sm">
+    <a href="/reference" class="text-indigo-600 dark:text-indigo-400 hover:underline">&larr; Reference</a>
+  </nav>
+
+  <div class="flex items-center gap-3 mb-6">
+    <span class="bg-purple-500 text-white text-sm font-bold px-3 py-1 rounded-full">Tier 3</span>
+    <h1 class="text-3xl font-bold text-gray-900 dark:text-white">Consonant Variants</h1>
+  </div>
+
+  <p class="text-gray-600 dark:text-gray-400 mb-8">
+    Korean has three versions of some consonants: plain, aspirated (with air), and tense (harder).
+  </p>
+
+  <!-- The Pattern -->
+  <section class="bg-indigo-50 dark:bg-indigo-900/30 rounded-lg p-6 mb-6">
+    <h2 class="text-lg font-bold text-indigo-800 dark:text-indigo-200 mb-3">The Pattern</h2>
+    <ul class="text-indigo-700 dark:text-indigo-300 space-y-2">
+      <li><strong>Plain:</strong> Basic consonant (soft, between voiced and unvoiced)</li>
+      <li><strong>Aspirated:</strong> Extra line = extra air (like a puff of breath)</li>
+      <li><strong>Tense/Doubled:</strong> Written twice = tenser, no air released</li>
+    </ul>
+  </section>
+
+  <!-- Did You Know -->
+  <details class="bg-purple-50 dark:bg-purple-900/20 rounded-lg mb-6">
+    <summary class="p-4 cursor-pointer font-semibold text-purple-800 dark:text-purple-200 hover:bg-purple-100 dark:hover:bg-purple-900/30 rounded-lg">
+      Did you know? The strokes are a sound intensity dial
+    </summary>
+    <div class="px-4 pb-4 text-purple-700 dark:text-purple-300 text-sm space-y-3">
+      <p>
+        King Sejong's team designed a visual system where <strong>adding strokes = adding intensity</strong>:
+      </p>
+      <div class="flex items-center gap-4 my-3">
+        <span class="text-3xl">ㄱ</span>
+        <span>&rarr;</span>
+        <span class="text-3xl">ㅋ</span>
+        <span class="text-xs">(+1 stroke = aspirated)</span>
+      </div>
+      <div class="flex items-center gap-4 my-3">
+        <span class="text-3xl">ㄱ</span>
+        <span>&rarr;</span>
+        <span class="text-3xl">ㄲ</span>
+        <span class="text-xs">(doubled = tense)</span>
+      </div>
+      <p>
+        The same logic applies to all consonant families. Once you see the pattern,
+        you can predict what a new character sounds like just by counting its strokes.
+      </p>
+      <p class="text-xs text-purple-500 dark:text-purple-400 mt-4 pt-3 border-t border-purple-200 dark:border-purple-700">
+        Source: <a href="https://en.wikipedia.org/wiki/Origin_of_Hangul" class="underline" target="_blank">Origin of Hangul - Wikipedia</a>
+      </p>
+    </div>
+  </details>
+
+  <!-- Consonant Families Table -->
+  <section class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6">
+    <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-4">
+      Consonant Families
+    </h2>
+    <div class="overflow-x-auto">
+      <table class="w-full">
+        <thead>
+          <tr class="border-b border-gray-200 dark:border-gray-700">
+            <th class="text-left py-2 text-gray-600 dark:text-gray-400">Plain</th>
+            <th class="text-left py-2 text-gray-600 dark:text-gray-400">Aspirated</th>
+            <th class="text-left py-2 text-gray-600 dark:text-gray-400">Tense</th>
+          </tr>
+        </thead>
+        <tbody class="text-gray-900 dark:text-white">
+          <tr class="border-b border-gray-100 dark:border-gray-700">
+            <td class="py-3">
+              <span class="text-4xl">ㄱ</span>
+              <span class="text-gray-500 ml-2">g/k</span>
+            </td>
+            <td class="py-3">
+              <span class="text-4xl">ㅋ</span>
+              <span class="text-gray-500 ml-2">k (aspirated)</span>
+            </td>
+            <td class="py-3">
+              <span class="text-4xl">ㄲ</span>
+              <span class="text-gray-500 ml-2">kk (tense)</span>
+            </td>
+          </tr>
+          <tr class="border-b border-gray-100 dark:border-gray-700">
+            <td class="py-3">
+              <span class="text-4xl">ㄷ</span>
+              <span class="text-gray-500 ml-2">d/t</span>
+            </td>
+            <td class="py-3">
+              <span class="text-4xl">ㅌ</span>
+              <span class="text-gray-500 ml-2">t (aspirated)</span>
+            </td>
+            <td class="py-3">
+              <span class="text-4xl">ㄸ</span>
+              <span class="text-gray-500 ml-2">tt (tense)</span>
+            </td>
+          </tr>
+          <tr class="border-b border-gray-100 dark:border-gray-700">
+            <td class="py-3">
+              <span class="text-4xl">ㅂ</span>
+              <span class="text-gray-500 ml-2">b/p</span>
+            </td>
+            <td class="py-3">
+              <span class="text-4xl">ㅍ</span>
+              <span class="text-gray-500 ml-2">p (aspirated)</span>
+            </td>
+            <td class="py-3">
+              <span class="text-4xl">ㅃ</span>
+              <span class="text-gray-500 ml-2">pp (tense)</span>
+            </td>
+          </tr>
+          <tr class="border-b border-gray-100 dark:border-gray-700">
+            <td class="py-3">
+              <span class="text-4xl">ㅅ</span>
+              <span class="text-gray-500 ml-2">s</span>
+            </td>
+            <td class="py-3 text-gray-400">-</td>
+            <td class="py-3">
+              <span class="text-4xl">ㅆ</span>
+              <span class="text-gray-500 ml-2">ss (tense)</span>
+            </td>
+          </tr>
+          <tr>
+            <td class="py-3">
+              <span class="text-4xl">ㅈ</span>
+              <span class="text-gray-500 ml-2">j</span>
+            </td>
+            <td class="py-3">
+              <span class="text-4xl">ㅊ</span>
+              <span class="text-gray-500 ml-2">ch (aspirated)</span>
+            </td>
+            <td class="py-3">
+              <span class="text-4xl">ㅉ</span>
+              <span class="text-gray-500 ml-2">jj (tense)</span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Aspirated Consonants -->
+  <section class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6">
+    <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-4">
+      Aspirated Consonants (4)
+    </h2>
+    <p class="text-gray-600 dark:text-gray-400 mb-4">
+      These have a strong puff of air. Hold your hand in front of your mouth - you should feel the breath.
+    </p>
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+      <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+        <div class="text-5xl mb-2">ㅋ</div>
+        <div class="font-mono">k</div>
+        <div class="text-sm text-gray-500">like 'k' in kick</div>
+      </div>
+      <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+        <div class="text-5xl mb-2">ㅌ</div>
+        <div class="font-mono">t</div>
+        <div class="text-sm text-gray-500">like 't' in top</div>
+      </div>
+      <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+        <div class="text-5xl mb-2">ㅍ</div>
+        <div class="font-mono">p</div>
+        <div class="text-sm text-gray-500">like 'p' in pop</div>
+      </div>
+      <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+        <div class="text-5xl mb-2">ㅊ</div>
+        <div class="font-mono">ch</div>
+        <div class="text-sm text-gray-500">like 'ch' in church</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Tense Consonants -->
+  <section class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6">
+    <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-4">
+      Tense Consonants (5)
+    </h2>
+    <p class="text-gray-600 dark:text-gray-400 mb-4">
+      These are tenser and sharper, with no air released. Think of the sound in "uh-oh" or stopping a sound abruptly.
+    </p>
+    <div class="grid grid-cols-2 md:grid-cols-5 gap-4 text-center">
+      <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+        <div class="text-5xl mb-2">ㄲ</div>
+        <div class="font-mono">kk</div>
+        <div class="text-sm text-gray-500">like 'ck' in sticky</div>
+      </div>
+      <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+        <div class="text-5xl mb-2">ㄸ</div>
+        <div class="font-mono">tt</div>
+        <div class="text-sm text-gray-500">like 'tt' in butter</div>
+      </div>
+      <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+        <div class="text-5xl mb-2">ㅃ</div>
+        <div class="font-mono">pp</div>
+        <div class="text-sm text-gray-500">like 'pp' in happy</div>
+      </div>
+      <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+        <div class="text-5xl mb-2">ㅆ</div>
+        <div class="font-mono">ss</div>
+        <div class="text-sm text-gray-500">like 'ss' in hiss</div>
+      </div>
+      <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+        <div class="text-5xl mb-2">ㅉ</div>
+        <div class="font-mono">jj</div>
+        <div class="text-sm text-gray-500">like 'dg' in edge</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Note -->
+  <section class="bg-yellow-50 dark:bg-yellow-900/20 rounded-lg p-6 mb-6">
+    <h2 class="text-lg font-bold text-yellow-800 dark:text-yellow-200 mb-3">Don't Stress About Pronunciation</h2>
+    <p class="text-yellow-700 dark:text-yellow-300">
+      Even native Koreans sometimes can't explain the difference between these sounds.
+      Focus on <strong>recognition</strong> first - you'll develop the pronunciation through exposure.
+    </p>
+  </section>
+
+  <!-- Navigation -->
+  <div class="flex justify-between mt-8">
+    <a href="/reference/tier2" class="text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white">
+      &larr; Tier 2: Extensions
+    </a>
+    <a href="/reference/tier4" class="text-indigo-600 dark:text-indigo-400 hover:underline">
+      Tier 4: Compound Vowels &rarr;
+    </a>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,214 @@
+{% extends "base.html" %}
+
+{% block title %}Tier 1: Basic Characters - Reference{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto">
+  <nav class="mb-6 text-sm">
+    <a href="/reference" class="text-indigo-600 dark:text-indigo-400 hover:underline">&larr; Reference</a>
+  </nav>
+
+  <div class="flex items-center gap-3 mb-6">
+    <span class="bg-green-500 text-white text-sm font-bold px-3 py-1 rounded-full">Tier 1</span>
+    <h1 class="text-3xl font-bold text-gray-900 dark:text-white">Basic Characters</h1>
+  </div>
+
+  <p class="text-gray-600 dark:text-gray-400 mb-8">
+    These are the foundation. Learn these first, perfectly.
+  </p>
+
+  <!-- Did You Know - Consonants -->
+  <details class="bg-purple-50 dark:bg-purple-900/20 rounded-lg mb-6">
+    <summary class="p-4 cursor-pointer font-semibold text-purple-800 dark:text-purple-200 hover:bg-purple-100 dark:hover:bg-purple-900/30 rounded-lg">
+      Did you know? Consonants are pictures of your mouth
+    </summary>
+    <div class="px-4 pb-4 text-purple-700 dark:text-purple-300 text-sm space-y-3">
+      <p>
+        The five basic consonant shapes represent what your mouth does when making the sound:
+      </p>
+      <ul class="space-y-1 ml-4">
+        <li><strong>ㄱ</strong> — tongue touching the back of the mouth (velar)</li>
+        <li><strong>ㄴ</strong> — tongue touching the upper gums (alveolar)</li>
+        <li><strong>ㅁ</strong> — the shape of closed lips (bilabial)</li>
+        <li><strong>ㅅ</strong> — the shape of teeth (dental)</li>
+        <li><strong>ㅇ</strong> — the shape of the open throat (glottal)</li>
+      </ul>
+      <p>
+        King Sejong's scholars literally drew simplified diagrams of the speech organs.
+        Hangul is the only alphabet designed with phonetics in mind from day one.
+      </p>
+      <p class="text-xs text-purple-500 dark:text-purple-400 mt-4 pt-3 border-t border-purple-200 dark:border-purple-700">
+        Source: <a href="https://en.wikipedia.org/wiki/Origin_of_Hangul" class="underline" target="_blank">Origin of Hangul - Wikipedia</a>
+      </p>
+    </div>
+  </details>
+
+  <!-- Basic Consonants -->
+  <section class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6">
+    <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-4">
+      Basic Consonants (9)
+    </h2>
+    <div class="overflow-x-auto">
+      <table class="w-full">
+        <thead>
+          <tr class="border-b border-gray-200 dark:border-gray-700">
+            <th class="text-left py-2 text-gray-600 dark:text-gray-400">Letter</th>
+            <th class="text-left py-2 text-gray-600 dark:text-gray-400">Sound</th>
+            <th class="text-left py-2 text-gray-600 dark:text-gray-400">Hint</th>
+          </tr>
+        </thead>
+        <tbody class="text-gray-900 dark:text-white">
+          <tr class="border-b border-gray-100 dark:border-gray-700">
+            <td class="py-3 text-4xl">ㄱ</td>
+            <td class="py-3 font-mono">g / k</td>
+            <td class="py-3 text-gray-600 dark:text-gray-400">Like 'g' in go (start) or 'k' in kite (end)</td>
+          </tr>
+          <tr class="border-b border-gray-100 dark:border-gray-700">
+            <td class="py-3 text-4xl">ㄴ</td>
+            <td class="py-3 font-mono">n</td>
+            <td class="py-3 text-gray-600 dark:text-gray-400">Like 'n' in no</td>
+          </tr>
+          <tr class="border-b border-gray-100 dark:border-gray-700">
+            <td class="py-3 text-4xl">ㄷ</td>
+            <td class="py-3 font-mono">d / t</td>
+            <td class="py-3 text-gray-600 dark:text-gray-400">Like 'd' in do (start) or 't' in top (end)</td>
+          </tr>
+          <tr class="border-b border-gray-100 dark:border-gray-700">
+            <td class="py-3 text-4xl">ㄹ</td>
+            <td class="py-3 font-mono">r / l</td>
+            <td class="py-3 text-gray-600 dark:text-gray-400">Like 'r' in run (start) or 'l' in ball (end)</td>
+          </tr>
+          <tr class="border-b border-gray-100 dark:border-gray-700">
+            <td class="py-3 text-4xl">ㅁ</td>
+            <td class="py-3 font-mono">m</td>
+            <td class="py-3 text-gray-600 dark:text-gray-400">Like 'm' in mom</td>
+          </tr>
+          <tr class="border-b border-gray-100 dark:border-gray-700">
+            <td class="py-3 text-4xl">ㅂ</td>
+            <td class="py-3 font-mono">b / p</td>
+            <td class="py-3 text-gray-600 dark:text-gray-400">Like 'b' in boy (start) or 'p' in put (end)</td>
+          </tr>
+          <tr class="border-b border-gray-100 dark:border-gray-700">
+            <td class="py-3 text-4xl">ㅅ</td>
+            <td class="py-3 font-mono">s</td>
+            <td class="py-3 text-gray-600 dark:text-gray-400">Like 's' in sun</td>
+          </tr>
+          <tr class="border-b border-gray-100 dark:border-gray-700">
+            <td class="py-3 text-4xl">ㅈ</td>
+            <td class="py-3 font-mono">j</td>
+            <td class="py-3 text-gray-600 dark:text-gray-400">Like 'j' in just</td>
+          </tr>
+          <tr>
+            <td class="py-3 text-4xl">ㅎ</td>
+            <td class="py-3 font-mono">h</td>
+            <td class="py-3 text-gray-600 dark:text-gray-400">Like 'h' in hi</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Did You Know - Vowels -->
+  <details class="bg-purple-50 dark:bg-purple-900/20 rounded-lg mb-6">
+    <summary class="p-4 cursor-pointer font-semibold text-purple-800 dark:text-purple-200 hover:bg-purple-100 dark:hover:bg-purple-900/30 rounded-lg">
+      Did you know? Vowels represent heaven, earth, and humanity
+    </summary>
+    <div class="px-4 pb-4 text-purple-700 dark:text-purple-300 text-sm space-y-3">
+      <p>
+        All vowels are built from just three elements based on Eastern philosophy:
+      </p>
+      <ul class="space-y-1 ml-4">
+        <li><strong>• (dot)</strong> — the round sun/heaven (yang)</li>
+        <li><strong>ㅡ (horizontal)</strong> — the flat earth (yin)</li>
+        <li><strong>ㅣ (vertical)</strong> — a person standing upright (neutral)</li>
+      </ul>
+      <p>
+        This is the <em>Samjae</em> (Three Powers) — the idea that humans stand between heaven and earth.
+      </p>
+      <p>
+        Vowels with the dot/line pointing up or right (ㅗ ㅏ) are "bright" (yang).
+        Vowels with it pointing down or left (ㅜ ㅓ) are "dark" (yin).
+      </p>
+      <p class="text-xs text-purple-500 dark:text-purple-400 mt-4 pt-3 border-t border-purple-200 dark:border-purple-700">
+        Source: <a href="https://www.futurelearn.com/info/courses/what-is-korean-philosophy/0/steps/98466" class="underline" target="_blank">FutureLearn - Three Ingredients of Hangeul</a>
+      </p>
+    </div>
+  </details>
+
+  <!-- Basic Vowels -->
+  <section class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6">
+    <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-4">
+      Basic Vowels (6)
+    </h2>
+    <div class="overflow-x-auto">
+      <table class="w-full">
+        <thead>
+          <tr class="border-b border-gray-200 dark:border-gray-700">
+            <th class="text-left py-2 text-gray-600 dark:text-gray-400">Letter</th>
+            <th class="text-left py-2 text-gray-600 dark:text-gray-400">Sound</th>
+            <th class="text-left py-2 text-gray-600 dark:text-gray-400">Orientation</th>
+            <th class="text-left py-2 text-gray-600 dark:text-gray-400">Hint</th>
+          </tr>
+        </thead>
+        <tbody class="text-gray-900 dark:text-white">
+          <tr class="border-b border-gray-100 dark:border-gray-700">
+            <td class="py-3 text-4xl">ㅏ</td>
+            <td class="py-3 font-mono">a</td>
+            <td class="py-3"><span class="bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 text-xs px-2 py-1 rounded">vertical</span></td>
+            <td class="py-3 text-gray-600 dark:text-gray-400">Like 'a' in father</td>
+          </tr>
+          <tr class="border-b border-gray-100 dark:border-gray-700">
+            <td class="py-3 text-4xl">ㅓ</td>
+            <td class="py-3 font-mono">eo</td>
+            <td class="py-3"><span class="bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 text-xs px-2 py-1 rounded">vertical</span></td>
+            <td class="py-3 text-gray-600 dark:text-gray-400">Like 'u' in fun or 'uh'</td>
+          </tr>
+          <tr class="border-b border-gray-100 dark:border-gray-700">
+            <td class="py-3 text-4xl">ㅗ</td>
+            <td class="py-3 font-mono">o</td>
+            <td class="py-3"><span class="bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 text-xs px-2 py-1 rounded">horizontal</span></td>
+            <td class="py-3 text-gray-600 dark:text-gray-400">Like 'o' in go</td>
+          </tr>
+          <tr class="border-b border-gray-100 dark:border-gray-700">
+            <td class="py-3 text-4xl">ㅜ</td>
+            <td class="py-3 font-mono">u</td>
+            <td class="py-3"><span class="bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 text-xs px-2 py-1 rounded">horizontal</span></td>
+            <td class="py-3 text-gray-600 dark:text-gray-400">Like 'oo' in moon</td>
+          </tr>
+          <tr class="border-b border-gray-100 dark:border-gray-700">
+            <td class="py-3 text-4xl">ㅡ</td>
+            <td class="py-3 font-mono">eu</td>
+            <td class="py-3"><span class="bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 text-xs px-2 py-1 rounded">horizontal</span></td>
+            <td class="py-3 text-gray-600 dark:text-gray-400">Like 'u' in put, unrounded lips</td>
+          </tr>
+          <tr>
+            <td class="py-3 text-4xl">ㅣ</td>
+            <td class="py-3 font-mono">i</td>
+            <td class="py-3"><span class="bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 text-xs px-2 py-1 rounded">vertical</span></td>
+            <td class="py-3 text-gray-600 dark:text-gray-400">Like 'ee' in see</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Quick Memory Aid -->
+  <section class="bg-yellow-50 dark:bg-yellow-900/20 rounded-lg p-6 mb-6">
+    <h2 class="text-lg font-bold text-yellow-800 dark:text-yellow-200 mb-3">Memory Aid</h2>
+    <ul class="text-yellow-700 dark:text-yellow-300 space-y-2">
+      <li><strong>Vertical vowels</strong> (ㅏ ㅓ ㅣ): The line goes up/down &rarr; consonant goes LEFT</li>
+      <li><strong>Horizontal vowels</strong> (ㅗ ㅜ ㅡ): The line goes left/right &rarr; consonant goes ABOVE</li>
+    </ul>
+  </section>
+
+  <!-- Navigation -->
+  <div class="flex justify-between mt-8">
+    <a href="/reference/basics" class="text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white">
+      &larr; How Hangul Works
+    </a>
+    <a href="/reference/tier2" class="text-indigo-600 dark:text-indigo-400 hover:underline">
+      Tier 2: Extensions &rarr;
+    </a>
+  </div>
+</div>
+{% endblock %}
