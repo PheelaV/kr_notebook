@@ -11,6 +11,8 @@ use axum::{extract::State, response::Html};
 use chrono::{DateTime, Utc};
 
 use crate::db::{self, DbPool};
+#[cfg(feature = "profiling")]
+use crate::profiling::EventType;
 
 #[derive(Template)]
 #[template(path = "index.html")]
@@ -20,6 +22,7 @@ pub struct IndexTemplate {
   pub total_cards: i64,
   pub cards_learned: i64,
   pub next_review: Option<String>,
+  pub next_review_timestamp: Option<i64>, // Unix timestamp in seconds for live countdown
   pub accelerated_mode: bool,
 }
 
@@ -45,6 +48,12 @@ fn format_relative_time(dt: DateTime<Utc>) -> String {
 }
 
 pub async fn index(State(pool): State<DbPool>) -> Html<String> {
+  #[cfg(feature = "profiling")]
+  crate::profile_log!(EventType::HandlerStart {
+    route: "/".into(),
+    method: "GET".into(),
+  });
+
   let conn = pool.lock().unwrap();
 
   let accelerated_mode = db::get_all_tiers_unlocked(&conn).unwrap_or(false);
@@ -64,14 +73,14 @@ pub async fn index(State(pool): State<DbPool>) -> Html<String> {
     due_count
   };
 
-  let next_review = if cards_available == 0 {
-    db::get_next_review_time(&conn)
-      .ok()
-      .flatten()
-      .map(format_relative_time)
+  let next_review_time = if cards_available == 0 {
+    db::get_next_review_time(&conn).ok().flatten()
   } else {
     None
   };
+
+  let next_review = next_review_time.map(format_relative_time);
+  let next_review_timestamp = next_review_time.map(|dt| dt.timestamp());
 
   let template = IndexTemplate {
     due_count,
@@ -79,6 +88,7 @@ pub async fn index(State(pool): State<DbPool>) -> Html<String> {
     total_cards,
     cards_learned,
     next_review,
+    next_review_timestamp,
     accelerated_mode,
   };
 

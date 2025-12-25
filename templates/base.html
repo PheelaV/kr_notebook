@@ -47,10 +47,15 @@
     }
     .card-back {
       transform: rotateY(180deg);
-      visibility: hidden;
     }
-    .card-inner.flipped .card-back {
-      visibility: visible;
+
+    /* Card loading state - fade out during htmx swap */
+    .card-inner.card-loading .card-front,
+    .card-inner.card-loading .card-back {
+      opacity: 0;
+    }
+    .card-front, .card-back {
+      transition: opacity 0.15s ease-out;
     }
 
     /* Haetae Mascot Animations */
@@ -455,6 +460,36 @@
           // Second burst slightly delayed
           setTimeout(createFirework, 150);
         }
+      });
+    })();
+  </script>
+
+  <script>
+    // Coordinate card flip animation with htmx swaps
+    (function() {
+      // Before request: unflip card and fade out content
+      document.body.addEventListener('htmx:beforeRequest', function(evt) {
+        const cardInner = document.querySelector('#card-inner');
+        if (!cardInner) return;
+
+        // Unflip if flipped
+        if (cardInner.classList.contains('flipped')) {
+          cardInner.classList.remove('flipped');
+        }
+        // Fade out content during transition
+        cardInner.classList.add('card-loading');
+      });
+
+      // After swap: ensure clean state and fade in
+      document.body.addEventListener('htmx:afterSwap', function(evt) {
+        const cardInner = document.querySelector('#card-inner');
+        if (!cardInner) return;
+
+        // Ensure fresh state
+        requestAnimationFrame(function() {
+          cardInner.classList.remove('card-loading');
+          cardInner.classList.remove('flipped');
+        });
       });
     })();
   </script>
