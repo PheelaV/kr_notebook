@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+
+{% block title %}Settings - Hangul Learn{% endblock %}
+
+{% block content %}
+<div class="max-w-2xl mx-auto">
+  <h1 class="text-2xl font-bold text-gray-900 dark:text-white mb-6">
+    Settings
+  </h1>
+
+  <!-- Dark Mode - uses localStorage (client-side) -->
+  <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6">
+    <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+      Appearance
+    </h2>
+
+    <label class="flex items-center cursor-pointer">
+      <input type="checkbox" id="darkModeToggle"
+             onclick="toggleDarkMode(); this.checked = isDarkMode();"
+             class="w-5 h-5 text-indigo-600 rounded focus:ring-indigo-500 dark:focus:ring-indigo-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600">
+      <span class="ml-3 text-gray-900 dark:text-gray-100">Dark Mode</span>
+    </label>
+    <p class="text-sm text-gray-500 dark:text-gray-400 mt-1 ml-8">
+      Use dark theme for the interface (saved in browser)
+    </p>
+  </div>
+
+  <!-- Learning Settings -->
+  <form method="POST" action="/settings" class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6">
+    <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+      Learning
+    </h2>
+
+    <!-- Unlock All Tiers -->
+    <div class="mb-6">
+      <label class="flex items-center cursor-pointer">
+        <input type="checkbox" name="all_tiers_unlocked" value="true" id="allTiersToggle"
+               {% if all_tiers_unlocked %}checked{% endif %}
+               onchange="toggleTierOptions()"
+               class="w-5 h-5 text-indigo-600 rounded focus:ring-indigo-500 dark:focus:ring-indigo-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600">
+        <span class="ml-3 text-gray-900 dark:text-gray-100">Unlock All Tiers</span>
+      </label>
+      <p class="text-sm text-gray-500 dark:text-gray-400 mt-1 ml-8">
+        Access all characters immediately for accelerated learning. Your progress is preserved.
+      </p>
+    </div>
+
+    <!-- Per-Tier Options (only visible when Unlock All Tiers is enabled) -->
+    <div id="tierOptions" class="{% if !all_tiers_unlocked %}hidden{% endif %} ml-8 mb-6 p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg border border-gray-200 dark:border-gray-600">
+      <p class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+        Select which tiers to include in study sessions:
+      </p>
+      <div class="space-y-3">
+        <label class="flex items-center cursor-pointer">
+          <input type="checkbox" name="tier_1" value="true"
+                 {% if enabled_tiers.contains(&1) %}checked{% endif %}
+                 class="w-4 h-4 text-green-600 rounded focus:ring-green-500 dark:focus:ring-green-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600">
+          <span class="ml-3">
+            <span class="bg-green-500 text-white text-xs font-bold px-2 py-0.5 rounded-full mr-2">1</span>
+            <span class="text-gray-700 dark:text-gray-300">Basic Consonants & Vowels</span>
+          </span>
+        </label>
+        <label class="flex items-center cursor-pointer">
+          <input type="checkbox" name="tier_2" value="true"
+                 {% if enabled_tiers.contains(&2) %}checked{% endif %}
+                 class="w-4 h-4 text-blue-600 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600">
+          <span class="ml-3">
+            <span class="bg-blue-500 text-white text-xs font-bold px-2 py-0.5 rounded-full mr-2">2</span>
+            <span class="text-gray-700 dark:text-gray-300">Y-Vowels & Special Ieung</span>
+          </span>
+        </label>
+        <label class="flex items-center cursor-pointer">
+          <input type="checkbox" name="tier_3" value="true"
+                 {% if enabled_tiers.contains(&3) %}checked{% endif %}
+                 class="w-4 h-4 text-purple-600 rounded focus:ring-purple-500 dark:focus:ring-purple-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600">
+          <span class="ml-3">
+            <span class="bg-purple-500 text-white text-xs font-bold px-2 py-0.5 rounded-full mr-2">3</span>
+            <span class="text-gray-700 dark:text-gray-300">Aspirated & Tense Consonants</span>
+          </span>
+        </label>
+        <label class="flex items-center cursor-pointer">
+          <input type="checkbox" name="tier_4" value="true"
+                 {% if enabled_tiers.contains(&4) %}checked{% endif %}
+                 class="w-4 h-4 text-orange-600 rounded focus:ring-orange-500 dark:focus:ring-orange-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600">
+          <span class="ml-3">
+            <span class="bg-orange-500 text-white text-xs font-bold px-2 py-0.5 rounded-full mr-2">4</span>
+            <span class="text-gray-700 dark:text-gray-300">Compound Vowels</span>
+          </span>
+        </label>
+      </div>
+      <p class="text-xs text-gray-500 dark:text-gray-400 mt-3">
+        Uncheck tiers you want to skip for now. At least one tier must be enabled.
+      </p>
+    </div>
+
+    <button type="submit"
+            class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800">
+      Save Settings
+    </button>
+  </form>
+
+</div>
+
+<script>
+  // Initialize dark mode checkbox to match current state
+  document.addEventListener('DOMContentLoaded', function() {
+    const checkbox = document.getElementById('darkModeToggle');
+    if (checkbox) {
+      checkbox.checked = isDarkMode();
+    }
+  });
+
+  // Toggle tier options visibility
+  function toggleTierOptions() {
+    const allTiersToggle = document.getElementById('allTiersToggle');
+    const tierOptions = document.getElementById('tierOptions');
+    if (tierOptions) {
+      tierOptions.classList.toggle('hidden', !allTiersToggle.checked);
+    }
+  }
+</script>
+{% endblock %}

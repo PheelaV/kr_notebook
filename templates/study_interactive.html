@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+
+{% block title %}Study - Hangul Learn{% endblock %}
+
+{% block content %}
+<div class="max-w-lg mx-auto" id="study-container">
+  {% if has_card %}
+  {% include "interactive_card.html" %}
+  {% else %}
+  {% include "no_cards.html" %}
+  {% endif %}
+</div>
+{% endblock %}

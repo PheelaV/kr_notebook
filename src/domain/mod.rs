@@ -1,5 +1,5 @@
 pub mod card;
 pub mod review;
 
-pub use card::{Card, CardType};
+pub use card::{Card, CardType, FsrsState};
 pub use review::{ReviewLog, ReviewQuality};

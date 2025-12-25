@@ -17,9 +17,23 @@ pub fn init_db(path: &Path) -> Result<DbPool> {
     std::fs::create_dir_all(parent).ok();
   }
 
+  // Create backup before migrations if database exists
+  if path.exists() {
+    let backup_path = path.with_extension("db.backup");
+    if let Err(e) = std::fs::copy(path, &backup_path) {
+      eprintln!("Warning: Could not create database backup: {}", e);
+    }
+  }
+
   let conn = Connection::open(path)?;
   run_migrations(&conn)?;
   Ok(Arc::new(Mutex::new(conn)))
+}
+
+/// Create a backup of the database using VACUUM INTO
+pub fn backup_database(conn: &Connection, backup_path: &Path) -> Result<()> {
+  conn.execute("VACUUM INTO ?1", [backup_path.to_str().unwrap()])?;
+  Ok(())
 }
 
 pub fn seed_hangul_cards(conn: &Connection) -> Result<()> {

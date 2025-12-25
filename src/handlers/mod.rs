@@ -1,7 +1,9 @@
 pub mod diagnostic;
 pub mod guide;
+pub mod library;
 pub mod progress;
 pub mod reference;
+pub mod settings;
 pub mod study;
 
 use askama::Template;
@@ -14,9 +16,11 @@ use crate::db::{self, DbPool};
 #[template(path = "index.html")]
 pub struct IndexTemplate {
   pub due_count: i64,
+  pub unreviewed_count: i64, // Cards not reviewed today (accelerated mode)
   pub total_cards: i64,
   pub cards_learned: i64,
   pub next_review: Option<String>,
+  pub accelerated_mode: bool,
 }
 
 fn format_relative_time(dt: DateTime<Utc>) -> String {
@@ -43,10 +47,24 @@ fn format_relative_time(dt: DateTime<Utc>) -> String {
 pub async fn index(State(pool): State<DbPool>) -> Html<String> {
   let conn = pool.lock().unwrap();
 
+  let accelerated_mode = db::get_all_tiers_unlocked(&conn).unwrap_or(false);
   let due_count = db::get_due_count(&conn).unwrap_or(0);
+  let unreviewed_count = if accelerated_mode {
+    db::get_unreviewed_today_count(&conn).unwrap_or(0)
+  } else {
+    0
+  };
   let (total_cards, _, cards_learned) = db::get_total_stats(&conn).unwrap_or((0, 0, 0));
 
-  let next_review = if due_count == 0 {
+  // In accelerated mode, show next review only if both due and unreviewed are 0
+  // In normal mode, show next review only if due is 0
+  let cards_available = if accelerated_mode {
+    due_count + unreviewed_count
+  } else {
+    due_count
+  };
+
+  let next_review = if cards_available == 0 {
     db::get_next_review_time(&conn)
       .ok()
       .flatten()
@@ -57,9 +75,11 @@ pub async fn index(State(pool): State<DbPool>) -> Html<String> {
 
   let template = IndexTemplate {
     due_count,
+    unreviewed_count,
     total_cards,
     cards_learned,
     next_review,
+    accelerated_mode,
   };
 
   Html(template.render().unwrap_or_default())
@@ -67,9 +87,14 @@ pub async fn index(State(pool): State<DbPool>) -> Html<String> {
 
 pub use diagnostic::log_diagnostic;
 pub use guide::guide;
+pub use library::library;
 pub use progress::{progress, unlock_tier};
 pub use reference::{
   reference_basics, reference_index, reference_tier1, reference_tier2, reference_tier3,
   reference_tier4,
 };
-pub use study::{practice_next, practice_start, study_start, submit_review};
+pub use settings::{settings_page, update_settings};
+pub use study::{
+  practice_next, practice_start, study_start, submit_review,
+  study_start_interactive, submit_review_interactive, validate_answer_handler,
+};

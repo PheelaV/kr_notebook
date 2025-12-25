@@ -4,11 +4,31 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}Hangul Learn{% endblock %}</title>
+  <script>
+    // Apply dark mode immediately to prevent flash
+    if (localStorage.getItem('darkMode') === 'true' ||
+        (!localStorage.getItem('darkMode') && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+      document.documentElement.classList.add('dark');
+    }
+  </script>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/htmx.org@2.0.4"></script>
   <script>
     tailwind.config = {
       darkMode: 'class',
+    }
+
+    // Dark mode toggle function
+    function toggleDarkMode() {
+      const html = document.documentElement;
+      const isDark = html.classList.toggle('dark');
+      localStorage.setItem('darkMode', isDark);
+      return isDark;
+    }
+
+    // Get current dark mode state
+    function isDarkMode() {
+      return document.documentElement.classList.contains('dark');
     }
   </script>
   <style>
@@ -32,6 +52,129 @@
     .card-inner.flipped .card-back {
       visibility: visible;
     }
+
+    /* Haetae Mascot Animations */
+    @keyframes haetae-float {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-4px); }
+    }
+
+    @keyframes haetae-blink {
+      0%, 94%, 100% { transform: scaleY(1); }
+      96%, 98% { transform: scaleY(0.1); }
+    }
+
+    @keyframes haetae-tail-wag {
+      0%, 100% { transform: rotate(-10deg); }
+      50% { transform: rotate(10deg); }
+    }
+
+    @keyframes haetae-tail-wag-fast {
+      0%, 100% { transform: rotate(-15deg); }
+      50% { transform: rotate(15deg); }
+    }
+
+    @keyframes haetae-bounce {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.05); }
+    }
+
+    /* Firework animations */
+    @keyframes firework-burst {
+      0% { transform: translate(0, 0) scale(0); opacity: 1; }
+      100% { transform: translate(var(--tx), var(--ty)) scale(1); opacity: 0; }
+    }
+
+    @keyframes firework-sparkle {
+      0%, 100% { opacity: 0; transform: scale(0); }
+      50% { opacity: 1; transform: scale(1); }
+    }
+
+    .haetae-wrapper {
+      position: relative;
+    }
+
+    .haetae-container {
+      animation: haetae-float 3s ease-in-out infinite;
+      transition: filter 0.3s ease;
+    }
+
+    .haetae-container:hover {
+      filter: brightness(1.05);
+    }
+
+    .haetae-eye {
+      transform-origin: center;
+      animation: haetae-blink 4s ease-in-out infinite;
+    }
+
+    .haetae-eye-right {
+      animation-delay: 0.1s;
+    }
+
+    .haetae-tail {
+      transform-origin: 85% 50%;
+      animation: haetae-tail-wag 0.6s ease-in-out infinite;
+    }
+
+    /* Emotion states */
+    .haetae-container.happy .haetae-mouth-happy { display: block; }
+    .haetae-container.happy .haetae-mouth-neutral { display: none; }
+    .haetae-container.happy .haetae-tail { animation: haetae-tail-wag-fast 0.3s ease-in-out infinite; }
+    .haetae-container:not(.happy) .haetae-mouth-happy { display: none; }
+    .haetae-container:not(.happy) .haetae-mouth-neutral { display: block; }
+
+    /* Firework particles */
+    .firework-particle {
+      position: absolute;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      pointer-events: none;
+      animation: firework-burst 0.8s ease-out forwards;
+    }
+
+    /* Tooltip */
+    .haetae-tooltip {
+      position: absolute;
+      bottom: 100%;
+      right: 0;
+      margin-bottom: 8px;
+      padding: 8px 12px;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+      font-size: 12px;
+      color: #4B5563;
+      white-space: nowrap;
+      opacity: 0;
+      transform: translateY(4px);
+      transition: opacity 0.2s, transform 0.2s;
+      pointer-events: none;
+    }
+
+    .haetae-tooltip::after {
+      content: '';
+      position: absolute;
+      top: 100%;
+      right: 20px;
+      border: 6px solid transparent;
+      border-top-color: white;
+    }
+
+    .dark .haetae-tooltip {
+      background: #374151;
+      color: #E5E7EB;
+    }
+
+    .dark .haetae-tooltip::after {
+      border-top-color: #374151;
+    }
+
+    .haetae-wrapper:hover .haetae-tooltip {
+      opacity: 1;
+      transform: translateY(0);
+    }
   </style>
 </head>
 <body class="h-full bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
@@ -39,28 +182,85 @@
     <nav class="bg-white dark:bg-gray-800 shadow-sm">
       <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div class="flex h-16 justify-between items-center">
-          <div class="flex items-center">
-            <a href="/" class="text-xl font-bold text-indigo-600 dark:text-indigo-400">
-              Hangul Learn
+          <!-- Logo -->
+          <div class="flex items-center gap-2">
+            <a href="/" class="flex items-center gap-2 text-xl font-bold text-indigo-600 dark:text-indigo-400">
+              <svg class="w-7 h-7" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="24" cy="14" r="8" stroke="currentColor" stroke-width="3" fill="none"/>
+                <path d="M10 28 L38 28" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+                <path d="M14 38 L34 38" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+              </svg>
+              <span class="hidden sm:inline">Hangul Learn</span>
+              <span class="sm:hidden">Hangul</span>
             </a>
           </div>
-          <div class="flex items-center space-x-4">
-            <a href="/" class="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white px-3 py-2 text-sm font-medium">
+
+          <!-- Desktop Navigation -->
+          <div class="hidden md:flex items-center space-x-1">
+            <a href="/" class="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 px-3 py-2 rounded-md text-sm font-medium">
               Home
             </a>
-            <a href="/study" class="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white px-3 py-2 text-sm font-medium">
+            <a href="/study" class="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 px-3 py-2 rounded-md text-sm font-medium">
               Study
             </a>
-            <a href="/progress" class="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white px-3 py-2 text-sm font-medium">
+            <a href="/progress" class="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 px-3 py-2 rounded-md text-sm font-medium">
               Progress
             </a>
-            <a href="/reference" class="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white px-3 py-2 text-sm font-medium">
+            <a href="/reference" class="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 px-3 py-2 rounded-md text-sm font-medium">
               Reference
             </a>
-            <a href="/guide" class="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white px-3 py-2 text-sm font-medium">
+            <a href="/library" class="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 px-3 py-2 rounded-md text-sm font-medium">
+              Library
+            </a>
+            <a href="/guide" class="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 px-3 py-2 rounded-md text-sm font-medium">
               Guide
             </a>
+            <a href="/settings" class="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 px-3 py-2 rounded-md text-sm font-medium">
+              Settings
+            </a>
           </div>
+
+          <!-- Mobile menu button -->
+          <div class="md:hidden flex items-center">
+            <button type="button" onclick="toggleMobileMenu()" class="inline-flex items-center justify-center p-2 rounded-md text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 focus:outline-none" aria-expanded="false">
+              <span class="sr-only">Open main menu</span>
+              <!-- Hamburger icon -->
+              <svg id="menu-icon-closed" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+              <!-- X icon (hidden by default) -->
+              <svg id="menu-icon-open" class="hidden h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Mobile menu (hidden by default) -->
+      <div id="mobile-menu" class="hidden md:hidden border-t border-gray-200 dark:border-gray-700">
+        <div class="px-2 pt-2 pb-3 space-y-1">
+          <a href="/" class="block text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 px-3 py-2 rounded-md text-base font-medium">
+            Home
+          </a>
+          <a href="/study" class="block text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 px-3 py-2 rounded-md text-base font-medium">
+            Study
+          </a>
+          <a href="/progress" class="block text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 px-3 py-2 rounded-md text-base font-medium">
+            Progress
+          </a>
+          <a href="/reference" class="block text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 px-3 py-2 rounded-md text-base font-medium">
+            Reference
+          </a>
+          <a href="/library" class="block text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 px-3 py-2 rounded-md text-base font-medium">
+            Library
+          </a>
+          <a href="/guide" class="block text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 px-3 py-2 rounded-md text-base font-medium">
+            Guide
+          </a>
+          <a href="/settings" class="block text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 px-3 py-2 rounded-md text-base font-medium">
+            Settings
+          </a>
         </div>
       </div>
     </nav>
@@ -69,5 +269,194 @@
       {% block content %}{% endblock %}
     </main>
   </div>
+
+  <script>
+    // Mobile menu toggle
+    function toggleMobileMenu() {
+      const menu = document.getElementById('mobile-menu');
+      const iconClosed = document.getElementById('menu-icon-closed');
+      const iconOpen = document.getElementById('menu-icon-open');
+
+      menu.classList.toggle('hidden');
+      iconClosed.classList.toggle('hidden');
+      iconOpen.classList.toggle('hidden');
+    }
+  </script>
+
+  <!-- Baby Haetae Mascot (hidden on small screens, smaller on medium) -->
+  {% block mascot %}
+  <div id="haetae-wrapper" class="hidden sm:block fixed bottom-4 right-4 haetae-wrapper sm:scale-75 md:scale-100 origin-bottom-right">
+    <!-- Tooltip -->
+    <div class="haetae-tooltip">
+      Your guardian companion on the path to mastery
+    </div>
+
+    <!-- Firework container -->
+    <div id="haetae-fireworks" class="absolute inset-0 pointer-events-none overflow-visible"></div>
+
+    <div id="haetae-mascot" class="haetae-container cursor-pointer">
+      <svg width="80" height="80" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+        <!-- Body (chubby round shape) - Traditional Korean gold/bronze -->
+        <ellipse cx="50" cy="58" rx="32" ry="28" fill="#C9A227"/>
+        <ellipse cx="50" cy="60" rx="28" ry="24" fill="#E5C158"/>
+
+        <!-- Fluffy mane - Darker gold -->
+        <circle cx="30" cy="35" r="10" fill="#B8860B"/>
+        <circle cx="70" cy="35" r="10" fill="#B8860B"/>
+        <circle cx="25" cy="45" r="8" fill="#B8860B"/>
+        <circle cx="75" cy="45" r="8" fill="#B8860B"/>
+        <circle cx="35" cy="25" r="9" fill="#B8860B"/>
+        <circle cx="65" cy="25" r="9" fill="#B8860B"/>
+        <circle cx="50" cy="20" r="10" fill="#B8860B"/>
+
+        <!-- Head -->
+        <circle cx="50" cy="40" r="25" fill="#C9A227"/>
+        <circle cx="50" cy="42" r="22" fill="#E5C158"/>
+
+        <!-- Horn (traditional blue-green jade color) -->
+        <ellipse cx="50" cy="18" rx="5" ry="8" fill="#2E8B8B"/>
+        <ellipse cx="50" cy="16" rx="3" ry="5" fill="#5FABA9"/>
+
+        <!-- Ears -->
+        <ellipse cx="28" cy="28" rx="7" ry="9" fill="#C9A227"/>
+        <ellipse cx="72" cy="28" rx="7" ry="9" fill="#C9A227"/>
+        <ellipse cx="28" cy="28" rx="4" ry="6" fill="#E07A5F"/>
+        <ellipse cx="72" cy="28" rx="4" ry="6" fill="#E07A5F"/>
+
+        <!-- Eyes -->
+        <g class="haetae-eye">
+          <ellipse cx="40" cy="40" rx="6" ry="7" fill="#FFFFFF"/>
+          <circle cx="41" cy="41" r="4" fill="#2D2D2D"/>
+          <circle cx="42" cy="39" r="1.5" fill="#FFFFFF"/>
+        </g>
+        <g class="haetae-eye haetae-eye-right">
+          <ellipse cx="60" cy="40" rx="6" ry="7" fill="#FFFFFF"/>
+          <circle cx="59" cy="41" r="4" fill="#2D2D2D"/>
+          <circle cx="60" cy="39" r="1.5" fill="#FFFFFF"/>
+        </g>
+
+        <!-- Eyebrows (friendly) -->
+        <path d="M34 33 Q37 31 42 33" stroke="#6B4423" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+        <path d="M58 33 Q63 31 66 33" stroke="#6B4423" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+
+        <!-- Nose - Traditional red (dancheong) -->
+        <ellipse cx="50" cy="48" rx="4" ry="3" fill="#C1403D"/>
+        <circle cx="48" cy="47" r="1" fill="#E07A5F"/>
+
+        <!-- Mouth (happy) -->
+        <path class="haetae-mouth-happy" d="M44 53 Q50 58 56 53" stroke="#6B4423" stroke-width="2" fill="none" stroke-linecap="round"/>
+        <path class="haetae-mouth-neutral" d="M45 54 Q50 55 55 54" stroke="#6B4423" stroke-width="2" fill="none" stroke-linecap="round"/>
+
+        <!-- Blush - Soft red -->
+        <ellipse cx="32" cy="48" rx="5" ry="3" fill="#E07A5F" opacity="0.4"/>
+        <ellipse cx="68" cy="48" rx="5" ry="3" fill="#E07A5F" opacity="0.4"/>
+
+        <!-- Front paws -->
+        <ellipse cx="35" cy="78" rx="8" ry="6" fill="#C9A227"/>
+        <ellipse cx="65" cy="78" rx="8" ry="6" fill="#C9A227"/>
+        <circle cx="32" cy="80" r="2" fill="#B8860B"/>
+        <circle cx="35" cy="82" r="2" fill="#B8860B"/>
+        <circle cx="38" cy="80" r="2" fill="#B8860B"/>
+        <circle cx="62" cy="80" r="2" fill="#B8860B"/>
+        <circle cx="65" cy="82" r="2" fill="#B8860B"/>
+        <circle cx="68" cy="80" r="2" fill="#B8860B"/>
+
+        <!-- Tail -->
+        <g class="haetae-tail">
+          <path d="M82 55 Q92 50 88 40" stroke="#B8860B" stroke-width="6" fill="none" stroke-linecap="round"/>
+          <circle cx="88" cy="38" r="6" fill="#B8860B"/>
+        </g>
+      </svg>
+    </div>
+  </div>
+  {% endblock mascot %}
+
+  <script>
+    // Haetae interaction
+    (function() {
+      const haetae = document.getElementById('haetae-mascot');
+      const fireworksContainer = document.getElementById('haetae-fireworks');
+      if (!haetae || !fireworksContainer) return;
+
+      // Traditional Korean colors for fireworks (dancheong palette)
+      const fireworkColors = [
+        '#C1403D', // Red (Dancheong red)
+        '#2E8B8B', // Teal (Jade)
+        '#E5C158', // Gold
+        '#3D5A80', // Blue
+        '#81B29A', // Green
+        '#F4A261', // Orange
+      ];
+
+      function createFirework() {
+        const particleCount = 12;
+        const centerX = 40;
+        const centerY = 40;
+
+        for (let i = 0; i < particleCount; i++) {
+          const particle = document.createElement('div');
+          particle.className = 'firework-particle';
+
+          // Calculate direction
+          const angle = (i / particleCount) * Math.PI * 2;
+          const distance = 40 + Math.random() * 30;
+          const tx = Math.cos(angle) * distance;
+          const ty = Math.sin(angle) * distance;
+
+          // Random color from palette
+          const color = fireworkColors[Math.floor(Math.random() * fireworkColors.length)];
+
+          particle.style.cssText = `
+            left: ${centerX}px;
+            top: ${centerY}px;
+            background: ${color};
+            --tx: ${tx}px;
+            --ty: ${ty}px;
+            animation-delay: ${Math.random() * 0.1}s;
+          `;
+
+          fireworksContainer.appendChild(particle);
+
+          // Remove particle after animation
+          setTimeout(() => particle.remove(), 900);
+        }
+
+        // Add some sparkle stars
+        for (let i = 0; i < 6; i++) {
+          const star = document.createElement('div');
+          const angle = Math.random() * Math.PI * 2;
+          const distance = 20 + Math.random() * 50;
+
+          star.className = 'firework-particle';
+          star.style.cssText = `
+            left: ${centerX}px;
+            top: ${centerY}px;
+            width: 4px;
+            height: 4px;
+            background: #FFFFFF;
+            box-shadow: 0 0 4px #FFFFFF;
+            --tx: ${Math.cos(angle) * distance}px;
+            --ty: ${Math.sin(angle) * distance}px;
+            animation-delay: ${0.1 + Math.random() * 0.2}s;
+          `;
+
+          fireworksContainer.appendChild(star);
+          setTimeout(() => star.remove(), 1000);
+        }
+      }
+
+      haetae.addEventListener('click', function() {
+        const wasHappy = this.classList.contains('happy');
+        this.classList.toggle('happy');
+
+        // Fireworks when becoming happy
+        if (!wasHappy) {
+          createFirework();
+          // Second burst slightly delayed
+          setTimeout(createFirework, 150);
+        }
+      });
+    })();
+  </script>
 </body>
 </html>

@@ -36,6 +36,35 @@ impl CardType {
   }
 }
 
+/// FSRS memory state for a card
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub enum FsrsState {
+  New,
+  Learning,
+  Review,
+  Relearning,
+}
+
+impl FsrsState {
+  pub fn from_str(s: &str) -> Self {
+    match s {
+      "Learning" => Self::Learning,
+      "Review" => Self::Review,
+      "Relearning" => Self::Relearning,
+      _ => Self::New,
+    }
+  }
+
+  pub fn as_str(&self) -> &'static str {
+    match self {
+      Self::New => "New",
+      Self::Learning => "Learning",
+      Self::Review => "Review",
+      Self::Relearning => "Relearning",
+    }
+  }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Card {
   pub id: i64,
@@ -46,11 +75,19 @@ pub struct Card {
   pub tier: u8,
   pub audio_hint: Option<String>,
 
-  // SM-2 fields
+  // SM-2 fields (kept for backward compatibility and fallback)
   pub ease_factor: f64,
   pub interval_days: i64,
   pub repetitions: i64,
   pub next_review: DateTime<Utc>,
+
+  // Learning steps (Anki-style: 0=new, 1-4=learning, 5+=graduated to SM-2)
+  pub learning_step: i64,
+
+  // FSRS fields (optional - None means card hasn't been migrated yet)
+  pub fsrs_stability: Option<f64>,
+  pub fsrs_difficulty: Option<f64>,
+  pub fsrs_state: Option<FsrsState>,
 
   // Stats
   pub total_reviews: i64,
@@ -77,8 +114,17 @@ impl Card {
       interval_days: 0,
       repetitions: 0,
       next_review: Utc::now(),
+      learning_step: 0,
+      fsrs_stability: None,
+      fsrs_difficulty: None,
+      fsrs_state: None,
       total_reviews: 0,
       correct_reviews: 0,
     }
+  }
+
+  /// Check if this card is a reverse card (sound->letter question format)
+  pub fn is_reverse_card(&self) -> bool {
+    self.front.starts_with("Which letter")
   }
 }

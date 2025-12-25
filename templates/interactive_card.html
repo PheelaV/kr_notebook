@@ -1,0 +1,172 @@
+<div id="card-container" class="text-center">
+  <div class="mb-2 flex items-center justify-center gap-2">
+    <span class="text-sm text-gray-500 dark:text-gray-400">Tier {{ tier }}</span>
+  </div>
+
+  <!-- Card Front Display -->
+  <div class="mb-4 sm:mb-6 bg-white dark:bg-gray-800 shadow-lg rounded-xl p-4 sm:p-8">
+    <div class="text-5xl sm:text-7xl font-bold text-gray-900 dark:text-white mb-4">
+      {{ front }}
+    </div>
+
+    {% if !validated %}
+    <!-- Answer Input Phase -->
+    <div id="input-phase">
+      {% if is_multiple_choice %}
+      <!-- Multiple Choice Mode (for Korean answers) -->
+      <form id="answer-form" hx-post="/validate-answer" hx-target="#card-container" hx-swap="outerHTML">
+        <input type="hidden" name="card_id" value="{{ card_id }}">
+        <input type="hidden" name="hints_used" id="hints-used" value="{{ hints_used }}">
+        <input type="hidden" name="answer" id="answer-input" value="">
+
+        <div class="grid grid-cols-2 gap-2 sm:gap-3 mb-4">
+          {% for choice in choices %}
+          <button type="button"
+                  onclick="selectAnswer(this, '{{ choice }}')"
+                  class="choice-btn text-3xl sm:text-4xl p-4 sm:p-6 min-h-[4rem] sm:min-h-[5rem] bg-gray-100 dark:bg-gray-700 hover:bg-indigo-100 dark:hover:bg-indigo-900 active:bg-indigo-200 dark:active:bg-indigo-800 text-gray-900 dark:text-white font-bold rounded-lg transition-colors border-2 border-transparent hover:border-indigo-500 touch-manipulation">
+            {{ choice }}
+          </button>
+          {% endfor %}
+        </div>
+
+        <button type="submit" id="submit-btn" disabled
+                class="w-full bg-indigo-500 hover:bg-indigo-600 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-semibold py-3 px-4 rounded-lg transition-colors">
+          Check
+        </button>
+      </form>
+
+      <script>
+        function selectAnswer(btn, answer) {
+          // Clear previous selection
+          document.querySelectorAll('.choice-btn').forEach(b => {
+            b.classList.remove('border-indigo-500', 'bg-indigo-100', 'dark:bg-indigo-900');
+            b.classList.add('border-transparent');
+          });
+
+          // Mark this button as selected
+          btn.classList.remove('border-transparent');
+          btn.classList.add('border-indigo-500', 'bg-indigo-100', 'dark:bg-indigo-900');
+
+          // Set the answer value
+          document.getElementById('answer-input').value = answer;
+
+          // Enable submit button
+          document.getElementById('submit-btn').disabled = false;
+        }
+      </script>
+      {% else %}
+      <!-- Text Input Mode (for romanization answers) -->
+      <form id="answer-form" hx-post="/validate-answer" hx-target="#card-container" hx-swap="outerHTML">
+        <input type="hidden" name="card_id" value="{{ card_id }}">
+        <input type="hidden" name="hints_used" id="hints-used" value="{{ hints_used }}">
+
+        <div class="mb-4">
+          <input type="text"
+                 name="answer"
+                 id="answer-input"
+                 placeholder="Type your answer..."
+                 autocomplete="off"
+                 autofocus
+                 class="w-full p-3 text-lg text-center border-2 border-gray-300 dark:border-gray-600 rounded-lg focus:border-indigo-500 dark:focus:border-indigo-400 focus:outline-none bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+        </div>
+
+        <div class="grid grid-cols-2 gap-3 mb-4">
+          <button type="submit"
+                  class="w-full bg-indigo-500 hover:bg-indigo-600 text-white font-semibold py-3 px-4 rounded-lg transition-colors">
+            Check
+          </button>
+          <button type="button"
+                  onclick="showHint()"
+                  class="w-full bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 font-semibold py-3 px-4 rounded-lg transition-colors">
+            Hint
+          </button>
+        </div>
+      </form>
+
+      <!-- Hint Display Area -->
+      <div id="hint-area" class="hidden">
+        <div class="p-3 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700 rounded-lg text-amber-800 dark:text-amber-200">
+          <span id="hint-text"></span>
+        </div>
+      </div>
+
+      <script>
+        // Hint data passed from server
+        const hints = [
+          "{{ hint_1|escape }}",
+          "{{ hint_2|escape }}",
+          "{{ hint_final|escape }}"
+        ];
+        let currentHint = 0;
+        let hintsUsed = {{ hints_used }};
+
+        function showHint() {
+          const hintArea = document.getElementById('hint-area');
+          const hintText = document.getElementById('hint-text');
+          const hintsUsedInput = document.getElementById('hints-used');
+
+          if (currentHint < hints.length) {
+            hintText.textContent = hints[currentHint];
+            hintArea.classList.remove('hidden');
+            currentHint++;
+            hintsUsed = currentHint;
+            hintsUsedInput.value = hintsUsed;
+          }
+        }
+
+        // Focus input on load
+        document.getElementById('answer-input')?.focus();
+      </script>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    {% if validated %}
+    <!-- Result Phase -->
+    <div id="result-phase">
+      <div class="mb-4">
+        {% if is_correct %}
+        <div class="flex items-center justify-center gap-2 text-green-600 dark:text-green-400 mb-2">
+          <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+          </svg>
+          <span class="text-2xl font-bold">Correct!</span>
+        </div>
+        {% else %}
+        <div class="flex items-center justify-center gap-2 text-red-600 dark:text-red-400 mb-2">
+          <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+          </svg>
+          <span class="text-2xl font-bold">Incorrect</span>
+        </div>
+        {% endif %}
+
+        <div class="text-xl text-gray-600 dark:text-gray-300 mb-2">
+          {% if !is_correct %}
+          <span class="text-gray-500 dark:text-gray-400">You answered: </span>
+          <span class="text-red-500 {% if is_multiple_choice %}text-4xl{% endif %}">{{ user_answer }}</span>
+          <br>
+          {% endif %}
+          <span class="text-gray-500 dark:text-gray-400">Correct answer: </span>
+          <span class="text-indigo-600 dark:text-indigo-400 font-semibold {% if is_multiple_choice %}text-4xl{% endif %}">{{ main_answer }}</span>
+        </div>
+
+        {% if let Some(desc) = description %}
+        <div class="text-base text-gray-500 dark:text-gray-400">
+          {{ desc }}
+        </div>
+        {% endif %}
+      </div>
+
+      <form hx-post="/review" hx-target="#card-container" hx-swap="outerHTML">
+        <input type="hidden" name="card_id" value="{{ card_id }}">
+        <input type="hidden" name="quality" value="{{ quality }}">
+        <button type="submit"
+                class="w-full bg-indigo-500 hover:bg-indigo-600 text-white font-semibold py-3 px-6 rounded-lg transition-colors text-lg">
+          Next Card
+        </button>
+      </form>
+    </div>
+    {% endif %}
+  </div>
+</div>

@@ -6,6 +6,7 @@ mod db;
 mod domain;
 mod handlers;
 mod srs;
+mod validation;
 
 #[tokio::main]
 async fn main() {
@@ -27,8 +28,11 @@ async fn main() {
 
   let app = Router::new()
     .route("/", get(handlers::index))
-    .route("/study", get(handlers::study_start))
-    .route("/review", post(handlers::submit_review))
+    .route("/study", get(handlers::study_start_interactive)) // Use interactive mode by default
+    .route("/study-classic", get(handlers::study_start))     // Classic reveal-and-rate mode
+    .route("/review", post(handlers::submit_review_interactive))
+    .route("/review-classic", post(handlers::submit_review))
+    .route("/validate-answer", post(handlers::validate_answer_handler))
     .route("/practice", get(handlers::practice_start))
     .route("/practice-next", post(handlers::practice_next))
     .route("/progress", get(handlers::progress))
@@ -40,6 +44,8 @@ async fn main() {
     .route("/reference/tier2", get(handlers::reference_tier2))
     .route("/reference/tier3", get(handlers::reference_tier3))
     .route("/reference/tier4", get(handlers::reference_tier4))
+    .route("/library", get(handlers::library))
+    .route("/settings", get(handlers::settings_page).post(handlers::update_settings))
     .route("/diagnostic", post(handlers::log_diagnostic))
     .with_state(pool);
 

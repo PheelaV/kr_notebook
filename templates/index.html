@@ -2,43 +2,137 @@
 
 {% block title %}Home - Hangul Learn{% endblock %}
 
+{# Hide the fixed mascot on home page since we have an inline one #}
+{% block mascot %}{% endblock %}
+
 {% block content %}
 <div class="max-w-lg mx-auto">
-  <div class="text-center mb-8">
-    <h1 class="text-3xl font-bold text-gray-900 dark:text-white mb-2">
+  <div class="text-center mb-6 sm:mb-8">
+    <!-- Haetae Mascot - Always visible on home page -->
+    <div class="haetae-wrapper inline-block mb-4">
+      <div id="home-haetae" class="haetae-container cursor-pointer mx-auto" style="width: 80px; height: 80px;">
+        <svg width="80" height="80" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+          <ellipse cx="50" cy="58" rx="32" ry="28" fill="#C9A227"/>
+          <ellipse cx="50" cy="60" rx="28" ry="24" fill="#E5C158"/>
+          <circle cx="30" cy="35" r="10" fill="#B8860B"/>
+          <circle cx="70" cy="35" r="10" fill="#B8860B"/>
+          <circle cx="25" cy="45" r="8" fill="#B8860B"/>
+          <circle cx="75" cy="45" r="8" fill="#B8860B"/>
+          <circle cx="35" cy="25" r="9" fill="#B8860B"/>
+          <circle cx="65" cy="25" r="9" fill="#B8860B"/>
+          <circle cx="50" cy="20" r="10" fill="#B8860B"/>
+          <circle cx="50" cy="40" r="25" fill="#C9A227"/>
+          <circle cx="50" cy="42" r="22" fill="#E5C158"/>
+          <ellipse cx="50" cy="18" rx="5" ry="8" fill="#2E8B8B"/>
+          <ellipse cx="50" cy="16" rx="3" ry="5" fill="#5FABA9"/>
+          <ellipse cx="28" cy="28" rx="7" ry="9" fill="#C9A227"/>
+          <ellipse cx="72" cy="28" rx="7" ry="9" fill="#C9A227"/>
+          <ellipse cx="28" cy="28" rx="4" ry="6" fill="#E07A5F"/>
+          <ellipse cx="72" cy="28" rx="4" ry="6" fill="#E07A5F"/>
+          <g class="haetae-eye">
+            <ellipse cx="40" cy="40" rx="6" ry="7" fill="#FFFFFF"/>
+            <circle cx="41" cy="41" r="4" fill="#2D2D2D"/>
+            <circle cx="42" cy="39" r="1.5" fill="#FFFFFF"/>
+          </g>
+          <g class="haetae-eye haetae-eye-right">
+            <ellipse cx="60" cy="40" rx="6" ry="7" fill="#FFFFFF"/>
+            <circle cx="59" cy="41" r="4" fill="#2D2D2D"/>
+            <circle cx="60" cy="39" r="1.5" fill="#FFFFFF"/>
+          </g>
+          <path d="M34 33 Q37 31 42 33" stroke="#6B4423" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+          <path d="M58 33 Q63 31 66 33" stroke="#6B4423" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+          <ellipse cx="50" cy="48" rx="4" ry="3" fill="#C1403D"/>
+          <circle cx="48" cy="47" r="1" fill="#E07A5F"/>
+          <path class="haetae-mouth-happy" d="M44 53 Q50 58 56 53" stroke="#6B4423" stroke-width="2" fill="none" stroke-linecap="round"/>
+          <path class="haetae-mouth-neutral" d="M45 54 Q50 55 55 54" stroke="#6B4423" stroke-width="2" fill="none" stroke-linecap="round"/>
+          <ellipse cx="32" cy="48" rx="5" ry="3" fill="#E07A5F" opacity="0.4"/>
+          <ellipse cx="68" cy="48" rx="5" ry="3" fill="#E07A5F" opacity="0.4"/>
+          <ellipse cx="35" cy="78" rx="8" ry="6" fill="#C9A227"/>
+          <ellipse cx="65" cy="78" rx="8" ry="6" fill="#C9A227"/>
+          <circle cx="32" cy="80" r="2" fill="#B8860B"/>
+          <circle cx="35" cy="82" r="2" fill="#B8860B"/>
+          <circle cx="38" cy="80" r="2" fill="#B8860B"/>
+          <circle cx="62" cy="80" r="2" fill="#B8860B"/>
+          <circle cx="65" cy="82" r="2" fill="#B8860B"/>
+          <circle cx="68" cy="80" r="2" fill="#B8860B"/>
+          <g class="haetae-tail">
+            <path d="M82 55 Q92 50 88 40" stroke="#B8860B" stroke-width="6" fill="none" stroke-linecap="round"/>
+            <circle cx="88" cy="38" r="6" fill="#B8860B"/>
+          </g>
+        </svg>
+      </div>
+    </div>
+    <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mb-2">
       Learn Korean Hangul
     </h1>
-    <p class="text-gray-600 dark:text-gray-400">
+    <p class="text-gray-600 dark:text-gray-400 text-sm sm:text-base">
       Master the Korean alphabet with spaced repetition
     </p>
   </div>
 
+  {% if accelerated_mode %}
+  <div class="bg-purple-100 dark:bg-purple-900/30 border border-purple-300 dark:border-purple-700 rounded-lg p-3 mb-4 text-center">
+    <span class="text-purple-600 dark:text-purple-400 text-sm font-medium">
+      Accelerated Mode Active
+    </span>
+  </div>
+  {% endif %}
+
   <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6">
     <div class="text-center">
+      {% if accelerated_mode %}
+      <div class="text-5xl font-bold text-indigo-600 dark:text-indigo-400 mb-2">
+        {{ due_count + unreviewed_count }}
+      </div>
+      <div class="text-gray-600 dark:text-gray-400">
+        Cards to study today
+      </div>
+      {% if due_count > 0 && unreviewed_count > 0 %}
+      <div class="text-xs text-gray-500 dark:text-gray-500 mt-1">
+        {{ due_count }} due + {{ unreviewed_count }} remaining
+      </div>
+      {% endif %}
+      {% else %}
       <div class="text-5xl font-bold text-indigo-600 dark:text-indigo-400 mb-2">
         {{ due_count }}
       </div>
       <div class="text-gray-600 dark:text-gray-400">
         Cards due for review
       </div>
+      {% endif %}
     </div>
 
     <div class="mt-6 space-y-3">
-      {% if due_count > 0 %}
-      <a href="/study" class="block w-full bg-indigo-600 hover:bg-indigo-700 text-white text-center font-semibold py-3 px-4 rounded-lg transition-colors">
-        Start Studying
-      </a>
-      {% else %}
-      <div class="text-center text-gray-500 dark:text-gray-400 py-2">
-        {% if let Some(next) = next_review %}
-        Next review {{ next }}
+      {% if accelerated_mode %}
+        {% if due_count + unreviewed_count > 0 %}
+        <a href="/study" class="block w-full bg-indigo-600 hover:bg-indigo-700 text-white text-center font-semibold py-3 px-4 rounded-lg transition-colors">
+          Start Studying
+        </a>
         {% else %}
-        No cards due right now.
+        <div class="text-center text-green-600 dark:text-green-400 py-2 font-medium">
+          All done for today!
+        </div>
+        <a href="/practice" class="block w-full bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 text-center font-semibold py-3 px-4 rounded-lg transition-colors">
+          Practice Mode
+        </a>
         {% endif %}
-      </div>
-      <a href="/practice" class="block w-full bg-indigo-600 hover:bg-indigo-700 text-white text-center font-semibold py-3 px-4 rounded-lg transition-colors">
-        Practice Anyway
-      </a>
+      {% else %}
+        {% if due_count > 0 %}
+        <a href="/study" class="block w-full bg-indigo-600 hover:bg-indigo-700 text-white text-center font-semibold py-3 px-4 rounded-lg transition-colors">
+          Start Studying
+        </a>
+        {% else %}
+        <div class="text-center text-gray-500 dark:text-gray-400 py-2">
+          {% if let Some(next) = next_review %}
+          Next review {{ next }}
+          {% else %}
+          No cards due right now.
+          {% endif %}
+        </div>
+        <a href="/practice" class="block w-full bg-indigo-600 hover:bg-indigo-700 text-white text-center font-semibold py-3 px-4 rounded-lg transition-colors">
+          Practice Anyway
+        </a>
+        {% endif %}
       {% endif %}
     </div>
   </div>
@@ -68,4 +162,14 @@
     </a>
   </div>
 </div>
+
+<script>
+  // Home page mascot click interaction
+  const homeHaetae = document.getElementById('home-haetae');
+  if (homeHaetae) {
+    homeHaetae.addEventListener('click', function() {
+      this.classList.toggle('happy');
+    });
+  }
+</script>
 {% endblock %}

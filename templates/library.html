@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+
+{% block title %}Character Library - Hangul Learn{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto">
+  <h1 class="text-3xl font-bold text-gray-900 dark:text-white mb-2">Character Library</h1>
+  <p class="text-gray-600 dark:text-gray-400 mb-6">
+    All unlocked Korean characters organized by tier.
+  </p>
+
+  {% for tier_group in tiers %}
+  <div class="mb-8">
+    <h2 class="text-xl font-semibold text-gray-800 dark:text-gray-200 mb-4 flex items-center gap-2">
+      <span class="bg-indigo-100 dark:bg-indigo-900 text-indigo-800 dark:text-indigo-200 px-2 py-1 rounded text-sm">
+        Tier {{ tier_group.tier }}
+      </span>
+      {{ tier_group.tier_name }}
+    </h2>
+
+    <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+      {% for entry in tier_group.entries %}
+      <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 flex flex-col items-center">
+        <div class="text-4xl font-bold text-gray-900 dark:text-white mb-2">
+          {{ entry.front }}
+        </div>
+        <div class="text-lg font-medium text-indigo-600 dark:text-indigo-400 mb-1">
+          {{ entry.main_answer }}
+        </div>
+        {% if let Some(desc) = entry.description %}
+        <div class="text-xs text-gray-500 dark:text-gray-400 text-center line-clamp-2">
+          {{ desc }}
+        </div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+
+  {% if tiers.is_empty() %}
+  <div class="text-center py-12 text-gray-500 dark:text-gray-400">
+    <p>No characters unlocked yet.</p>
+    <a href="/study" class="text-indigo-600 dark:text-indigo-400 hover:underline">Start studying</a> to unlock characters.
+  </div>
+  {% endif %}
+
+  {% if max_unlocked_tier < 4 %}
+  <div class="mt-8 p-4 bg-gray-100 dark:bg-gray-800 rounded-lg text-center">
+    <p class="text-gray-600 dark:text-gray-400">
+      More characters available in higher tiers.
+      <a href="/progress" class="text-indigo-600 dark:text-indigo-400 hover:underline">Check progress</a> to unlock them.
+    </p>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -16,11 +16,66 @@
     <ol class="list-decimal list-inside space-y-2 text-gray-700 dark:text-gray-300">
       <li>Go to <a href="/study" class="text-indigo-600 dark:text-indigo-400 hover:underline">Study</a> to start learning</li>
       <li>Look at the Korean letter on the card</li>
-      <li>Try to recall its sound</li>
-      <li>Tap the card to reveal the answer</li>
-      <li>Rate how well you remembered it</li>
+      <li>Type the romanization (e.g., "g" or "a") and tap Check</li>
+      <li>For reverse cards, select the correct Korean letter from the choices</li>
+      <li>Use the Hint button if you're stuck</li>
       <li>Repeat daily for best results</li>
     </ol>
+  </section>
+
+  <!-- Interactive Learning -->
+  <section class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6">
+    <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-4">
+      Interactive Learning
+    </h2>
+    <p class="text-gray-700 dark:text-gray-300 mb-4">
+      This app uses <strong>active recall</strong> - you prove you know the answer instead of just revealing it.
+      Research shows this leads to 20-40% better retention than passive review.
+    </p>
+    <div class="space-y-4">
+      <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+        <div class="font-semibold text-gray-900 dark:text-white mb-2">Korean to Romanization</div>
+        <p class="text-gray-700 dark:text-gray-300 text-sm">
+          When you see a Korean letter (like ), type its sound ("g" or "k").
+          The system accepts common variations - "g / k" will match either "g", "k", or both.
+        </p>
+      </div>
+      <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+        <div class="font-semibold text-gray-900 dark:text-white mb-2">Romanization to Korean</div>
+        <p class="text-gray-700 dark:text-gray-300 text-sm">
+          When asked "Which letter sounds like 'g / k'?", select the correct Korean letter
+          from the multiple choice buttons. No Korean keyboard needed!
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Hints System -->
+  <section class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6">
+    <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-4">
+      Using Hints
+    </h2>
+    <p class="text-gray-700 dark:text-gray-300 mb-4">
+      Stuck on an answer? Tap the <strong>Hint</strong> button for progressive help:
+    </p>
+    <div class="space-y-2 text-gray-700 dark:text-gray-300 text-sm sm:text-base">
+      <div class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-0">
+        <span class="w-20 shrink-0 text-amber-600 dark:text-amber-400 font-semibold">Hint 1:</span>
+        <span>Shows the answer length (e.g., "_ _ _" for a 3-letter answer)</span>
+      </div>
+      <div class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-0">
+        <span class="w-20 shrink-0 text-amber-600 dark:text-amber-400 font-semibold">Hint 2:</span>
+        <span>Shows the description/pronunciation guide</span>
+      </div>
+      <div class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-0">
+        <span class="w-20 shrink-0 text-amber-600 dark:text-amber-400 font-semibold">Hint 3:</span>
+        <span>Reveals the first and last letters</span>
+      </div>
+    </div>
+    <p class="text-gray-600 dark:text-gray-400 mt-4 text-sm">
+      Note: Using hints counts as a "Hard" answer, so the card will appear again sooner.
+      Try to answer without hints when possible!
+    </p>
   </section>
 
   <!-- How Spaced Repetition Works -->
@@ -29,8 +84,8 @@
       How Spaced Repetition Works
     </h2>
     <p class="text-gray-700 dark:text-gray-300 mb-4">
-      This app uses the <strong>SM-2 algorithm</strong>, the same system behind popular apps like Anki.
-      The idea is simple: review cards just before you forget them.
+      This app uses the <strong>FSRS algorithm</strong>, a modern spaced repetition system that's
+      20-30% more efficient than older methods. The idea is simple: review cards just before you forget them.
     </p>
     <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 mb-4">
       <p class="text-gray-700 dark:text-gray-300">
@@ -38,60 +93,51 @@
         the intervals between reviews grow longer:
       </p>
       <div class="mt-3 text-sm text-gray-600 dark:text-gray-400 font-mono">
-        1 day &rarr; 6 days &rarr; 15 days &rarr; 1 month &rarr; 3 months...
+        1 min &rarr; 10 min &rarr; 1 day &rarr; 3 days &rarr; 1 week &rarr; 1 month...
       </div>
     </div>
     <p class="text-gray-700 dark:text-gray-300">
-      If you forget a card, it resets to a shorter interval so you see it more often
+      If you get a card wrong, it resets to a shorter interval so you see it more often
       until you learn it properly.
     </p>
   </section>
 
-  <!-- Rating Buttons -->
+  <!-- Answer Quality -->
   <section class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6">
     <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-4">
-      Rating Your Answers
+      How Answers Are Scored
     </h2>
     <p class="text-gray-700 dark:text-gray-300 mb-4">
-      After revealing the answer, rate how well you remembered it:
+      Your answers are automatically scored based on accuracy:
     </p>
     <div class="space-y-3">
-      <div class="flex items-start">
-        <span class="inline-block w-20 bg-red-500 text-white text-center py-1 px-2 rounded text-sm font-semibold mr-3">
-          Again
+      <div class="flex flex-col sm:flex-row sm:items-start gap-2 sm:gap-0">
+        <span class="inline-block w-24 shrink-0 bg-green-500 text-white text-center py-1 px-2 rounded text-sm font-semibold sm:mr-3">
+          Correct
         </span>
-        <div class="text-gray-700 dark:text-gray-300">
-          <strong>Didn't remember at all.</strong> Card resets and will appear again soon.
+        <div class="text-gray-700 dark:text-gray-300 text-sm sm:text-base">
+          <strong>Got it right!</strong> Interval increases. Card becomes easier.
         </div>
       </div>
-      <div class="flex items-start">
-        <span class="inline-block w-20 bg-orange-500 text-white text-center py-1 px-2 rounded text-sm font-semibold mr-3">
-          Hard
+      <div class="flex flex-col sm:flex-row sm:items-start gap-2 sm:gap-0">
+        <span class="inline-block w-24 shrink-0 bg-orange-500 text-white text-center py-1 px-2 rounded text-sm font-semibold sm:mr-3">
+          With Hint
         </span>
-        <div class="text-gray-700 dark:text-gray-300">
-          <strong>Struggled but got it.</strong> Card resets for more practice.
+        <div class="text-gray-700 dark:text-gray-300 text-sm sm:text-base">
+          <strong>Used hints.</strong> Counts as "Hard" - card will appear again soon.
         </div>
       </div>
-      <div class="flex items-start">
-        <span class="inline-block w-20 bg-green-500 text-white text-center py-1 px-2 rounded text-sm font-semibold mr-3">
-          Good
+      <div class="flex flex-col sm:flex-row sm:items-start gap-2 sm:gap-0">
+        <span class="inline-block w-24 shrink-0 bg-red-500 text-white text-center py-1 px-2 rounded text-sm font-semibold sm:mr-3">
+          Incorrect
         </span>
-        <div class="text-gray-700 dark:text-gray-300">
-          <strong>Remembered with some effort.</strong> Interval increases normally.
-        </div>
-      </div>
-      <div class="flex items-start">
-        <span class="inline-block w-20 bg-blue-500 text-white text-center py-1 px-2 rounded text-sm font-semibold mr-3">
-          Easy
-        </span>
-        <div class="text-gray-700 dark:text-gray-300">
-          <strong>Knew it instantly.</strong> Interval increases more, card becomes easier.
+        <div class="text-gray-700 dark:text-gray-300 text-sm sm:text-base">
+          <strong>Wrong answer.</strong> Card resets and will appear again shortly.
         </div>
       </div>
     </div>
     <p class="text-gray-600 dark:text-gray-400 mt-4 text-sm">
-      Tip: Be honest with your ratings. It's better to see a card more often than to
-      mark it "Easy" when you're not sure.
+      Tip: Small typos (1-2 characters off) are accepted as correct, but try to be accurate!
     </p>
   </section>
 
@@ -138,6 +184,41 @@
     </div>
   </section>
 
+  <!-- Accelerated Mode -->
+  <section class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6">
+    <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-4">
+      Accelerated Mode
+    </h2>
+    <p class="text-gray-700 dark:text-gray-300 mb-4">
+      Want to skip the progressive unlock system? Enable <strong>Accelerated Mode</strong> in
+      <a href="/settings" class="text-indigo-600 dark:text-indigo-400 hover:underline">Settings</a>.
+    </p>
+    <div class="bg-purple-50 dark:bg-purple-900/30 rounded-lg p-4">
+      <p class="text-purple-800 dark:text-purple-200 text-sm">
+        When enabled, all tiers become available immediately. You can then use the tier
+        checkboxes in Settings to choose exactly which tiers you want to study.
+        This is useful if you already know some Hangul and want to focus on specific areas.
+      </p>
+    </div>
+  </section>
+
+  <!-- Problem Areas -->
+  <section class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6">
+    <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-4">
+      Problem Areas
+    </h2>
+    <p class="text-gray-700 dark:text-gray-300 mb-4">
+      The app tracks which characters you frequently get wrong. Visit the
+      <a href="/progress" class="text-indigo-600 dark:text-indigo-400 hover:underline">Progress</a>
+      page to see your "Problem Areas" section.
+    </p>
+    <ul class="list-disc list-inside text-gray-700 dark:text-gray-300 space-y-1">
+      <li>Shows characters with the most mistakes</li>
+      <li>Displays your common wrong answers (confusions)</li>
+      <li>Helps you identify patterns like mixing up similar letters</li>
+    </ul>
+  </section>
+
   <!-- Tips for Success -->
   <section class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6">
     <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-4">
@@ -158,7 +239,7 @@
       </li>
       <li class="flex items-start">
         <span class="text-green-500 mr-2">&#10003;</span>
-        <span><strong>Master basics first.</strong> Don't rush to unlock new tiers before you're ready.</span>
+        <span><strong>Try before using hints.</strong> Struggling to recall strengthens memory more than easy recall.</span>
       </li>
       <li class="flex items-start">
         <span class="text-green-500 mr-2">&#10003;</span>
@@ -173,13 +254,13 @@
       What "Learned" Means
     </h2>
     <p class="text-gray-700 dark:text-gray-300 mb-3">
-      A card is considered "learned" when you've answered it correctly at least twice
-      in a row. This means:
+      A card is considered "learned" when you've answered it correctly multiple times
+      and it has graduated from the learning phase. This means:
     </p>
     <ul class="list-disc list-inside text-gray-700 dark:text-gray-300 space-y-1">
-      <li>First correct answer: interval becomes 1 day</li>
-      <li>Second correct answer: interval becomes 6 days</li>
-      <li>After that, intervals keep growing</li>
+      <li>Card has passed initial learning steps (1 min, 10 min, 1 hour intervals)</li>
+      <li>Review intervals are now measured in days, not minutes</li>
+      <li>The card will continue appearing for review to maintain long-term memory</li>
     </ul>
     <p class="text-gray-600 dark:text-gray-400 mt-3 text-sm">
       Cards will still appear for review even after they're "learned" - that's how
@@ -196,7 +277,7 @@
       When you've reviewed all due cards, you can keep practicing with <strong>Practice Mode</strong>.
     </p>
     <ul class="list-disc list-inside text-gray-700 dark:text-gray-300 space-y-1">
-      <li>Shows random cards from your unlocked tiers</li>
+      <li>Shows random cards from your enabled tiers</li>
       <li>Doesn't affect your spaced repetition schedule</li>
       <li>Great for extra drilling when you want more practice</li>
     </ul>
