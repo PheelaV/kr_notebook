@@ -1,0 +1,11 @@
+services:
+  kr_notebook:
+    build: .
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - RUST_LOG=kr_notebook=info,tower_http=info
+    user: "${UID:-1000}:${GID:-1000}"
+    restart: unless-stopped

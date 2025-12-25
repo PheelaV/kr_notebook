@@ -27,11 +27,35 @@ A Rust web application for learning Korean Hangul using spaced repetition with t
 
 ## Getting Started
 
-### Prerequisites
+### Option 1: Docker (Recommended)
 
-- Rust 1.75+
+The easiest way to run the app, especially for LAN hosting:
 
-### Installation
+```bash
+git clone https://github.com/PheelaV/kr_notebook.git
+cd kr_notebook
+docker compose up -d
+```
+
+Access at `http://localhost:3000` or `http://<your-ip>:3000` on your LAN.
+
+```bash
+# View logs
+docker compose logs -f
+
+# Stop
+docker compose down
+```
+
+The database persists in `./data/hangul.db`.
+
+### Option 2: Native Rust
+
+#### Prerequisites
+
+- Rust 1.88+
+
+#### Installation
 
 ```bash
 git clone https://github.com/PheelaV/kr_notebook.git
@@ -80,6 +104,8 @@ cargo clippy
 ```
 kr_notebook/
 ├── Cargo.toml
+├── Dockerfile              # Multi-stage build
+├── docker-compose.yml      # LAN deployment
 ├── src/
 │   ├── main.rs              # Server entry point
 │   ├── lib.rs               # Module exports
