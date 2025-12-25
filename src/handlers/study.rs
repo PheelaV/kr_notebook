@@ -11,6 +11,8 @@ use crate::db::{self, DbPool};
 use crate::domain::{Card, ReviewLog, ReviewQuality};
 use crate::srs;
 use crate::validation::{validate_answer, HintGenerator};
+#[cfg(feature = "profiling")]
+use crate::profiling::EventType;
 
 /// Check if a string contains Korean characters (Hangul)
 fn is_korean(s: &str) -> bool {
@@ -245,6 +247,12 @@ fn get_next_study_card(conn: &std::sync::MutexGuard<'_, rusqlite::Connection>, e
   };
 
   if let Some(card) = due_cards.into_iter().next() {
+    #[cfg(feature = "profiling")]
+    crate::profile_log!(EventType::CardSelection {
+      mode: "due".into(),
+      excluded_sibling: exclude_sibling_of,
+      cards_available: Some(1),
+    });
     return Some(card);
   }
 
@@ -252,16 +260,34 @@ fn get_next_study_card(conn: &std::sync::MutexGuard<'_, rusqlite::Connection>, e
   if accelerated {
     let unreviewed = db::get_unreviewed_today(conn, 1, exclude_sibling_of).unwrap_or_default();
     if let Some(card) = unreviewed.into_iter().next() {
+      #[cfg(feature = "profiling")]
+      crate::profile_log!(EventType::CardSelection {
+        mode: "unreviewed_today".into(),
+        excluded_sibling: exclude_sibling_of,
+        cards_available: Some(1),
+      });
       return Some(card);
     }
   }
 
   // Step 3: No cards available - will show "all done" / practice mode
+  #[cfg(feature = "profiling")]
+  crate::profile_log!(EventType::CardSelection {
+    mode: "none_available".into(),
+    excluded_sibling: exclude_sibling_of,
+    cards_available: Some(0),
+  });
   None
 }
 
 /// Interactive study mode with input-based validation
 pub async fn study_start_interactive(State(pool): State<DbPool>) -> impl IntoResponse {
+  #[cfg(feature = "profiling")]
+  crate::profile_log!(EventType::HandlerStart {
+    route: "/study".into(),
+    method: "GET".into(),
+  });
+
   let conn = pool.lock().unwrap();
 
   if let Some(card) = get_next_study_card(&conn, None) {
@@ -331,12 +357,25 @@ pub async fn validate_answer_handler(
   State(pool): State<DbPool>,
   Form(form): Form<ValidateAnswerForm>,
 ) -> impl IntoResponse {
+  #[cfg(feature = "profiling")]
+  crate::profile_log!(EventType::HandlerStart {
+    route: "/validate-answer".into(),
+    method: "POST".into(),
+  });
+
   let conn = pool.lock().unwrap();
 
   if let Ok(Some(card)) = db::get_card_by_id(&conn, form.card_id) {
     let result = validate_answer(&form.answer, &card.main_answer);
     let is_correct = result.is_correct();
     let quality = result.to_quality(form.hints_used > 0);
+
+    #[cfg(feature = "profiling")]
+    crate::profile_log!(EventType::AnswerValidation {
+      card_id: card.id,
+      is_correct,
+      hints_used: Some(form.hints_used),
+    });
 
     // Record confusion if incorrect
     if !is_correct && !form.answer.trim().is_empty() {
@@ -377,6 +416,12 @@ pub async fn submit_review_interactive(
   State(pool): State<DbPool>,
   Form(form): Form<ReviewForm>,
 ) -> impl IntoResponse {
+  #[cfg(feature = "profiling")]
+  crate::profile_log!(EventType::HandlerStart {
+    route: "/review".into(),
+    method: "POST".into(),
+  });
+
   let conn = pool.lock().unwrap();
 
   // Process the review (same as regular submit_review)
@@ -388,6 +433,13 @@ pub async fn submit_review_interactive(
       // Use FSRS scheduling
       let desired_retention = db::get_desired_retention(&conn).unwrap_or(0.9);
       let result = srs::calculate_fsrs_review(&card, form.quality, desired_retention);
+
+      #[cfg(feature = "profiling")]
+      crate::profile_log!(EventType::SrsCalculation {
+        algorithm: "fsrs".into(),
+        card_id: card.id,
+        rating: form.quality,
+      });
 
       let _ = db::update_card_after_fsrs_review(
         &conn,

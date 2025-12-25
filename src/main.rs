@@ -2,11 +2,7 @@ use axum::{routing::get, routing::post, Router};
 use std::path::Path;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-mod db;
-mod domain;
-mod handlers;
-mod srs;
-mod validation;
+use kr_notebook::{db, handlers, profiling};
 
 #[tokio::main]
 async fn main() {
@@ -17,6 +13,9 @@ async fn main() {
     )
     .with(tracing_subscriber::fmt::layer())
     .init();
+
+  // Initialize profiling (no-op if feature disabled)
+  profiling::init();
 
   let db_path = Path::new("data/hangul.db");
   let pool = db::init_db(db_path).expect("Failed to initialize database");

@@ -7,6 +7,8 @@ use axum::{
 use serde::Deserialize;
 
 use crate::db::{self, DbPool};
+#[cfg(feature = "profiling")]
+use crate::profiling::EventType;
 
 #[derive(Template)]
 #[template(path = "settings.html")]
@@ -16,6 +18,12 @@ pub struct SettingsTemplate {
 }
 
 pub async fn settings_page(State(pool): State<DbPool>) -> Html<String> {
+  #[cfg(feature = "profiling")]
+  crate::profile_log!(EventType::HandlerStart {
+    route: "/settings".into(),
+    method: "GET".into(),
+  });
+
   let conn = pool.lock().unwrap();
   let all_tiers_unlocked = db::get_all_tiers_unlocked(&conn).unwrap_or(false);
   let enabled_tiers = db::get_enabled_tiers(&conn).unwrap_or_else(|_| vec![1, 2, 3, 4]);
@@ -45,11 +53,23 @@ pub async fn update_settings(
   State(pool): State<DbPool>,
   Form(form): Form<SettingsForm>,
 ) -> Redirect {
+  #[cfg(feature = "profiling")]
+  crate::profile_log!(EventType::HandlerStart {
+    route: "/settings".into(),
+    method: "POST".into(),
+  });
+
   let conn = pool.lock().unwrap();
 
   // Update all_tiers_unlocked
   let all_tiers_unlocked = form.all_tiers_unlocked.is_some();
   let _ = db::set_all_tiers_unlocked(&conn, all_tiers_unlocked);
+
+  #[cfg(feature = "profiling")]
+  crate::profile_log!(EventType::SettingsUpdate {
+    setting: "all_tiers_unlocked".into(),
+    value: all_tiers_unlocked.to_string(),
+  });
 
   // Update enabled tiers
   let mut enabled_tiers = Vec::new();
@@ -72,6 +92,12 @@ pub async fn update_settings(
   }
 
   let _ = db::set_enabled_tiers(&conn, &enabled_tiers);
+
+  #[cfg(feature = "profiling")]
+  crate::profile_log!(EventType::SettingsUpdate {
+    setting: "enabled_tiers".into(),
+    value: format!("{:?}", enabled_tiers),
+  });
 
   Redirect::to("/settings")
 }

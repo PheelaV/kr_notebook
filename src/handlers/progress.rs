@@ -5,9 +5,12 @@ use axum::{
 };
 
 use crate::db::{self, DbPool, TierProgress};
+#[cfg(feature = "profiling")]
+use crate::profiling::EventType;
 
 /// A card that the user frequently gets wrong
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct ProblemCard {
   pub id: i64,
   pub front: String,
@@ -29,6 +32,12 @@ pub struct ProgressTemplate {
 }
 
 pub async fn progress(State(pool): State<DbPool>) -> Html<String> {
+  #[cfg(feature = "profiling")]
+  crate::profile_log!(EventType::HandlerStart {
+    route: "/progress".into(),
+    method: "GET".into(),
+  });
+
   let conn = pool.lock().unwrap();
 
   let all_tiers_unlocked = db::get_all_tiers_unlocked(&conn).unwrap_or(false);
@@ -82,6 +91,12 @@ pub async fn progress(State(pool): State<DbPool>) -> Html<String> {
 }
 
 pub async fn unlock_tier(State(pool): State<DbPool>) -> Redirect {
+  #[cfg(feature = "profiling")]
+  crate::profile_log!(EventType::HandlerStart {
+    route: "/unlock-tier".into(),
+    method: "POST".into(),
+  });
+
   let conn = pool.lock().unwrap();
   let _ = db::unlock_next_tier(&conn);
   Redirect::to("/progress")

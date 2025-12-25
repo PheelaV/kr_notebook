@@ -31,6 +31,7 @@ pub fn init_db(path: &Path) -> Result<DbPool> {
 }
 
 /// Create a backup of the database using VACUUM INTO
+#[allow(dead_code)]
 pub fn backup_database(conn: &Connection, backup_path: &Path) -> Result<()> {
   conn.execute("VACUUM INTO ?1", [backup_path.to_str().unwrap()])?;
   Ok(())

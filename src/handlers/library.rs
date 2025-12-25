@@ -2,6 +2,8 @@ use askama::Template;
 use axum::{extract::State, response::Html};
 
 use crate::db::{self, DbPool};
+#[cfg(feature = "profiling")]
+use crate::profiling::EventType;
 
 /// A character entry for the library display
 pub struct LibraryEntry {
@@ -35,6 +37,12 @@ fn get_tier_name(tier: u8) -> String {
 }
 
 pub async fn library(State(pool): State<DbPool>) -> Html<String> {
+  #[cfg(feature = "profiling")]
+  crate::profile_log!(EventType::HandlerStart {
+    route: "/library".into(),
+    method: "GET".into(),
+  });
+
   let conn = pool.lock().unwrap();
 
   let cards = db::get_unlocked_cards(&conn).unwrap_or_default();

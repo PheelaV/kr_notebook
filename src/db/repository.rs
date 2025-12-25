@@ -2,6 +2,8 @@ use chrono::{DateTime, Utc};
 use rusqlite::{params, Connection, Result};
 
 use crate::domain::{Card, CardType, FsrsState, ReviewLog};
+#[cfg(feature = "profiling")]
+use crate::profiling::EventType;
 
 pub fn insert_card(conn: &Connection, card: &Card) -> Result<i64> {
   conn.execute(
@@ -47,6 +49,12 @@ pub fn get_card_by_id(conn: &Connection, id: i64) -> Result<Option<Card>> {
 }
 
 pub fn get_due_cards(conn: &Connection, limit: usize, exclude_sibling_of: Option<i64>) -> Result<Vec<Card>> {
+  #[cfg(feature = "profiling")]
+  crate::profile_log!(EventType::DbQuery {
+    operation: "select".into(),
+    table: "cards".into(),
+  });
+
   let now = Utc::now().to_rfc3339();
   let effective_tiers = get_effective_tiers(conn)?;
 
@@ -110,6 +118,13 @@ pub fn get_due_cards(conn: &Connection, limit: usize, exclude_sibling_of: Option
   let cards = stmt
     .query_map(params![now, limit as i64], |row| row_to_card(row))?
     .collect::<Result<Vec<_>>>()?;
+
+  #[cfg(feature = "profiling")]
+  crate::profile_log!(EventType::DbQueryComplete {
+    operation: "get_due_cards".into(),
+    rows: cards.len() as i64,
+  });
+
   Ok(cards)
 }
 
@@ -212,6 +227,12 @@ pub fn get_due_cards_interleaved(conn: &Connection, limit: usize, exclude_siblin
 
 /// Get cards for practice mode - any unlocked card, ordered by least recently reviewed
 pub fn get_practice_cards(conn: &Connection, limit: usize, exclude_id: Option<i64>) -> Result<Vec<Card>> {
+  #[cfg(feature = "profiling")]
+  crate::profile_log!(EventType::DbQuery {
+    operation: "select".into(),
+    table: "cards".into(),
+  });
+
   let effective_tiers = get_effective_tiers(conn)?;
 
   if effective_tiers.is_empty() {
@@ -270,6 +291,13 @@ pub fn get_practice_cards(conn: &Connection, limit: usize, exclude_id: Option<i6
   let cards = stmt
     .query_map(params![limit as i64], |row| row_to_card(row))?
     .collect::<Result<Vec<_>>>()?;
+
+  #[cfg(feature = "profiling")]
+  crate::profile_log!(EventType::DbQueryComplete {
+    operation: "get_practice_cards".into(),
+    rows: cards.len() as i64,
+  });
+
   Ok(cards)
 }
 
@@ -308,7 +336,15 @@ pub fn get_unlocked_cards(conn: &Connection) -> Result<Vec<Card>> {
 
 /// Get cards not yet reviewed today (for accelerated mode)
 /// Returns cards from enabled tiers that haven't been reviewed in today's session
+/// Excludes cards that are already due (those are handled by get_due_cards)
 pub fn get_unreviewed_today(conn: &Connection, limit: usize, exclude_sibling_of: Option<i64>) -> Result<Vec<Card>> {
+  #[cfg(feature = "profiling")]
+  crate::profile_log!(EventType::DbQuery {
+    operation: "select".into(),
+    table: "cards".into(),
+  });
+
+  let now = Utc::now().to_rfc3339();
   let effective_tiers = get_effective_tiers(conn)?;
 
   if effective_tiers.is_empty() {
@@ -321,7 +357,7 @@ pub fn get_unreviewed_today(conn: &Connection, limit: usize, exclude_sibling_of:
     .collect::<Vec<_>>()
     .join(",");
 
-  // Get cards that haven't been reviewed today
+  // Get cards that haven't been reviewed today and are not due
   if let Some(last_id) = exclude_sibling_of {
     if let Ok(Some(last_card)) = get_card_by_id(conn, last_id) {
       let query = format!(
@@ -331,22 +367,23 @@ pub fn get_unreviewed_today(conn: &Connection, limit: usize, exclude_sibling_of:
                c.correct_reviews, c.learning_step, c.fsrs_stability, c.fsrs_difficulty, c.fsrs_state
         FROM cards c
         WHERE c.tier IN ({})
-          AND c.id != ?1
-          AND c.main_answer != ?2
-          AND c.front NOT LIKE '%' || ?3 || '%'
+          AND c.next_review > ?1
+          AND c.id != ?2
+          AND c.main_answer != ?3
+          AND c.front NOT LIKE '%' || ?4 || '%'
           AND c.id NOT IN (
             SELECT DISTINCT card_id FROM review_logs
             WHERE date(reviewed_at) = date('now')
           )
         ORDER BY c.tier ASC, c.id ASC
-        LIMIT ?4
+        LIMIT ?5
         "#,
         tier_list
       );
       let mut stmt = conn.prepare(&query)?;
       let cards = stmt
         .query_map(
-          params![last_id, last_card.front, last_card.main_answer, limit as i64],
+          params![now, last_id, last_card.front, last_card.main_answer, limit as i64],
           |row| row_to_card(row),
         )?
         .collect::<Result<Vec<_>>>()?;
@@ -361,24 +398,34 @@ pub fn get_unreviewed_today(conn: &Connection, limit: usize, exclude_sibling_of:
            c.correct_reviews, c.learning_step, c.fsrs_stability, c.fsrs_difficulty, c.fsrs_state
     FROM cards c
     WHERE c.tier IN ({})
+      AND c.next_review > ?1
       AND c.id NOT IN (
         SELECT DISTINCT card_id FROM review_logs
         WHERE date(reviewed_at) = date('now')
       )
     ORDER BY c.tier ASC, c.id ASC
-    LIMIT ?1
+    LIMIT ?2
     "#,
     tier_list
   );
   let mut stmt = conn.prepare(&query)?;
   let cards = stmt
-    .query_map(params![limit as i64], |row| row_to_card(row))?
+    .query_map(params![now, limit as i64], |row| row_to_card(row))?
     .collect::<Result<Vec<_>>>()?;
+
+  #[cfg(feature = "profiling")]
+  crate::profile_log!(EventType::DbQueryComplete {
+    operation: "get_unreviewed_today".into(),
+    rows: cards.len() as i64,
+  });
+
   Ok(cards)
 }
 
 /// Count cards not yet reviewed today (for accelerated mode display)
+/// Excludes cards that are already due (to avoid double-counting with get_due_count)
 pub fn get_unreviewed_today_count(conn: &Connection) -> Result<i64> {
+  let now = Utc::now().to_rfc3339();
   let effective_tiers = get_effective_tiers(conn)?;
 
   if effective_tiers.is_empty() {
@@ -395,6 +442,7 @@ pub fn get_unreviewed_today_count(conn: &Connection) -> Result<i64> {
     r#"
     SELECT COUNT(*) FROM cards c
     WHERE c.tier IN ({})
+      AND c.next_review > ?1
       AND c.id NOT IN (
         SELECT DISTINCT card_id FROM review_logs
         WHERE date(reviewed_at) = date('now')
@@ -402,7 +450,7 @@ pub fn get_unreviewed_today_count(conn: &Connection) -> Result<i64> {
     "#,
     tier_list
   );
-  conn.query_row(&query, [], |row| row.get(0))
+  conn.query_row(&query, params![now], |row| row.get(0))
 }
 
 /// Get all cards for a specific tier (for generating multiple choice options)
@@ -434,6 +482,12 @@ pub fn update_card_after_review(
   learning_step: i64,
   correct: bool,
 ) -> Result<()> {
+  #[cfg(feature = "profiling")]
+  crate::profile_log!(EventType::DbQuery {
+    operation: "update".into(),
+    table: "cards".into(),
+  });
+
   conn.execute(
     r#"
     UPDATE cards
@@ -465,6 +519,12 @@ pub fn update_card_after_fsrs_review(
   state: FsrsState,
   correct: bool,
 ) -> Result<()> {
+  #[cfg(feature = "profiling")]
+  crate::profile_log!(EventType::DbQuery {
+    operation: "update_fsrs".into(),
+    table: "cards".into(),
+  });
+
   conn.execute(
     r#"
     UPDATE cards
@@ -574,6 +634,12 @@ pub fn get_use_interleaving(conn: &Connection) -> Result<bool> {
 }
 
 pub fn insert_review_log(conn: &Connection, log: &ReviewLog) -> Result<i64> {
+  #[cfg(feature = "profiling")]
+  crate::profile_log!(EventType::DbQuery {
+    operation: "insert".into(),
+    table: "review_logs".into(),
+  });
+
   conn.execute(
     "INSERT INTO review_logs (card_id, quality, reviewed_at) VALUES (?1, ?2, ?3)",
     params![log.card_id, log.quality, log.reviewed_at.to_rfc3339()],
@@ -659,30 +725,36 @@ pub fn set_setting(conn: &Connection, key: &str, value: &str) -> Result<()> {
   Ok(())
 }
 
-// Dark mode settings
+// Dark mode settings (for future use)
 
+#[allow(dead_code)]
 pub fn get_dark_mode(conn: &Connection) -> Result<bool> {
   get_setting(conn, "dark_mode").map(|v| v.as_deref() == Some("true"))
 }
 
+#[allow(dead_code)]
 pub fn set_dark_mode(conn: &Connection, enabled: bool) -> Result<()> {
   set_setting(conn, "dark_mode", if enabled { "true" } else { "false" })
 }
 
-// TTS settings
+// TTS settings (for future use)
 
+#[allow(dead_code)]
 pub fn get_tts_enabled(conn: &Connection) -> Result<bool> {
   get_setting(conn, "tts_enabled").map(|v| v.as_deref() != Some("false"))
 }
 
+#[allow(dead_code)]
 pub fn set_tts_enabled(conn: &Connection, enabled: bool) -> Result<()> {
   set_setting(conn, "tts_enabled", if enabled { "true" } else { "false" })
 }
 
+#[allow(dead_code)]
 pub fn get_tts_model(conn: &Connection) -> Result<String> {
   get_setting(conn, "tts_model").map(|v| v.unwrap_or_else(|| "mms".to_string()))
 }
 
+#[allow(dead_code)]
 pub fn set_tts_model(conn: &Connection, model: &str) -> Result<()> {
   set_setting(conn, "tts_model", model)
 }
@@ -718,6 +790,7 @@ pub fn set_enabled_tiers(conn: &Connection, tiers: &[u8]) -> Result<()> {
   set_setting(conn, "enabled_tiers", &value)
 }
 
+#[allow(dead_code)]
 pub fn is_tier_enabled(conn: &Connection, tier: u8) -> Result<bool> {
   let enabled = get_enabled_tiers(conn)?;
   Ok(enabled.contains(&tier))

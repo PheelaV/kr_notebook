@@ -124,6 +124,7 @@ impl Card {
   }
 
   /// Check if this card is a reverse card (sound->letter question format)
+  #[allow(dead_code)]
   pub fn is_reverse_card(&self) -> bool {
     self.front.starts_with("Which letter")
   }
