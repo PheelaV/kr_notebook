@@ -17,13 +17,20 @@ Thumbs.db
 .env.local
 .env.*.local
 
-# SQLite database files
+# SQLite database files (personal data)
 *.db
 *.db-shm
 *.db-wal
+*.db.backup
+data/
 
 # Keep data directory structure
 !data/.gitkeep
+
+# Local/personal directories
+MY_LOCAL_github_pages/
+machine-learning/
+static/
 
 # Logs
 *.log
