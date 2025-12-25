@@ -1,96 +1,130 @@
 # Korean Hangul Learning App
 
-A Rust web application for learning Korean Hangul using spaced repetition (SM-2 algorithm).
+A Rust web application for learning Korean Hangul using spaced repetition with the modern FSRS algorithm and interactive answer validation.
 
 ## Features
 
-- **Spaced Repetition**: SM-2 algorithm for optimal review scheduling
+- **FSRS Algorithm**: Modern Free Spaced Repetition Scheduler (20-30% more efficient than SM-2)
+- **Interactive Learning**: Type romanization or select Korean from multiple choice - no passive reveal-and-rate
+- **Progressive Hints**: 3-level hint system (length → description → partial reveal)
+- **Confusion Tracking**: Identifies problem characters and common mistakes
 - **Tiered Learning**: Progress from basic to advanced characters
   - Tier 1: Basic consonants (ㄱ, ㄴ, ㄷ...) and vowels (ㅏ, ㅓ, ㅗ...)
   - Tier 2: Y-vowels (ㅑ, ㅕ...) and special ieung (ㅇ)
   - Tier 3: Aspirated (ㅋ, ㅍ...) and tense consonants (ㄲ, ㅃ...)
   - Tier 4: Compound vowels (ㅘ, ㅝ...)
-- **Mobile-Friendly**: Responsive design with touch-friendly controls
-- **Progress Tracking**: View your learning statistics by tier
+- **Accelerated Mode**: Unlock all tiers immediately for experienced learners
+- **Mobile-Responsive**: Hamburger menu, touch-friendly buttons, adaptive layouts
+- **Haetae Mascot**: Animated Korean guardian companion
 
 ## Tech Stack
 
 - **Backend**: Axum (async web framework)
 - **Database**: SQLite via rusqlite
 - **Templating**: Askama (compile-time templates)
-- **Frontend**: htmx 2.x + Tailwind CSS
+- **Frontend**: HTMX 2.x + Tailwind CSS (CDN)
+- **SRS**: FSRS 5.2 (with SM-2 fallback)
 
 ## Getting Started
 
 ### Prerequisites
 
-- Rust (1.75+)
-- Cargo
+- Rust 1.75+
 
 ### Installation
 
 ```bash
-# Clone the repository
-git clone <repo-url>
+git clone https://github.com/PheelaV/kr_notebook.git
 cd kr_notebook
-
-# Build the project
-cargo build
-
-# Run the server
 cargo run
 ```
 
-The server will start at `http://localhost:3000`
+The server starts at `http://localhost:3000`
 
 ### Development
 
 ```bash
-# Run with hot reload (requires cargo-watch)
+# Hot reload
 cargo install cargo-watch
 cargo watch -x run
 
-# Run tests
+# Tests
 cargo test
 
-# Check for issues
+# Lint
 cargo clippy
 ```
 
 ## Usage
 
-1. **Home** (`/`): View cards due for review and overall progress
-2. **Study** (`/study`): Start a study session
-   - Tap card to reveal answer
-   - Rate your recall: Again, Hard, Good, or Easy
-3. **Progress** (`/progress`): View detailed progress by tier
+| Route | Description |
+|-------|-------------|
+| `/` | Home - cards due, quick stats |
+| `/study` | Interactive study session |
+| `/progress` | Detailed progress by tier, problem areas |
+| `/settings` | Algorithm settings, tier selection |
+| `/library` | Browse all unlocked characters |
+| `/reference` | Hangul reference charts |
+| `/guide` | How to use the app |
+
+### Study Flow
+
+1. See a Korean character (e.g., ㄱ)
+2. Type the romanization (e.g., "g" or "k") or select from choices
+3. Use hints if stuck (counts as "Hard")
+4. System auto-rates based on correctness
+5. FSRS schedules next review optimally
 
 ## Project Structure
 
 ```
 kr_notebook/
-├── Cargo.toml           # Dependencies
-├── data/                # SQLite database storage
+├── Cargo.toml
 ├── src/
-│   ├── main.rs          # Server entry point
-│   ├── lib.rs           # Module exports
-│   ├── db/              # Database layer
-│   ├── domain/          # Data models
-│   ├── handlers/        # HTTP handlers
-│   └── srs/             # SM-2 algorithm
-└── templates/           # Askama HTML templates
+│   ├── main.rs              # Server entry point
+│   ├── lib.rs               # Module exports
+│   ├── db/                  # Database layer
+│   │   ├── mod.rs           # Card seed data
+│   │   ├── schema.rs        # Table definitions
+│   │   └── repository.rs    # CRUD operations
+│   ├── domain/              # Data models
+│   │   └── card.rs          # Card struct
+│   ├── handlers/            # HTTP handlers
+│   │   ├── mod.rs           # Index handler
+│   │   ├── study.rs         # Study session logic
+│   │   ├── progress.rs      # Progress & analytics
+│   │   ├── settings.rs      # Settings management
+│   │   └── library.rs       # Character library
+│   ├── srs/                 # Spaced repetition
+│   │   ├── fsrs_scheduler.rs # FSRS implementation
+│   │   └── sm2.rs           # SM-2 fallback
+│   └── validation.rs        # Answer validation
+├── templates/               # Askama HTML templates
+├── doc/                     # Documentation
+│   ├── 01_learning_fsa.md   # Learning mode state machine
+│   └── 02_responsiveness_guidance.md
+└── data/                    # SQLite database (gitignored)
 ```
 
-## SM-2 Algorithm
+## Algorithms
 
-The app uses the SuperMemo 2 algorithm for spaced repetition:
+### FSRS (Primary)
 
-- **Quality ratings**: Again (0), Hard (2), Good (4), Easy (5)
-- **Interval calculation**:
-  - First review: 1 day
-  - Second review: 6 days
-  - Subsequent: previous interval × ease factor
+Free Spaced Repetition Scheduler - tracks memory stability and difficulty per card:
+- **Rating**: Again (1), Hard (2), Good (3), Easy (4)
+- **Retention target**: 90% (configurable)
+- More details: [open-spaced-repetition/fsrs-rs](https://github.com/open-spaced-repetition/fsrs-rs)
+
+### SM-2 (Fallback)
+
+Classic SuperMemo 2 algorithm:
+- **Rating**: Again (0), Hard (2), Good (4), Easy (5)
 - **Ease factor**: Adjusts based on performance (min 1.3)
+
+## Documentation
+
+- [`doc/01_learning_fsa.md`](doc/01_learning_fsa.md) - Learning mode state machine (normal vs accelerated)
+- [`doc/02_responsiveness_guidance.md`](doc/02_responsiveness_guidance.md) - Mobile responsiveness patterns
 
 ## License
 
