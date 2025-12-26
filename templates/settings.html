@@ -435,13 +435,22 @@
     status.textContent = '';
     status.className = 'text-xs';
 
-    const formData = new FormData(form);
+    // Use URLSearchParams for application/x-www-form-urlencoded (required by axum Form)
+    const formData = new URLSearchParams(new FormData(form));
 
     fetch('/settings/segment-row', {
       method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
       body: formData
     })
-    .then(response => response.json())
+    .then(response => {
+      if (!response.ok) {
+        throw new Error('HTTP ' + response.status);
+      }
+      return response.json();
+    })
     .then(data => {
       btn.disabled = false;
       btn.textContent = 'Re-segment';
@@ -457,8 +466,9 @@
     .catch(err => {
       btn.disabled = false;
       btn.textContent = 'Re-segment';
-      status.textContent = 'Request failed';
+      status.textContent = 'Request failed: ' + err.message;
       status.className = 'text-xs text-red-600 dark:text-red-400';
+      console.error('Segment error:', err);
     });
 
     return false;
