@@ -159,7 +159,7 @@ The app supports pronunciation audio from howtostudykorean.com (Lessons 1-2).
 ### Setup (requires Python 3.8+ and uv)
 
 ```bash
-cd machine-learning
+cd py_scripts
 uv run kr-scraper lesson1    # Download Lesson 1 audio
 uv run kr-scraper lesson2    # Download Lesson 2 audio
 uv run kr-scraper segment    # Segment into syllables
@@ -171,7 +171,7 @@ Manifests (`data/scraped/htsk/*/manifest.json`) contain segmentation parameters
 and are version-controlled. After cloning, regenerate audio:
 
 ```bash
-cd machine-learning
+cd py_scripts
 uv run kr-scraper lesson1 && uv run kr-scraper lesson2 && uv run kr-scraper segment
 ```
 

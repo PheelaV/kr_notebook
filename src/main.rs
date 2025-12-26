@@ -3,7 +3,7 @@ use std::path::Path;
 use tower_http::services::ServeDir;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-use kr_notebook::{db, handlers, profiling};
+use kr_notebook::{db, handlers, paths, profiling};
 
 #[tokio::main]
 async fn main() {
@@ -18,7 +18,7 @@ async fn main() {
   // Initialize profiling (no-op if feature disabled)
   profiling::init();
 
-  let db_path = Path::new("data/hangul.db");
+  let db_path = Path::new(paths::DB_PATH);
   let pool = db::init_db(db_path).expect("Failed to initialize database");
 
   {
@@ -54,7 +54,7 @@ async fn main() {
     .route("/settings/segment", post(handlers::trigger_segment))
     .route("/settings/segment-row", post(handlers::trigger_row_segment))
     .route("/diagnostic", post(handlers::log_diagnostic))
-    .nest_service("/audio/scraped", ServeDir::new("data/scraped"))
+    .nest_service("/audio/scraped", ServeDir::new(paths::SCRAPED_DIR))
     .with_state(pool);
 
   let listener = tokio::net::TcpListener::bind("0.0.0.0:3000")

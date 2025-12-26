@@ -11,22 +11,23 @@ use std::path::Path as StdPath;
 use std::process::Command;
 
 use crate::db::{self, DbPool};
+use crate::paths;
 #[cfg(feature = "profiling")]
 use crate::profiling::EventType;
 
 /// Check if lesson1 content exists
 pub fn has_lesson1() -> bool {
-  StdPath::new("data/scraped/htsk/lesson1/manifest.json").exists()
+  StdPath::new(&paths::manifest_path("lesson1")).exists()
 }
 
 /// Check if lesson2 content exists
 pub fn has_lesson2() -> bool {
-  StdPath::new("data/scraped/htsk/lesson2/manifest.json").exists()
+  StdPath::new(&paths::manifest_path("lesson2")).exists()
 }
 
 /// Count segmented syllables for a lesson
 fn count_syllables(lesson: &str) -> usize {
-  let path = format!("data/scraped/htsk/{}/syllables", lesson);
+  let path = paths::syllables_dir(lesson);
   std::fs::read_dir(path)
     .map(|entries| {
       entries
@@ -78,12 +79,12 @@ pub struct LessonAudio {
 
 /// Get audio preview data for a lesson
 fn get_lesson_audio(lesson_id: &str, lesson_name: &str) -> Option<LessonAudio> {
-  let manifest_path = format!("data/scraped/htsk/{}/manifest.json", lesson_id);
+  let manifest_path = paths::manifest_path(lesson_id);
   let manifest_content = fs::read_to_string(&manifest_path).ok()?;
   let manifest: serde_json::Value = serde_json::from_str(&manifest_content).ok()?;
 
   // Get available syllable files
-  let syllables_dir = format!("data/scraped/htsk/{}/syllables", lesson_id);
+  let syllables_dir = paths::syllables_dir(lesson_id);
   let available_segments: HashSet<String> = fs::read_dir(&syllables_dir)
     .map(|entries| {
       entries
@@ -314,12 +315,11 @@ pub async fn trigger_scrape() -> Redirect {
   });
 
   // Run the scraper commands for all lessons
-  let _ = Command::new("sh")
-    .args([
-      "-c",
-      "cd machine-learning && uv run kr-scraper lesson1 && uv run kr-scraper lesson2 && uv run kr-scraper segment --padding 75",
-    ])
-    .output();
+  let cmd = format!(
+    "cd {} && uv run kr-scraper lesson1 && uv run kr-scraper lesson2 && uv run kr-scraper segment --padding 75",
+    paths::PY_SCRIPTS_DIR
+  );
+  let _ = Command::new("sh").args(["-c", &cmd]).output();
 
   Redirect::to("/settings")
 }
@@ -333,12 +333,18 @@ pub async fn trigger_scrape_lesson(Path(lesson): Path<String>) -> Redirect {
   });
 
   let cmd = match lesson.as_str() {
-    "1" => "cd machine-learning && uv run kr-scraper lesson1 && uv run kr-scraper segment -l 1 --padding 75",
-    "2" => "cd machine-learning && uv run kr-scraper lesson2 && uv run kr-scraper segment -l 2 --padding 75",
+    "1" => format!(
+      "cd {} && uv run kr-scraper lesson1 && uv run kr-scraper segment -l 1 --padding 75",
+      paths::PY_SCRIPTS_DIR
+    ),
+    "2" => format!(
+      "cd {} && uv run kr-scraper lesson2 && uv run kr-scraper segment -l 2 --padding 75",
+      paths::PY_SCRIPTS_DIR
+    ),
     _ => return Redirect::to("/settings"),
   };
 
-  let _ = Command::new("sh").args(["-c", cmd]).output();
+  let _ = Command::new("sh").args(["-c", &cmd]).output();
 
   Redirect::to("/settings")
 }
@@ -352,9 +358,8 @@ pub async fn delete_scraped() -> Redirect {
   });
 
   // Run the clean command
-  let _ = Command::new("sh")
-    .args(["-c", "cd machine-learning && uv run kr-scraper clean --yes"])
-    .output();
+  let cmd = format!("cd {} && uv run kr-scraper clean --yes", paths::PY_SCRIPTS_DIR);
+  let _ = Command::new("sh").args(["-c", &cmd]).output();
 
   Redirect::to("/settings")
 }
@@ -368,8 +373,8 @@ pub async fn delete_scraped_lesson(Path(lesson): Path<String>) -> Redirect {
   });
 
   let path = match lesson.as_str() {
-    "1" => "data/scraped/htsk/lesson1",
-    "2" => "data/scraped/htsk/lesson2",
+    "1" => paths::lesson_dir("lesson1"),
+    "2" => paths::lesson_dir("lesson2"),
     _ => return Redirect::to("/settings"),
   };
 
@@ -402,7 +407,8 @@ pub async fn trigger_segment(Form(form): Form<SegmentForm>) -> Html<String> {
 
   // Use --reset to ignore saved manifest params and apply CLI values
   let cmd = format!(
-    "cd machine-learning && uv run kr-scraper segment --padding {} --reset 2>&1",
+    "cd {} && uv run kr-scraper segment --padding {} --reset 2>&1",
+    paths::PY_SCRIPTS_DIR,
     form.padding
   );
 
@@ -515,10 +521,17 @@ pub async fn trigger_row_segment(Form(form): Form<RowSegmentForm>) -> Html<Strin
     }
   );
 
-  // Build the Python command to segment a single row - output JSON for parsing
+  // Use the segment-row CLI command for cleaner invocation
   let cmd = format!(
-    "cd machine-learning && uv run python -c \"import json; from kr_scraper.segment import segment_single_row; from pathlib import Path; result = segment_single_row(Path('../data/scraped/htsk/{}'), '{}', min_silence={}, threshold={}, padding={}, skip_first={}, skip_last={}); print(json.dumps({{'saved': result.segments_saved if result else 0, 'found': result.segments_found if result else 0}}))\"",
-    form.lesson, form.row, form.min_silence, form.threshold, form.padding, form.skip_first, form.skip_last
+    "cd {} && uv run kr-scraper segment-row {} {} -s {} -t {} -P {} --skip-first {} --skip-last {} --json",
+    paths::PY_SCRIPTS_DIR,
+    form.lesson,
+    form.row,
+    form.min_silence,
+    form.threshold,
+    form.padding,
+    form.skip_first,
+    form.skip_last
   );
 
   let (status_message, status_success) = match Command::new("sh").args(["-c", &cmd]).output() {
@@ -565,12 +578,12 @@ pub async fn trigger_row_segment(Form(form): Form<RowSegmentForm>) -> Html<Strin
 
 /// Get a single audio row from the manifest
 fn get_audio_row(lesson_id: &str, row_romanization: &str) -> Option<AudioRow> {
-  let manifest_path = format!("data/scraped/htsk/{}/manifest.json", lesson_id);
+  let manifest_path = paths::manifest_path(lesson_id);
   let manifest_content = fs::read_to_string(&manifest_path).ok()?;
   let manifest: serde_json::Value = serde_json::from_str(&manifest_content).ok()?;
 
   // Get available syllable files
-  let syllables_dir = format!("data/scraped/htsk/{}/syllables", lesson_id);
+  let syllables_dir = paths::syllables_dir(lesson_id);
   let available_segments: HashSet<String> = fs::read_dir(&syllables_dir)
     .map(|entries| {
       entries

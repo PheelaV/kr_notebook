@@ -6,11 +6,11 @@
 //!
 //! # Usage
 //!
-//! ```rust
+//! ```rust,ignore
 //! use kr_notebook::profile_log;
 //! use kr_notebook::profiling::EventType;
 //!
-//! // Log an event
+//! // Log an event (only works with --features profiling)
 //! profile_log!(EventType::HandlerStart {
 //!     route: "/study".into(),
 //!     method: "GET".into()

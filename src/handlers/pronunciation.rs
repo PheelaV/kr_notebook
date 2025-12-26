@@ -5,6 +5,7 @@ use std::fs;
 use std::path::Path;
 
 use super::settings::{has_lesson1, has_lesson2};
+use crate::paths;
 
 /// Check if scraped pronunciation content exists (either lesson)
 pub fn has_scraped_content() -> bool {
@@ -13,7 +14,7 @@ pub fn has_scraped_content() -> bool {
 
 /// Get set of available syllable romanizations for a lesson
 fn get_available_syllables(lesson: &str) -> HashSet<String> {
-    let syllables_dir = format!("data/scraped/htsk/{}/syllables", lesson);
+    let syllables_dir = paths::syllables_dir(lesson);
     let syllables_path = Path::new(&syllables_dir);
 
     if syllables_path.exists() {
@@ -205,10 +206,11 @@ pub async fn pronunciation_page() -> axum::response::Response {
 
     // Load lesson1 if available
     if has_lesson1() {
+        let manifest_path = paths::manifest_path("lesson1");
         if let Some(table) = build_table_from_manifest(
             "lesson1",
             "Lesson 1: Basic Consonants & Vowels",
-            Path::new("data/scraped/htsk/lesson1/manifest.json"),
+            Path::new(&manifest_path),
         ) {
             tables.push(table);
         }
@@ -216,10 +218,11 @@ pub async fn pronunciation_page() -> axum::response::Response {
 
     // Load lesson2 if available
     if has_lesson2() {
+        let manifest_path = paths::manifest_path("lesson2");
         if let Some(table) = build_table_from_manifest(
             "lesson2",
             "Lesson 2: Additional Consonants",
-            Path::new("data/scraped/htsk/lesson2/manifest.json"),
+            Path::new(&manifest_path),
         ) {
             tables.push(table);
         }
