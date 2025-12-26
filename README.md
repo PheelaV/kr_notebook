@@ -105,36 +105,42 @@ cargo clippy
 ```
 kr_notebook/
 ├── Cargo.toml
-├── Dockerfile              # Multi-stage build
+├── Dockerfile              # Multi-stage Rust build
 ├── docker-compose.yml      # LAN deployment
-├── src/
-│   ├── main.rs              # Server entry point
-│   ├── lib.rs               # Module exports
-│   ├── db/                  # Database layer
-│   │   ├── mod.rs           # Card seed data
-│   │   ├── schema.rs        # Table definitions
-│   │   └── repository.rs    # CRUD operations
-│   ├── domain/              # Data models
-│   │   └── card.rs          # Card struct
-│   ├── handlers/            # HTTP handlers
-│   │   ├── mod.rs           # Index handler
-│   │   ├── study.rs         # Study session logic
-│   │   ├── progress.rs      # Progress & analytics
-│   │   ├── settings.rs      # Settings + audio management
+├── src/                    # Rust backend
+│   ├── main.rs             # Server entry point
+│   ├── lib.rs              # Module exports
+│   ├── paths.rs            # Centralized path constants
+│   ├── db/                 # Database layer
+│   │   ├── mod.rs          # Card seed data
+│   │   ├── schema.rs       # Table definitions
+│   │   └── repository.rs   # CRUD operations
+│   ├── domain/             # Data models
+│   │   └── card.rs         # Card struct
+│   ├── handlers/           # HTTP handlers
+│   │   ├── mod.rs          # Index handler
+│   │   ├── study.rs        # Study session logic
+│   │   ├── progress.rs     # Progress & analytics
+│   │   ├── settings.rs     # Settings + audio management
 │   │   ├── pronunciation.rs # Pronunciation matrix
-│   │   └── library.rs       # Character library
-│   ├── profiling/           # Optional profiling (--features profiling)
-│   │   ├── event.rs         # Event types
-│   │   └── logger.rs        # JSONL file logger
-│   ├── srs/                 # Spaced repetition
-│   │   ├── fsrs_scheduler.rs # FSRS implementation
-│   │   └── sm2.rs           # SM-2 fallback
-│   └── validation.rs        # Answer validation
-├── templates/               # Askama HTML templates
-├── doc/                     # Documentation
-│   ├── 01_learning_fsa.md   # Learning mode state machine
-│   └── 02_responsiveness_guidance.md
-└── data/                    # SQLite database (gitignored)
+│   │   └── library.rs      # Character library
+│   ├── profiling/          # Optional profiling (--features profiling)
+│   ├── srs/                # Spaced repetition (FSRS + SM-2)
+│   └── validation.rs       # Answer validation
+├── py_scripts/             # Python scraper tools
+│   ├── pyproject.toml      # uv/pip project config
+│   ├── uv.lock             # Locked dependencies
+│   └── src/kr_scraper/     # Scraper package
+│       ├── cli.py          # CLI commands (lesson1, lesson2, segment)
+│       ├── paths.py        # Centralized path constants
+│       ├── segment.py      # Audio segmentation logic
+│       ├── lesson1.py      # Lesson 1 scraper
+│       ├── lesson2.py      # Lesson 2 scraper
+│       └── utils.py        # HTTP/parsing utilities
+├── templates/              # Askama HTML templates
+├── doc/                    # Documentation
+└── data/                   # Runtime data (gitignored, except manifests)
+    └── scraped/htsk/       # Scraped audio + manifests
 ```
 
 ## Algorithms
@@ -156,26 +162,38 @@ Classic SuperMemo 2 algorithm:
 
 The app supports pronunciation audio from howtostudykorean.com (Lessons 1-2).
 
-### Setup (requires Python 3.8+ and uv)
+### Setup (requires Python 3.12+ and uv)
 
 ```bash
 cd py_scripts
+uv sync                      # Install dependencies
 uv run kr-scraper lesson1    # Download Lesson 1 audio
 uv run kr-scraper lesson2    # Download Lesson 2 audio
 uv run kr-scraper segment    # Segment into syllables
 ```
 
+### Docker Note
+
+The Docker image is Rust-only and does not include Python/uv. To use pronunciation
+audio with Docker, run the scraper on your host machine first:
+
+```bash
+# On host (before docker compose up)
+cd py_scripts && uv sync && uv run kr-scraper lesson1 && uv run kr-scraper lesson2 && uv run kr-scraper segment
+cd .. && docker compose up -d
+```
+
+The `data/` directory is mounted into the container, so scraped audio will be available.
+
 ### Manifest Distribution
 
 Manifests (`data/scraped/htsk/*/manifest.json`) contain segmentation parameters
-and are version-controlled. After cloning, regenerate audio:
+and are version-controlled. After cloning, regenerate audio using the saved parameters:
 
 ```bash
 cd py_scripts
 uv run kr-scraper lesson1 && uv run kr-scraper lesson2 && uv run kr-scraper segment
 ```
-
-This recreates audio files using saved parameters from the manifest.
 
 ### Per-Row Tuning
 
