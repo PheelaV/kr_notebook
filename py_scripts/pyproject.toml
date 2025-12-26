@@ -12,6 +12,7 @@ dependencies = [
     "beautifulsoup4>=4.12.0",
     "requests>=2.32.0",
     "pydub>=0.25.0",
+    "pyrootutils>=1.0.4",
 ]
 
 [project.scripts]

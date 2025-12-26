@@ -6,23 +6,10 @@ and hardcoded strings scattered throughout the codebase.
 
 from pathlib import Path
 
-
-def _find_project_root() -> Path:
-    """Find project root by looking for Cargo.toml marker file.
-
-    This approach is more robust than counting parent directories
-    and works regardless of where the script is invoked from.
-    """
-    current = Path(__file__).resolve()
-    for parent in [current] + list(current.parents):
-        if (parent / "Cargo.toml").exists():
-            return parent
-    # Fallback: assume we're in py_scripts/src/kr_scraper/
-    return Path(__file__).parent.parent.parent.parent
-
+import pyrootutils
 
 # Project root (contains Cargo.toml)
-PROJECT_ROOT = _find_project_root()
+PROJECT_ROOT = pyrootutils.find_root(search_from=__file__, indicator="Cargo.toml")
 
 # Data directories
 DATA_DIR = PROJECT_ROOT / "data"
