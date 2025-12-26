@@ -129,5 +129,12 @@ pub fn run_migrations(conn: &Connection) -> Result<()> {
     "#,
   )?;
 
+  // Migration: Fix repetitions for FSRS users (bug: FSRS wasn't updating repetitions)
+  // Backfill from correct_reviews where it's higher than current repetitions
+  conn.execute(
+    "UPDATE cards SET repetitions = correct_reviews WHERE correct_reviews > repetitions",
+    [],
+  )?;
+
   Ok(())
 }

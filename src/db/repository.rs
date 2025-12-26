@@ -529,7 +529,8 @@ pub fn update_card_after_fsrs_review(
     r#"
     UPDATE cards
     SET next_review = ?1, fsrs_stability = ?2, fsrs_difficulty = ?3, fsrs_state = ?4,
-        total_reviews = total_reviews + 1, correct_reviews = correct_reviews + ?5
+        total_reviews = total_reviews + 1, correct_reviews = correct_reviews + ?5,
+        repetitions = CASE WHEN ?5 = 1 THEN repetitions + 1 ELSE 0 END
     WHERE id = ?6
     "#,
     params![
