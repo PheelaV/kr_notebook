@@ -202,6 +202,15 @@ Outputs:
 - [`doc/01_learning_fsa.md`](doc/01_learning_fsa.md) - Learning mode state machine (normal vs accelerated)
 - [`doc/02_responsiveness_guidance.md`](doc/02_responsiveness_guidance.md) - Mobile responsiveness patterns
 
+## Attribution
+
+Pronunciation audio is sourced from [How to Study Korean](https://www.howtostudykorean.com/), an excellent free resource for learning Korean:
+
+- [Unit 0 Lesson 1](https://www.howtostudykorean.com/unit0/unit0lesson1/) - Basic consonants (ㅂㅈㄷㄱㅅㅁㄴㅎㄹ) and vowels (ㅣㅏㅓㅡㅜㅗ)
+- [Unit 0 Lesson 2](https://www.howtostudykorean.com/unit0/unit-0-lesson-2/) - Tense (ㄲㅃㅉㄸㅆ) and aspirated (ㅋㅍㅊㅌ) consonants
+
+Audio files are not redistributed with this project. Users must run the scraper to download audio for personal educational use.
+
 ## License
 
 MIT
