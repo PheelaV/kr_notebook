@@ -736,7 +736,43 @@ pub fn unlock_next_tier(conn: &Connection) -> Result<u8> {
   let current = get_max_unlocked_tier(conn)?;
   let next = (current + 1).min(4);
   set_max_unlocked_tier(conn, next)?;
+
+  // Also add the new tier to enabled_tiers so it's not "skipped"
+  let mut enabled = get_enabled_tiers(conn)?;
+  if !enabled.contains(&next) {
+    enabled.push(next);
+    enabled.sort();
+    set_enabled_tiers(conn, &enabled)?;
+  }
+
   Ok(next)
+}
+
+/// Check if next tier should be unlocked and do it automatically
+/// Returns Some(tier_number) if a tier was unlocked, None otherwise
+pub fn try_auto_unlock_tier(conn: &Connection) -> Result<Option<u8>> {
+  // Don't auto-unlock if all tiers are already unlocked via accelerated mode
+  if get_all_tiers_unlocked(conn).unwrap_or(false) {
+    return Ok(None);
+  }
+
+  let current_tier = get_max_unlocked_tier(conn)?;
+  if current_tier >= 4 {
+    return Ok(None); // Already at max tier
+  }
+
+  // Get progress for current tier
+  let tiers = get_progress_by_tier(conn)?;
+  let current_progress = tiers.iter().find(|t| t.tier == current_tier);
+
+  if let Some(progress) = current_progress {
+    if progress.percentage() >= 80 {
+      let new_tier = unlock_next_tier(conn)?;
+      return Ok(Some(new_tier));
+    }
+  }
+
+  Ok(None)
 }
 
 // Generic settings functions

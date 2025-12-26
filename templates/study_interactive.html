@@ -10,4 +10,11 @@
   {% include "no_cards.html" %}
   {% endif %}
 </div>
+
+<script>
+  {% if testing_mode %}
+  // Enable testing mode for global keystroke handler
+  window.TESTING_MODE = true;
+  {% endif %}
+</script>
 {% endblock %}

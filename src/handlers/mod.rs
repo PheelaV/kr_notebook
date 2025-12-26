@@ -26,6 +26,8 @@ pub struct IndexTemplate {
   pub next_review: Option<String>,
   pub next_review_timestamp: Option<i64>, // Unix timestamp in seconds for live countdown
   pub accelerated_mode: bool,
+  pub unlocked_tier: Option<u8>, // Tier that was just auto-unlocked
+  pub testing_mode: bool,
 }
 
 fn format_relative_time(dt: DateTime<Utc>) -> String {
@@ -57,6 +59,9 @@ pub async fn index(State(pool): State<DbPool>) -> Html<String> {
   });
 
   let conn = pool.lock().unwrap();
+
+  // Check for auto tier unlock
+  let unlocked_tier = db::try_auto_unlock_tier(&conn).unwrap_or(None);
 
   let accelerated_mode = db::get_all_tiers_unlocked(&conn).unwrap_or(false);
   let due_count = db::get_due_count(&conn).unwrap_or(0);
@@ -92,6 +97,11 @@ pub async fn index(State(pool): State<DbPool>) -> Html<String> {
     next_review,
     next_review_timestamp,
     accelerated_mode,
+    unlocked_tier,
+    #[cfg(feature = "testing")]
+    testing_mode: true,
+    #[cfg(not(feature = "testing"))]
+    testing_mode: false,
   };
 
   Html(template.render().unwrap_or_default())

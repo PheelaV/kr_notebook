@@ -2,17 +2,16 @@
 
 {% block title %}Home - Hangul Learn{% endblock %}
 
-{# Hide the fixed mascot on home page since we have an inline one #}
+{# Hide the fixed corner mascot on home page since we have an inline one #}
 {% block mascot %}{% endblock %}
 
 {% block content %}
 <div class="max-w-lg mx-auto">
   <div class="text-center mb-6 sm:mb-8">
-    <!-- Haetae Mascot - Always visible on home page -->
-    <div class="haetae-wrapper inline-block mb-4">
-      <div id="home-haetae" class="haetae-container cursor-pointer mx-auto" style="width: 80px; height: 80px;">
-        {% include "partials/haetae_mascot.html" %}
-      </div>
+    <!-- Inline Haetae Mascot for home page -->
+    <div class="haetae-component inline-block mb-4 relative"
+         data-bubble-position="right" style="width: 80px; height: 80px;">
+      {% include "partials/haetae_component.html" %}
     </div>
     <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mb-2">
       Learn Korean Hangul
@@ -127,20 +126,12 @@
 </div>
 
 <script>
-  // Home page mascot click interaction
-  const homeHaetae = document.getElementById('home-haetae');
-  if (homeHaetae) {
-    homeHaetae.addEventListener('click', function() {
-      this.classList.toggle('happy');
-    });
-  }
-
   // Countdown timer
   (function() {
     const timerEl = document.getElementById('countdown-timer');
     if (!timerEl) return;
 
-    const targetTimestamp = parseInt(timerEl.dataset.target, 10) * 1000; // Convert to ms
+    const targetTimestamp = parseInt(timerEl.dataset.target, 10) * 1000;
 
     function updateTimer() {
       const now = Date.now();
@@ -148,7 +139,6 @@
 
       if (diff <= 0) {
         timerEl.textContent = '00:00:00:00';
-        // Reload page to show cards are due
         setTimeout(function() { location.reload(); }, 1000);
         return;
       }
@@ -168,5 +158,27 @@
     updateTimer();
     setInterval(updateTimer, 1000);
   })();
+
+  {% if testing_mode %}
+  window.TESTING_MODE = true;
+  {% endif %}
+
+  {% if let Some(tier) = unlocked_tier %}
+  // Show tier unlock notification via HaetaeSystem
+  document.addEventListener('DOMContentLoaded', function() {
+    const tierNames = {
+      2: 'Y-Vowels & Special Ieung',
+      3: 'Aspirated & Tense Consonants',
+      4: 'Compound Vowels'
+    };
+    if (window.HaetaeSystem) {
+      window.HaetaeSystem.showSpeechBubble(
+        'Tier {{ tier }} Unlocked!',
+        tierNames[{{ tier }}] || '',
+        4000
+      );
+    }
+  });
+  {% endif %}
 </script>
 {% endblock %}

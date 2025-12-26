@@ -95,6 +95,24 @@
       50% { opacity: 1; transform: scale(1); }
     }
 
+    /* Toast fade-in animation */
+    @keyframes fade-in {
+      from { opacity: 0; transform: translate(-50%, -20px); }
+      to { opacity: 1; transform: translate(-50%, 0); }
+    }
+    .animate-fade-in {
+      animation: fade-in 0.3s ease-out forwards;
+    }
+
+    /* Speech bubble animation */
+    @keyframes fade-in-right {
+      from { opacity: 0; transform: translateY(-50%) translateX(-10px); }
+      to { opacity: 1; transform: translateY(-50%) translateX(0); }
+    }
+    .animate-fade-in-right {
+      animation: fade-in-right 0.4s ease-out forwards;
+    }
+
     .haetae-wrapper {
       position: relative;
     }
@@ -322,106 +340,168 @@
 
   <!-- Baby Haetae Mascot (hidden on small screens, smaller on medium) -->
   {% block mascot %}
-  <div id="haetae-wrapper" class="hidden sm:block fixed bottom-4 right-4 haetae-wrapper sm:scale-75 md:scale-100 origin-bottom-right">
-    <!-- Tooltip -->
-    <div class="haetae-tooltip">
-      Your guardian companion on the path to mastery
-    </div>
-
-    <!-- Firework container -->
-    <div id="haetae-fireworks" class="absolute inset-0 pointer-events-none overflow-visible"></div>
-
-    <div id="haetae-mascot" class="haetae-container cursor-pointer" style="width: 80px; height: 80px;">
-      {% include "partials/haetae_mascot.html" %}
-    </div>
+  <div class="haetae-component hidden sm:block fixed bottom-4 right-4 sm:scale-75 md:scale-100 origin-bottom-right"
+       data-bubble-position="left" data-show-tooltip="true" style="width: 80px; height: 80px;">
+    {% include "partials/haetae_component.html" %}
   </div>
   {% endblock mascot %}
 
   <script>
-    // Haetae interaction
-    (function() {
-      const haetae = document.getElementById('haetae-mascot');
-      const fireworksContainer = document.getElementById('haetae-fireworks');
-      if (!haetae || !fireworksContainer) return;
-
-      // Traditional Korean colors for fireworks (dancheong palette)
+    // Haetae Component System - handles all .haetae-component instances
+    window.HaetaeSystem = (function() {
       const fireworkColors = [
-        '#C1403D', // Red (Dancheong red)
-        '#2E8B8B', // Teal (Jade)
-        '#E5C158', // Gold
-        '#3D5A80', // Blue
-        '#81B29A', // Green
-        '#F4A261', // Orange
+        '#C1403D', '#2E8B8B', '#E5C158', '#3D5A80', '#81B29A', '#F4A261'
       ];
+      const path = window.location.pathname;
 
-      function createFirework() {
-        const particleCount = 12;
-        const centerX = 40;
-        const centerY = 40;
+      function initComponent(component) {
+        const mascot = component.querySelector('.haetae-mascot');
+        const fireworksContainer = component.querySelector('.haetae-fireworks');
+        const bubbleContainer = component.querySelector('.haetae-speech-bubble');
+        const bookAccessory = component.querySelector('.haetae-accessory-book');
+        const capAccessory = component.querySelector('.haetae-accessory-cap');
+        const bubblePosition = component.dataset.bubblePosition || 'right';
+        const showTooltip = component.dataset.showTooltip === 'true';
 
-        for (let i = 0; i < particleCount; i++) {
-          const particle = document.createElement('div');
-          particle.className = 'firework-particle';
+        if (!mascot) return;
 
-          // Calculate direction
-          const angle = (i / particleCount) * Math.PI * 2;
-          const distance = 40 + Math.random() * 30;
-          const tx = Math.cos(angle) * distance;
-          const ty = Math.sin(angle) * distance;
-
-          // Random color from palette
-          const color = fireworkColors[Math.floor(Math.random() * fireworkColors.length)];
-
-          particle.style.cssText = `
-            left: ${centerX}px;
-            top: ${centerY}px;
-            background: ${color};
-            --tx: ${tx}px;
-            --ty: ${ty}px;
-            animation-delay: ${Math.random() * 0.1}s;
-          `;
-
-          fireworksContainer.appendChild(particle);
-
-          // Remove particle after animation
-          setTimeout(() => particle.remove(), 900);
+        // Ensure component is positioned for absolute children
+        if (getComputedStyle(component).position === 'static') {
+          component.style.position = 'relative';
         }
 
-        // Add some sparkle stars
-        for (let i = 0; i < 6; i++) {
-          const star = document.createElement('div');
-          const angle = Math.random() * Math.PI * 2;
-          const distance = 20 + Math.random() * 50;
-
-          star.className = 'firework-particle';
-          star.style.cssText = `
-            left: ${centerX}px;
-            top: ${centerY}px;
-            width: 4px;
-            height: 4px;
-            background: #FFFFFF;
-            box-shadow: 0 0 4px #FFFFFF;
-            --tx: ${Math.cos(angle) * distance}px;
-            --ty: ${Math.sin(angle) * distance}px;
-            animation-delay: ${0.1 + Math.random() * 0.2}s;
-          `;
-
-          fireworksContainer.appendChild(star);
-          setTimeout(() => star.remove(), 1000);
+        // Show tooltip if enabled
+        if (showTooltip) {
+          const tooltip = document.createElement('div');
+          tooltip.className = 'haetae-tooltip';
+          tooltip.textContent = 'Your guardian companion on the path to mastery';
+          component.appendChild(tooltip);
         }
+
+        // Show page-specific accessories
+        if (path.startsWith('/library') || path.startsWith('/reference')) {
+          if (bookAccessory) bookAccessory.classList.remove('hidden');
+        } else if (path.startsWith('/study') || path.startsWith('/practice') || path.startsWith('/listen')) {
+          if (capAccessory) capAccessory.classList.remove('hidden');
+        }
+
+        // Fireworks function
+        function createFirework() {
+          if (!fireworksContainer) return;
+          const centerX = component.offsetWidth / 2;
+          const centerY = component.offsetHeight / 2;
+
+          for (let i = 0; i < 12; i++) {
+            const particle = document.createElement('div');
+            particle.className = 'firework-particle';
+            const angle = (i / 12) * Math.PI * 2;
+            const distance = 40 + Math.random() * 30;
+            const color = fireworkColors[Math.floor(Math.random() * fireworkColors.length)];
+
+            particle.style.cssText = `
+              left: ${centerX}px; top: ${centerY}px;
+              background: ${color};
+              --tx: ${Math.cos(angle) * distance}px;
+              --ty: ${Math.sin(angle) * distance}px;
+              animation-delay: ${Math.random() * 0.1}s;
+            `;
+            fireworksContainer.appendChild(particle);
+            setTimeout(() => particle.remove(), 900);
+          }
+
+          for (let i = 0; i < 6; i++) {
+            const star = document.createElement('div');
+            const angle = Math.random() * Math.PI * 2;
+            const distance = 20 + Math.random() * 50;
+            star.className = 'firework-particle';
+            star.style.cssText = `
+              left: ${centerX}px; top: ${centerY}px;
+              width: 4px; height: 4px;
+              background: #FFFFFF; box-shadow: 0 0 4px #FFFFFF;
+              --tx: ${Math.cos(angle) * distance}px;
+              --ty: ${Math.sin(angle) * distance}px;
+              animation-delay: ${0.1 + Math.random() * 0.2}s;
+            `;
+            fireworksContainer.appendChild(star);
+            setTimeout(() => star.remove(), 1000);
+          }
+        }
+
+        // Click interaction
+        let revertTimeout = null;
+        mascot.addEventListener('click', function() {
+          const wasHappy = this.classList.contains('happy');
+          if (revertTimeout) { clearTimeout(revertTimeout); revertTimeout = null; }
+          this.classList.toggle('happy');
+
+          if (!wasHappy) {
+            createFirework();
+            setTimeout(createFirework, 150);
+            revertTimeout = setTimeout(() => {
+              this.classList.remove('happy');
+              revertTimeout = null;
+            }, 2000);
+          }
+        });
+
+        // Return API for this component
+        return {
+          component,
+          mascot,
+          bubblePosition,
+          showSpeechBubble: function(title, subtitle, duration) {
+            if (!bubbleContainer) return;
+            bubbleContainer.innerHTML = '';
+
+            const isLeft = bubblePosition === 'left';
+            const bubble = document.createElement('div');
+            bubble.className = `absolute ${isLeft ? 'right-full mr-2' : 'left-full ml-2'} top-1/2 -translate-y-1/2 whitespace-nowrap z-50`;
+            bubble.style.animation = 'fadeIn 0.3s ease-out';
+
+            const pointerClass = isLeft
+              ? 'left-full border-l-green-500 border-r-0 border-l-8'
+              : 'right-full border-r-green-500 border-l-0 border-r-8';
+
+            bubble.innerHTML = `
+              <div class="relative bg-green-500 text-white px-4 py-2 rounded-xl shadow-lg">
+                <div class="absolute ${pointerClass} top-1/2 -translate-y-1/2 w-0 h-0 border-t-8 border-b-8 border-transparent"></div>
+                <div class="font-semibold">${title}</div>
+                ${subtitle ? `<div class="text-sm text-green-100">${subtitle}</div>` : ''}
+              </div>
+            `;
+
+            bubbleContainer.appendChild(bubble);
+            mascot.classList.add('happy');
+
+            setTimeout(() => {
+              bubble.style.transition = 'opacity 0.5s ease-out';
+              bubble.style.opacity = '0';
+              setTimeout(() => {
+                bubble.remove();
+                mascot.classList.remove('happy');
+              }, 500);
+            }, duration || 4000);
+          },
+          makeHappy: function() { mascot.classList.add('happy'); },
+          makeNeutral: function() { mascot.classList.remove('happy'); }
+        };
       }
 
-      haetae.addEventListener('click', function() {
-        const wasHappy = this.classList.contains('happy');
-        this.classList.toggle('happy');
-
-        // Fireworks when becoming happy
-        if (!wasHappy) {
-          createFirework();
-          // Second burst slightly delayed
-          setTimeout(createFirework, 150);
-        }
+      // Initialize all components on page
+      const components = [];
+      document.querySelectorAll('.haetae-component').forEach(el => {
+        const instance = initComponent(el);
+        if (instance) components.push(instance);
       });
+
+      return {
+        components,
+        getFirst: function() { return components[0]; },
+        showSpeechBubble: function(title, subtitle, duration) {
+          const first = this.getFirst();
+          if (first) first.showSpeechBubble(title, subtitle, duration);
+        }
+      };
     })();
   </script>
 
@@ -451,6 +531,23 @@
           cardInner.classList.remove('card-loading');
           cardInner.classList.remove('flipped');
         });
+      });
+    })();
+  </script>
+
+  {% block testing_scripts %}{% endblock %}
+
+  <script>
+    // Testing mode: Global handler for ")" keystroke to show mock tier unlock
+    // Activated when window.TESTING_MODE is set by page templates
+    (function() {
+      document.addEventListener('keydown', function(e) {
+        if (!window.TESTING_MODE) return;
+        if (e.key !== ')') return;
+        e.preventDefault();
+        if (window.HaetaeSystem) {
+          window.HaetaeSystem.showSpeechBubble('Tier 2 Unlocked!', 'Y-Vowels & Special Ieung', 4000);
+        }
       });
     })();
   </script>

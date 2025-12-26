@@ -168,6 +168,8 @@ pub struct StudyInteractiveTemplate {
   pub has_card: bool,
   // Session tracking
   pub session_id: String,
+  // Testing mode flag
+  pub testing_mode: bool,
 }
 
 #[derive(Template)]
@@ -372,6 +374,10 @@ pub async fn study_start_interactive(State(pool): State<DbPool>) -> impl IntoRes
         choices,
         has_card: true,
         session_id,
+        #[cfg(feature = "testing")]
+        testing_mode: true,
+        #[cfg(not(feature = "testing"))]
+        testing_mode: false,
       };
       return Html(template.render().unwrap_or_default());
     }
@@ -396,6 +402,10 @@ pub async fn study_start_interactive(State(pool): State<DbPool>) -> impl IntoRes
     choices: vec![],
     has_card: false,
     session_id,
+    #[cfg(feature = "testing")]
+    testing_mode: true,
+    #[cfg(not(feature = "testing"))]
+    testing_mode: false,
   };
   Html(template.render().unwrap_or_default())
 }

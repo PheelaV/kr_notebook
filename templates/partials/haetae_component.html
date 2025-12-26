@@ -1,0 +1,123 @@
+{#
+  Haetae Component - Consolidated mascot with all features
+
+  Usage:
+    {% include "partials/haetae_component.html" %}
+
+  Configuration via data attributes on parent .haetae-component element:
+    data-bubble-position="left|right" - Speech bubble orientation (default: right)
+    data-show-tooltip="true|false" - Show hover tooltip (default: false)
+
+  The parent element should have class "haetae-component" and appropriate sizing.
+  JavaScript in base.html handles all interactions.
+#}
+
+<!-- Fireworks container -->
+<div class="haetae-fireworks absolute inset-0 pointer-events-none overflow-visible"></div>
+
+<!-- Speech bubble container (populated dynamically) -->
+<div class="haetae-speech-bubble"></div>
+
+<!-- Haetae mascot -->
+<div class="haetae-mascot haetae-container cursor-pointer" style="width: 100%; height: 100%;">
+  <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+    <!-- Body -->
+    <ellipse cx="50" cy="58" rx="32" ry="28" fill="#C9A227"/>
+    <ellipse cx="50" cy="60" rx="28" ry="24" fill="#E5C158"/>
+
+    <!-- Mane curls -->
+    <circle cx="30" cy="35" r="10" fill="#B8860B"/>
+    <circle cx="70" cy="35" r="10" fill="#B8860B"/>
+    <circle cx="25" cy="45" r="8" fill="#B8860B"/>
+    <circle cx="75" cy="45" r="8" fill="#B8860B"/>
+    <circle cx="35" cy="25" r="9" fill="#B8860B"/>
+    <circle cx="65" cy="25" r="9" fill="#B8860B"/>
+    <circle cx="50" cy="20" r="10" fill="#B8860B"/>
+
+    <!-- Face base -->
+    <circle cx="50" cy="40" r="25" fill="#C9A227"/>
+    <circle cx="50" cy="42" r="22" fill="#E5C158"/>
+
+    <!-- Horn -->
+    <ellipse cx="50" cy="18" rx="5" ry="8" fill="#2E8B8B"/>
+    <ellipse cx="50" cy="16" rx="3" ry="5" fill="#5FABA9"/>
+
+    <!-- Ears -->
+    <ellipse cx="28" cy="28" rx="7" ry="9" fill="#C9A227"/>
+    <ellipse cx="72" cy="28" rx="7" ry="9" fill="#C9A227"/>
+    <ellipse cx="28" cy="28" rx="4" ry="6" fill="#E07A5F"/>
+    <ellipse cx="72" cy="28" rx="4" ry="6" fill="#E07A5F"/>
+
+    <!-- Eyes -->
+    <g class="haetae-eye">
+      <ellipse cx="40" cy="40" rx="6" ry="7" fill="#FFFFFF"/>
+      <circle cx="41" cy="41" r="4" fill="#2D2D2D"/>
+      <circle cx="42" cy="39" r="1.5" fill="#FFFFFF"/>
+    </g>
+    <g class="haetae-eye haetae-eye-right">
+      <ellipse cx="60" cy="40" rx="6" ry="7" fill="#FFFFFF"/>
+      <circle cx="59" cy="41" r="4" fill="#2D2D2D"/>
+      <circle cx="60" cy="39" r="1.5" fill="#FFFFFF"/>
+    </g>
+
+    <!-- Eyebrows -->
+    <path d="M34 33 Q37 31 42 33" stroke="#6B4423" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+    <path d="M58 33 Q63 31 66 33" stroke="#6B4423" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+
+    <!-- Nose -->
+    <ellipse cx="50" cy="48" rx="4" ry="3" fill="#C1403D"/>
+    <circle cx="48" cy="47" r="1" fill="#E07A5F"/>
+
+    <!-- Mouth (two states) -->
+    <path class="haetae-mouth-happy" d="M44 53 Q50 58 56 53" stroke="#6B4423" stroke-width="2" fill="none" stroke-linecap="round"/>
+    <path class="haetae-mouth-neutral" d="M45 54 Q50 55 55 54" stroke="#6B4423" stroke-width="2" fill="none" stroke-linecap="round"/>
+
+    <!-- Cheeks -->
+    <ellipse cx="32" cy="48" rx="5" ry="3" fill="#E07A5F" opacity="0.4"/>
+    <ellipse cx="68" cy="48" rx="5" ry="3" fill="#E07A5F" opacity="0.4"/>
+
+    <!-- Paws -->
+    <ellipse cx="35" cy="78" rx="8" ry="6" fill="#C9A227"/>
+    <ellipse cx="65" cy="78" rx="8" ry="6" fill="#C9A227"/>
+    <circle cx="32" cy="80" r="2" fill="#B8860B"/>
+    <circle cx="35" cy="82" r="2" fill="#B8860B"/>
+    <circle cx="38" cy="80" r="2" fill="#B8860B"/>
+    <circle cx="62" cy="80" r="2" fill="#B8860B"/>
+    <circle cx="65" cy="82" r="2" fill="#B8860B"/>
+    <circle cx="68" cy="80" r="2" fill="#B8860B"/>
+
+    <!-- Tail -->
+    <g class="haetae-tail">
+      <path d="M82 55 Q92 50 88 40" stroke="#B8860B" stroke-width="6" fill="none" stroke-linecap="round"/>
+      <circle cx="88" cy="38" r="6" fill="#B8860B"/>
+    </g>
+  </svg>
+</div>
+
+<!-- Accessories (shown based on page) -->
+<div class="haetae-accessory haetae-accessory-book hidden" style="position: absolute; bottom: 5px; left: -5px; width: 35px; height: 35px; pointer-events: none;">
+  <svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
+    <path d="M5 8 L20 12 L20 35 L5 31 Z" fill="#8B4513" stroke="#5D3A1A" stroke-width="1"/>
+    <path d="M35 8 L20 12 L20 35 L35 31 Z" fill="#A0522D" stroke="#5D3A1A" stroke-width="1"/>
+    <path d="M7 10 L18 13 L18 32 L7 29 Z" fill="#FFF8DC"/>
+    <path d="M33 10 L22 13 L22 32 L33 29 Z" fill="#FFFAF0"/>
+    <line x1="9" y1="15" x2="16" y2="17" stroke="#DDD" stroke-width="0.5"/>
+    <line x1="9" y1="18" x2="16" y2="20" stroke="#DDD" stroke-width="0.5"/>
+    <line x1="9" y1="21" x2="16" y2="23" stroke="#DDD" stroke-width="0.5"/>
+    <line x1="24" y1="17" x2="31" y2="15" stroke="#DDD" stroke-width="0.5"/>
+    <line x1="24" y1="20" x2="31" y2="18" stroke="#DDD" stroke-width="0.5"/>
+    <line x1="20" y1="12" x2="20" y2="35" stroke="#5D3A1A" stroke-width="1.5"/>
+  </svg>
+</div>
+
+<div class="haetae-accessory haetae-accessory-cap hidden" style="position: absolute; top: -8px; left: 50%; transform: translateX(-50%); width: 45px; height: 30px; pointer-events: none;">
+  <svg viewBox="0 0 50 35" xmlns="http://www.w3.org/2000/svg">
+    <polygon points="25,2 48,14 25,26 2,14" fill="#1a1a2e" stroke="#FFD700" stroke-width="1.5"/>
+    <circle cx="25" cy="14" r="3" fill="#FFD700"/>
+    <path d="M25 14 Q35 18 38 28" stroke="#FFD700" stroke-width="1.5" fill="none"/>
+    <rect x="36" y="26" width="5" height="8" rx="1" fill="#FFD700"/>
+    <line x1="36" y1="28" x2="41" y2="28" stroke="#DAA520" stroke-width="0.5"/>
+    <line x1="36" y1="30" x2="41" y2="30" stroke="#DAA520" stroke-width="0.5"/>
+    <line x1="36" y1="32" x2="41" y2="32" stroke="#DAA520" stroke-width="0.5"/>
+  </svg>
+</div>

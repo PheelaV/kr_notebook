@@ -6,6 +6,7 @@ edition = "2024"
 [features]
 default = []
 profiling = []
+testing = []
 
 [dependencies]
 askama = "0.15.0"
