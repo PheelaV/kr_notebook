@@ -1,6 +1,6 @@
 use askama::Template;
 use axum::{
-  extract::State,
+  extract::{Query, State},
   response::{Html, IntoResponse},
   Form,
 };
@@ -140,6 +140,28 @@ pub struct PracticeTemplate {
   pub main_answer: String,
   pub description: Option<String>,
   pub tier: u8,
+  pub mode: String,
+  // Interactive mode fields
+  pub validated: bool,
+  pub is_correct: bool,
+  pub user_answer: String,
+  pub is_multiple_choice: bool,
+  pub choices: Vec<String>,
+}
+
+#[derive(Template)]
+#[template(path = "practice_interactive_card.html")]
+pub struct PracticeInteractiveCardTemplate {
+  pub card_id: i64,
+  pub front: String,
+  pub main_answer: String,
+  pub description: Option<String>,
+  pub tier: u8,
+  pub validated: bool,
+  pub is_correct: bool,
+  pub user_answer: String,
+  pub is_multiple_choice: bool,
+  pub choices: Vec<String>,
 }
 
 pub async fn study_start(State(pool): State<DbPool>) -> impl IntoResponse {
@@ -518,18 +540,41 @@ pub async fn submit_review_interactive(
   }
 }
 
+#[derive(Deserialize)]
+pub struct PracticeQuery {
+  pub mode: Option<String>,
+}
+
 // Practice mode - review cards even when not due
-pub async fn practice_start(State(pool): State<DbPool>) -> impl IntoResponse {
+pub async fn practice_start(
+  State(pool): State<DbPool>,
+  Query(query): Query<PracticeQuery>,
+) -> impl IntoResponse {
   let conn = pool.lock().unwrap();
   let cards = db::get_practice_cards(&conn, 1, None).unwrap_or_default();
+  let mode = query.mode.unwrap_or_else(|| "flip".to_string());
 
   if let Some(card) = cards.first() {
+    let is_korean = is_korean(&card.main_answer);
+    let choices = if is_korean && mode == "interactive" {
+      let all_cards = db::get_unlocked_cards(&conn).unwrap_or_default();
+      generate_choices(card, &all_cards)
+    } else {
+      vec![]
+    };
+
     let template = PracticeTemplate {
       card_id: card.id,
       front: card.front.clone(),
       main_answer: card.main_answer.clone(),
       description: card.description.clone(),
       tier: card.tier,
+      mode,
+      validated: false,
+      is_correct: false,
+      user_answer: String::new(),
+      is_multiple_choice: is_korean,
+      choices,
     };
     Html(template.render().unwrap_or_default())
   } else {
@@ -544,23 +589,94 @@ pub struct PracticeForm {
 
 pub async fn practice_next(
   State(pool): State<DbPool>,
+  Query(query): Query<PracticeQuery>,
   Form(form): Form<PracticeForm>,
 ) -> impl IntoResponse {
   let conn = pool.lock().unwrap();
+  let mode = query.mode.unwrap_or_else(|| "flip".to_string());
 
   // Get next random card, excluding sibling of the just-practiced card
   let cards = db::get_practice_cards(&conn, 1, Some(form.card_id)).unwrap_or_default();
 
   if let Some(next_card) = cards.first() {
-    let template = PracticeCardTemplate {
-      card_id: next_card.id,
-      front: next_card.front.clone(),
-      main_answer: next_card.main_answer.clone(),
-      description: next_card.description.clone(),
-      tier: next_card.tier,
-    };
-    Html(template.render().unwrap_or_default())
+    if mode == "interactive" {
+      let is_korean = is_korean(&next_card.main_answer);
+      let choices = if is_korean {
+        let all_cards = db::get_unlocked_cards(&conn).unwrap_or_default();
+        generate_choices(next_card, &all_cards)
+      } else {
+        vec![]
+      };
+
+      let template = PracticeInteractiveCardTemplate {
+        card_id: next_card.id,
+        front: next_card.front.clone(),
+        main_answer: next_card.main_answer.clone(),
+        description: next_card.description.clone(),
+        tier: next_card.tier,
+        validated: false,
+        is_correct: false,
+        user_answer: String::new(),
+        is_multiple_choice: is_korean,
+        choices,
+      };
+      Html(template.render().unwrap_or_default())
+    } else {
+      let template = PracticeCardTemplate {
+        card_id: next_card.id,
+        front: next_card.front.clone(),
+        main_answer: next_card.main_answer.clone(),
+        description: next_card.description.clone(),
+        tier: next_card.tier,
+      };
+      Html(template.render().unwrap_or_default())
+    }
   } else {
     Html("<p>No more cards available.</p>".to_string())
   }
+}
+
+#[derive(Deserialize)]
+pub struct PracticeValidateForm {
+  pub card_id: i64,
+  pub answer: String,
+}
+
+/// Validate answer in practice mode (no SRS recording)
+pub async fn practice_validate(
+  State(pool): State<DbPool>,
+  Form(form): Form<PracticeValidateForm>,
+) -> impl IntoResponse {
+  let conn = pool.lock().unwrap();
+
+  let card = match db::get_card_by_id(&conn, form.card_id) {
+    Ok(Some(c)) => c,
+    _ => return Html("<p>Card not found.</p>".to_string()),
+  };
+
+  let result = validate_answer(&form.answer, &card.main_answer);
+  let is_correct = matches!(result, crate::validation::AnswerResult::Correct | crate::validation::AnswerResult::CloseEnough);
+
+  let is_korean = is_korean(&card.main_answer);
+  let choices = if is_korean {
+    let all_cards = db::get_unlocked_cards(&conn).unwrap_or_default();
+    generate_choices(&card, &all_cards)
+  } else {
+    vec![]
+  };
+
+  let template = PracticeInteractiveCardTemplate {
+    card_id: card.id,
+    front: card.front.clone(),
+    main_answer: card.main_answer.clone(),
+    description: card.description.clone(),
+    tier: card.tier,
+    validated: true,
+    is_correct,
+    user_answer: form.answer,
+    is_multiple_choice: is_korean,
+    choices,
+  };
+
+  Html(template.render().unwrap_or_default())
 }

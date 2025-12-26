@@ -13,12 +13,21 @@
 
   <div class="card-flip mb-6">
     <div id="card-inner" class="card-inner relative w-full h-72" onclick="this.classList.toggle('flipped')">
-      <div class="card-front absolute inset-0 bg-white dark:bg-gray-800 shadow-lg rounded-xl flex items-center justify-center cursor-pointer">
+      <div class="card-front absolute inset-0 bg-white dark:bg-gray-800 shadow-lg rounded-xl flex flex-col items-center justify-center cursor-pointer p-6 sm:p-10">
+        {% if front.starts_with("Which letter sounds like") %}
+        <div class="text-sm text-gray-500 dark:text-gray-400 mb-2">
+          Which letter sounds like
+        </div>
+        <div class="text-5xl sm:text-7xl font-bold text-gray-900 dark:text-white">
+          {{ front.trim_start_matches("Which letter sounds like '").trim_end_matches("'?") }}
+        </div>
+        {% else %}
         <div class="text-7xl font-bold text-gray-900 dark:text-white">
           {{ front }}
         </div>
+        {% endif %}
       </div>
-      <div class="card-back absolute inset-0 bg-white dark:bg-gray-800 shadow-lg rounded-xl flex flex-col items-center justify-center cursor-pointer p-6">
+      <div class="card-back absolute inset-0 bg-white dark:bg-gray-800 shadow-lg rounded-xl flex flex-col items-center justify-center cursor-pointer p-6 sm:p-10">
         <div class="text-4xl font-bold text-indigo-600 dark:text-indigo-400 mb-3">
           {{ main_answer }}
         </div>
@@ -32,39 +41,39 @@
   </div>
 
   <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">
-    Tap card to reveal answer
+    Tap card or press <kbd class="px-1 py-0.5 bg-gray-200 dark:bg-gray-700 rounded text-xs">Space</kbd> to reveal
   </p>
 
   <div class="grid grid-cols-4 gap-2">
-    <form hx-post="/review" hx-target="#card-container" hx-swap="outerHTML">
+    <form hx-post="/review" hx-target="#card-container" hx-swap="outerHTML" id="form-again">
       <input type="hidden" name="card_id" value="{{ card_id }}">
       <input type="hidden" name="quality" value="0">
       <button type="submit" class="w-full bg-red-500 hover:bg-red-600 text-white font-semibold py-3 px-2 rounded-lg transition-colors text-sm">
-        Again
+        <span class="hidden sm:inline">1: </span>Again
       </button>
     </form>
 
-    <form hx-post="/review" hx-target="#card-container" hx-swap="outerHTML">
+    <form hx-post="/review" hx-target="#card-container" hx-swap="outerHTML" id="form-hard">
       <input type="hidden" name="card_id" value="{{ card_id }}">
       <input type="hidden" name="quality" value="2">
       <button type="submit" class="w-full bg-orange-500 hover:bg-orange-600 text-white font-semibold py-3 px-2 rounded-lg transition-colors text-sm">
-        Hard
+        <span class="hidden sm:inline">2: </span>Hard
       </button>
     </form>
 
-    <form hx-post="/review" hx-target="#card-container" hx-swap="outerHTML">
+    <form hx-post="/review" hx-target="#card-container" hx-swap="outerHTML" id="form-good">
       <input type="hidden" name="card_id" value="{{ card_id }}">
       <input type="hidden" name="quality" value="4">
       <button type="submit" class="w-full bg-green-500 hover:bg-green-600 text-white font-semibold py-3 px-2 rounded-lg transition-colors text-sm">
-        Good
+        <span class="hidden sm:inline">3: </span>Good
       </button>
     </form>
 
-    <form hx-post="/review" hx-target="#card-container" hx-swap="outerHTML">
+    <form hx-post="/review" hx-target="#card-container" hx-swap="outerHTML" id="form-easy">
       <input type="hidden" name="card_id" value="{{ card_id }}">
       <input type="hidden" name="quality" value="5">
       <button type="submit" class="w-full bg-blue-500 hover:bg-blue-600 text-white font-semibold py-3 px-2 rounded-lg transition-colors text-sm">
-        Easy
+        <span class="hidden sm:inline">4: </span>Easy
       </button>
     </form>
   </div>

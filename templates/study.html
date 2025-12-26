@@ -10,4 +10,51 @@
   {% include "no_cards.html" %}
   {% endif %}
 </div>
+
+{% if has_card %}
+<script>
+(function() {
+  function handleStudyKeydown(e) {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+    const cardInner = document.getElementById('card-inner');
+    if (!cardInner) return;
+
+    // Space to flip card
+    if (e.code === 'Space') {
+      e.preventDefault();
+      cardInner.classList.toggle('flipped');
+      return;
+    }
+
+    // Number keys for quality ratings (only when flipped)
+    if (cardInner.classList.contains('flipped')) {
+      const forms = {
+        'Digit1': 'form-again',
+        'Numpad1': 'form-again',
+        'Digit2': 'form-hard',
+        'Numpad2': 'form-hard',
+        'Digit3': 'form-good',
+        'Numpad3': 'form-good',
+        'Digit4': 'form-easy',
+        'Numpad4': 'form-easy'
+      };
+
+      const formId = forms[e.code];
+      if (formId) {
+        e.preventDefault();
+        const form = document.getElementById(formId);
+        if (form) {
+          htmx.trigger(form, 'submit');
+        }
+      }
+    }
+  }
+
+  document.removeEventListener('keydown', window._studyKeyHandler);
+  window._studyKeyHandler = handleStudyKeydown;
+  document.addEventListener('keydown', handleStudyKeydown);
+})();
+</script>
+{% endif %}
 {% endblock %}

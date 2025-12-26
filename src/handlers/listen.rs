@@ -1,0 +1,436 @@
+use askama::Template;
+use axum::{
+    extract::{Query, Form},
+    response::{Html, IntoResponse},
+};
+use rand::prelude::IndexedRandom;
+use serde::Deserialize;
+use std::collections::HashSet;
+use std::fs;
+use std::path::Path;
+
+use super::settings::{has_lesson1, has_lesson2};
+use crate::paths;
+
+/// A syllable with audio info for listening practice
+#[derive(Clone)]
+pub struct ListenSyllable {
+    pub character: String,
+    pub romanization: String,
+    pub audio_path: String,
+}
+
+/// A choice option for the listening quiz
+#[derive(Clone)]
+pub struct ListenChoice {
+    pub character: String,
+    pub romanization: String,
+    pub number: u8,
+}
+
+/// A consonant row containing syllables
+#[derive(Clone)]
+pub struct ListenRow {
+    pub consonant: String,
+    pub romanization: String,
+    pub syllables: Vec<ListenSyllable>,
+}
+
+/// A listening tier (corresponds to a lesson)
+pub struct ListenTier {
+    pub tier: u8,
+    pub lesson_id: String,
+    pub name: String,
+    pub vowels: Vec<String>,
+    pub vowel_romanizations: Vec<String>,
+    pub rows: Vec<ListenRow>,
+    pub total_syllables: usize,
+}
+
+/// Get available syllable audio files for a lesson
+fn get_available_syllables(lesson: &str) -> HashSet<String> {
+    let syllables_dir = paths::syllables_dir(lesson);
+    let syllables_path = Path::new(&syllables_dir);
+
+    if syllables_path.exists() {
+        fs::read_dir(syllables_path)
+            .map(|entries| {
+                entries
+                    .filter_map(|e| e.ok())
+                    .filter_map(|e| {
+                        let path = e.path();
+                        if path.extension().map(|ext| ext == "mp3").unwrap_or(false) {
+                            path.file_stem()
+                                .and_then(|s| s.to_str())
+                                .map(String::from)
+                        } else {
+                            None
+                        }
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    } else {
+        HashSet::new()
+    }
+}
+
+/// Build a listening tier from manifest
+fn build_tier_from_manifest(tier: u8, lesson_id: &str, name: &str) -> Option<ListenTier> {
+    let manifest_path = paths::manifest_path(lesson_id);
+    let manifest_content = fs::read_to_string(&manifest_path).ok()?;
+    let manifest: serde_json::Value = serde_json::from_str(&manifest_content).ok()?;
+
+    let available_syllables = get_available_syllables(lesson_id);
+    if available_syllables.is_empty() {
+        return None;
+    }
+
+    // Extract vowels order
+    let vowels: Vec<String> = manifest["vowels_order"]
+        .as_array()
+        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+        .unwrap_or_default();
+
+    // Vowel romanizations
+    let vowel_romanizations: Vec<String> = vowels
+        .iter()
+        .map(|v| match v.as_str() {
+            "ㅣ" => "i",
+            "ㅏ" => "a",
+            "ㅓ" => "eo",
+            "ㅡ" => "eu",
+            "ㅜ" => "u",
+            "ㅗ" => "o",
+            _ => "",
+        }.to_string())
+        .collect();
+
+    // Extract consonants order
+    let consonants_order: Vec<String> = manifest["consonants_order"]
+        .as_array()
+        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+        .unwrap_or_default();
+
+    let rows_data = &manifest["rows"];
+    let syllable_table = &manifest["syllable_table"];
+
+    let mut rows = Vec::new();
+    let mut total_syllables = 0;
+
+    for c in &consonants_order {
+        if let Some(row) = rows_data.get(c) {
+            let syllables: Vec<ListenSyllable> = row["syllables"]
+                .as_array()
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|s| {
+                            let syllable_char = s.as_str()?;
+                            let rom = syllable_table
+                                .get(syllable_char)
+                                .and_then(|st| st["romanization"].as_str())
+                                .unwrap_or("")
+                                .to_string();
+
+                            // Only include syllables with audio
+                            if available_syllables.contains(&rom) {
+                                Some(ListenSyllable {
+                                    character: syllable_char.to_string(),
+                                    romanization: rom.clone(),
+                                    audio_path: format!("/audio/scraped/htsk/{}/syllables/{}.mp3", lesson_id, rom),
+                                })
+                            } else {
+                                None
+                            }
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+
+            if !syllables.is_empty() {
+                total_syllables += syllables.len();
+                rows.push(ListenRow {
+                    consonant: c.clone(),
+                    romanization: row["romanization"].as_str().unwrap_or("").to_string(),
+                    syllables,
+                });
+            }
+        }
+    }
+
+    if rows.is_empty() {
+        return None;
+    }
+
+    Some(ListenTier {
+        tier,
+        lesson_id: lesson_id.to_string(),
+        name: name.to_string(),
+        vowels,
+        vowel_romanizations,
+        rows,
+        total_syllables,
+    })
+}
+
+/// Get all syllables from a tier as a flat list
+fn get_all_syllables(tier: &ListenTier) -> Vec<(String, String)> {
+    tier.rows
+        .iter()
+        .flat_map(|row| {
+            row.syllables.iter().map(|s| (s.character.clone(), s.audio_path.clone()))
+        })
+        .collect()
+}
+
+/// Pick a random syllable from a tier
+fn pick_random_syllable(tier: &ListenTier) -> Option<(String, String)> {
+    let syllables = get_all_syllables(tier);
+    syllables.choose(&mut rand::rng()).cloned()
+}
+
+/// Generate 4 choices: 1 correct answer + 3 random distractors
+fn generate_choices(tier: &ListenTier, correct_syllable: &str) -> Vec<ListenChoice> {
+    use rand::seq::SliceRandom;
+
+    let all_syllables: Vec<ListenSyllable> = tier.rows
+        .iter()
+        .flat_map(|row| row.syllables.clone())
+        .collect();
+
+    // Find the correct syllable's romanization
+    let correct_rom = all_syllables
+        .iter()
+        .find(|s| s.character == correct_syllable)
+        .map(|s| s.romanization.clone())
+        .unwrap_or_default();
+
+    // Get distractors (syllables that aren't the correct one)
+    let mut distractors: Vec<&ListenSyllable> = all_syllables
+        .iter()
+        .filter(|s| s.character != correct_syllable)
+        .collect();
+
+    // Shuffle and take 3
+    distractors.shuffle(&mut rand::rng());
+    let distractors: Vec<ListenChoice> = distractors
+        .into_iter()
+        .take(3)
+        .map(|s| ListenChoice {
+            character: s.character.clone(),
+            romanization: s.romanization.clone(),
+            number: 0, // Will be assigned after shuffling
+        })
+        .collect();
+
+    // Create the correct choice
+    let correct_choice = ListenChoice {
+        character: correct_syllable.to_string(),
+        romanization: correct_rom,
+        number: 0,
+    };
+
+    // Combine and shuffle all choices
+    let mut choices: Vec<ListenChoice> = vec![correct_choice];
+    choices.extend(distractors);
+    choices.shuffle(&mut rand::rng());
+
+    // Assign numbers 1-4
+    for (i, choice) in choices.iter_mut().enumerate() {
+        choice.number = (i + 1) as u8;
+    }
+
+    choices
+}
+
+// ============ Templates ============
+
+#[derive(Template)]
+#[template(path = "listen/index.html")]
+pub struct ListenIndexTemplate {
+    pub tier1_available: bool,
+    pub tier1_count: usize,
+    pub tier2_available: bool,
+    pub tier2_count: usize,
+}
+
+#[derive(Template)]
+#[template(path = "listen/practice.html")]
+pub struct ListenPracticeTemplate {
+    pub tier: u8,
+    pub tier_name: String,
+    pub choices: Vec<ListenChoice>,
+    pub current_syllable: String,
+    pub current_audio: String,
+    pub correct: u32,
+    pub total: u32,
+    pub show_feedback: bool,
+    pub was_correct: bool,
+    pub correct_answer: String,
+    pub user_answer: String,
+}
+
+// ============ Query/Form structs ============
+
+#[derive(Deserialize)]
+pub struct StartQuery {
+    pub tier: u8,
+}
+
+#[derive(Deserialize)]
+pub struct AnswerForm {
+    pub tier: u8,
+    pub answer: String,
+    pub correct_syllable: String,
+    pub correct: u32,
+    pub total: u32,
+}
+
+#[derive(Deserialize)]
+pub struct SkipQuery {
+    pub tier: u8,
+    pub correct: u32,
+    pub total: u32,
+}
+
+// ============ Handlers ============
+
+/// GET /listen - Tier selection page
+pub async fn listen_index() -> impl IntoResponse {
+    let tier1 = if has_lesson1() {
+        build_tier_from_manifest(1, "lesson1", "Basic Consonants")
+    } else {
+        None
+    };
+
+    let tier2 = if has_lesson2() {
+        build_tier_from_manifest(2, "lesson2", "Tense & Aspirated")
+    } else {
+        None
+    };
+
+    let template = ListenIndexTemplate {
+        tier1_available: tier1.is_some(),
+        tier1_count: tier1.as_ref().map(|t| t.total_syllables).unwrap_or(0),
+        tier2_available: tier2.is_some(),
+        tier2_count: tier2.as_ref().map(|t| t.total_syllables).unwrap_or(0),
+    };
+
+    Html(template.render().unwrap_or_default())
+}
+
+/// GET /listen/start?tier=1 - Start practice for a tier
+pub async fn listen_start(Query(query): Query<StartQuery>) -> impl IntoResponse {
+    let (lesson_id, tier_name) = match query.tier {
+        1 => ("lesson1", "Lesson 1: Basic Consonants"),
+        2 => ("lesson2", "Lesson 2: Tense & Aspirated"),
+        _ => return Html("Invalid tier".to_string()),
+    };
+
+    let tier = match build_tier_from_manifest(query.tier, lesson_id, tier_name) {
+        Some(t) => t,
+        None => return Html("Tier not available".to_string()),
+    };
+
+    let (current_syllable, current_audio) = match pick_random_syllable(&tier) {
+        Some((s, a)) => (s, a),
+        None => return Html("No syllables available".to_string()),
+    };
+
+    let choices = generate_choices(&tier, &current_syllable);
+
+    let template = ListenPracticeTemplate {
+        tier: query.tier,
+        tier_name: tier_name.to_string(),
+        choices,
+        current_syllable,
+        current_audio,
+        correct: 0,
+        total: 0,
+        show_feedback: false,
+        was_correct: false,
+        correct_answer: String::new(),
+        user_answer: String::new(),
+    };
+
+    Html(template.render().unwrap_or_default())
+}
+
+/// POST /listen/answer - Submit answer and get next syllable
+pub async fn listen_answer(Form(form): Form<AnswerForm>) -> impl IntoResponse {
+    let (lesson_id, tier_name) = match form.tier {
+        1 => ("lesson1", "Lesson 1: Basic Consonants"),
+        2 => ("lesson2", "Lesson 2: Tense & Aspirated"),
+        _ => return Html("Invalid tier".to_string()),
+    };
+
+    let tier = match build_tier_from_manifest(form.tier, lesson_id, tier_name) {
+        Some(t) => t,
+        None => return Html("Tier not available".to_string()),
+    };
+
+    let was_correct = form.answer == form.correct_syllable;
+    let new_correct = form.correct + if was_correct { 1 } else { 0 };
+    let new_total = form.total + 1;
+
+    // Pick next syllable
+    let (next_syllable, next_audio) = match pick_random_syllable(&tier) {
+        Some((s, a)) => (s, a),
+        None => return Html("No syllables available".to_string()),
+    };
+
+    let choices = generate_choices(&tier, &next_syllable);
+
+    let template = ListenPracticeTemplate {
+        tier: form.tier,
+        tier_name: tier_name.to_string(),
+        choices,
+        current_syllable: next_syllable,
+        current_audio: next_audio,
+        correct: new_correct,
+        total: new_total,
+        show_feedback: true,
+        was_correct,
+        correct_answer: form.correct_syllable,
+        user_answer: form.answer,
+    };
+
+    Html(template.render().unwrap_or_default())
+}
+
+/// GET /listen/skip - Skip current syllable
+pub async fn listen_skip(Query(query): Query<SkipQuery>) -> impl IntoResponse {
+    let (lesson_id, tier_name) = match query.tier {
+        1 => ("lesson1", "Lesson 1: Basic Consonants"),
+        2 => ("lesson2", "Lesson 2: Tense & Aspirated"),
+        _ => return Html("Invalid tier".to_string()),
+    };
+
+    let tier = match build_tier_from_manifest(query.tier, lesson_id, tier_name) {
+        Some(t) => t,
+        None => return Html("Tier not available".to_string()),
+    };
+
+    let (next_syllable, next_audio) = match pick_random_syllable(&tier) {
+        Some((s, a)) => (s, a),
+        None => return Html("No syllables available".to_string()),
+    };
+
+    let choices = generate_choices(&tier, &next_syllable);
+
+    let template = ListenPracticeTemplate {
+        tier: query.tier,
+        tier_name: tier_name.to_string(),
+        choices,
+        current_syllable: next_syllable,
+        current_audio: next_audio,
+        correct: query.correct,
+        total: query.total,
+        show_feedback: false,
+        was_correct: false,
+        correct_answer: String::new(),
+        user_answer: String::new(),
+    };
+
+    Html(template.render().unwrap_or_default())
+}

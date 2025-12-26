@@ -1,6 +1,7 @@
 pub mod diagnostic;
 pub mod guide;
 pub mod library;
+pub mod listen;
 pub mod progress;
 pub mod pronunciation;
 pub mod reference;
@@ -104,12 +105,13 @@ pub use reference::{
   reference_basics, reference_index, reference_tier1, reference_tier2, reference_tier3,
   reference_tier4,
 };
+pub use listen::{listen_index, listen_start, listen_answer, listen_skip};
 pub use pronunciation::{has_scraped_content, pronunciation_page};
 pub use settings::{
   delete_scraped, delete_scraped_lesson, settings_page, trigger_scrape, trigger_scrape_lesson,
   trigger_segment, trigger_row_segment, update_settings,
 };
 pub use study::{
-  practice_next, practice_start, study_start, submit_review,
+  practice_next, practice_start, practice_validate, study_start, submit_review,
   study_start_interactive, submit_review_interactive, validate_answer_handler,
 };

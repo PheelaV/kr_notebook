@@ -217,6 +217,9 @@
             <a href="/pronunciation" id="nav-pronunciation" class="hidden text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 px-3 py-2 rounded-md text-sm font-medium">
               Pronunciation
             </a>
+            <a href="/listen" id="nav-listen" class="hidden text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 px-3 py-2 rounded-md text-sm font-medium">
+              Listen
+            </a>
             <a href="/library" class="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 px-3 py-2 rounded-md text-sm font-medium">
               Library
             </a>
@@ -263,6 +266,9 @@
           <a href="/pronunciation" id="nav-pronunciation-mobile" class="hidden text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 px-3 py-2 rounded-md text-base font-medium">
             Pronunciation
           </a>
+          <a href="/listen" id="nav-listen-mobile" class="hidden text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 px-3 py-2 rounded-md text-base font-medium">
+            Listen
+          </a>
           <a href="/library" class="block text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 px-3 py-2 rounded-md text-base font-medium">
             Library
           </a>
@@ -300,8 +306,12 @@
           if (response.ok) {
             var navLink = document.getElementById('nav-pronunciation');
             var navLinkMobile = document.getElementById('nav-pronunciation-mobile');
+            var navListen = document.getElementById('nav-listen');
+            var navListenMobile = document.getElementById('nav-listen-mobile');
             if (navLink) navLink.classList.remove('hidden');
             if (navLinkMobile) navLinkMobile.classList.remove('hidden');
+            if (navListen) navListen.classList.remove('hidden');
+            if (navListenMobile) navListenMobile.classList.remove('hidden');
           }
         })
         .catch(function() {

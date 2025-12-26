@@ -25,9 +25,8 @@
     <div id="input-phase">
       {% if is_multiple_choice %}
       <!-- Multiple Choice Mode (for Korean answers) -->
-      <form id="answer-form" hx-post="/validate-answer" hx-target="#card-container" hx-swap="outerHTML">
+      <form id="answer-form" hx-post="/practice-validate" hx-target="#card-container" hx-swap="outerHTML">
         <input type="hidden" name="card_id" value="{{ card_id }}">
-        <input type="hidden" name="hints_used" id="hints-used" value="{{ hints_used }}">
         <input type="hidden" name="answer" id="answer-input" value="">
 
         <div class="grid grid-cols-2 gap-2 sm:gap-3 mb-4">
@@ -53,29 +52,22 @@
         let selectedAnswer = null;
 
         function selectAnswer(btn, answer) {
-          // Clear previous selection
           document.querySelectorAll('.choice-btn').forEach(b => {
             b.classList.remove('border-indigo-500', 'bg-indigo-100', 'dark:bg-indigo-900');
             b.classList.add('border-transparent');
           });
 
-          // Mark this button as selected
           btn.classList.remove('border-transparent');
           btn.classList.add('border-indigo-500', 'bg-indigo-100', 'dark:bg-indigo-900');
 
-          // Set the answer value
           document.getElementById('answer-input').value = answer;
           selectedAnswer = answer;
-
-          // Enable submit button
           document.getElementById('submit-btn').disabled = false;
         }
 
-        // Keyboard navigation for multiple choice
         document.addEventListener('keydown', function(e) {
           if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
 
-          // Number keys 1-4 to select choice
           const keyMap = {'Digit1': 1, 'Digit2': 2, 'Digit3': 3, 'Digit4': 4,
                           'Numpad1': 1, 'Numpad2': 2, 'Numpad3': 3, 'Numpad4': 4};
           if (keyMap[e.code]) {
@@ -87,7 +79,6 @@
             return;
           }
 
-          // Enter to submit
           if (e.code === 'Enter' && selectedAnswer) {
             e.preventDefault();
             document.getElementById('answer-form').requestSubmit();
@@ -96,9 +87,8 @@
       </script>
       {% else %}
       <!-- Text Input Mode (for romanization answers) -->
-      <form id="answer-form" hx-post="/validate-answer" hx-target="#card-container" hx-swap="outerHTML">
+      <form id="answer-form" hx-post="/practice-validate" hx-target="#card-container" hx-swap="outerHTML">
         <input type="hidden" name="card_id" value="{{ card_id }}">
-        <input type="hidden" name="hints_used" id="hints-used" value="{{ hints_used }}">
 
         <div class="mb-4">
           <input type="text"
@@ -110,61 +100,14 @@
                  class="w-full p-3 text-lg text-center border-2 border-gray-300 dark:border-gray-600 rounded-lg focus:border-indigo-500 dark:focus:border-indigo-400 focus:outline-none bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
         </div>
 
-        <div class="grid grid-cols-2 gap-3 mb-4">
-          <button type="submit"
-                  class="w-full bg-indigo-500 hover:bg-indigo-600 text-white font-semibold py-3 px-4 rounded-lg transition-colors">
-            Check
-          </button>
-          <button type="button" id="hint-btn"
-                  onclick="showHint()"
-                  class="w-full bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 font-semibold py-3 px-4 rounded-lg transition-colors">
-            Hint <span class="text-xs opacity-75">(H)</span>
-          </button>
-        </div>
+        <button type="submit"
+                class="w-full bg-indigo-500 hover:bg-indigo-600 text-white font-semibold py-3 px-4 rounded-lg transition-colors">
+          Check
+        </button>
       </form>
 
-      <!-- Hint Display Area -->
-      <div id="hint-area" class="hidden">
-        <div class="p-3 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700 rounded-lg text-amber-800 dark:text-amber-200">
-          <span id="hint-text"></span>
-        </div>
-      </div>
-
       <script>
-        // Hint data passed from server
-        const hints = [
-          "{{ hint_1|escape }}",
-          "{{ hint_2|escape }}",
-          "{{ hint_final|escape }}"
-        ];
-        let currentHint = 0;
-        let hintsUsed = {{ hints_used }};
-
-        function showHint() {
-          const hintArea = document.getElementById('hint-area');
-          const hintText = document.getElementById('hint-text');
-          const hintsUsedInput = document.getElementById('hints-used');
-
-          if (currentHint < hints.length) {
-            hintText.textContent = hints[currentHint];
-            hintArea.classList.remove('hidden');
-            currentHint++;
-            hintsUsed = currentHint;
-            hintsUsedInput.value = hintsUsed;
-          }
-        }
-
-        // Focus input on load
         document.getElementById('answer-input')?.focus();
-
-        // Keyboard shortcut for hint (H key when not in input)
-        document.addEventListener('keydown', function(e) {
-          // H for hint when not focused on input
-          if (e.code === 'KeyH' && document.activeElement.tagName !== 'INPUT') {
-            e.preventDefault();
-            showHint();
-          }
-        });
       </script>
       {% endif %}
     </div>
@@ -207,20 +150,24 @@
         {% endif %}
       </div>
 
-      <form id="next-card-form" hx-post="/review" hx-target="#card-container" hx-swap="outerHTML">
-        <input type="hidden" name="card_id" value="{{ card_id }}">
-        <input type="hidden" name="quality" value="{{ quality }}">
-        <button type="submit"
-                class="w-full bg-indigo-500 hover:bg-indigo-600 text-white font-semibold py-3 px-6 rounded-lg transition-colors text-lg">
-          Next Card <span class="text-sm opacity-75">(Enter)</span>
-        </button>
-      </form>
+      <div class="flex gap-2 sm:gap-3">
+        <a href="/study" class="flex-1 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white font-semibold py-3 px-4 rounded-lg transition-colors text-center">
+          Back to Study
+        </a>
+        <form id="practice-next-form" hx-post="/practice-next?mode=interactive" hx-target="#card-container" hx-swap="outerHTML" class="flex-1">
+          <input type="hidden" name="card_id" value="{{ card_id }}">
+          <button type="submit"
+                  class="w-full bg-indigo-500 hover:bg-indigo-600 text-white font-semibold py-3 px-4 rounded-lg transition-colors">
+            Next <span class="text-sm opacity-75">(Enter)</span>
+          </button>
+        </form>
+      </div>
 
       <script>
         document.addEventListener('keydown', function(e) {
           if (e.code === 'Enter' && e.target.tagName !== 'INPUT') {
             e.preventDefault();
-            const form = document.getElementById('next-card-form');
+            const form = document.getElementById('practice-next-form');
             if (form) {
               htmx.trigger(form, 'submit');
             }

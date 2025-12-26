@@ -13,12 +13,21 @@
 
   <div class="card-flip mb-4 sm:mb-6">
     <div id="card-inner" class="card-inner relative w-full h-56 sm:h-72" onclick="this.classList.toggle('flipped')">
-      <div class="card-front absolute inset-0 bg-white dark:bg-gray-800 shadow-lg rounded-xl flex items-center justify-center cursor-pointer touch-manipulation">
+      <div class="card-front absolute inset-0 bg-white dark:bg-gray-800 shadow-lg rounded-xl flex flex-col items-center justify-center cursor-pointer touch-manipulation p-6 sm:p-10">
+        {% if front.starts_with("Which letter sounds like") %}
+        <div class="text-sm text-gray-500 dark:text-gray-400 mb-2">
+          Which letter sounds like
+        </div>
+        <div class="text-4xl sm:text-6xl font-bold text-gray-900 dark:text-white">
+          {{ front.trim_start_matches("Which letter sounds like '").trim_end_matches("'?") }}
+        </div>
+        {% else %}
         <div class="text-5xl sm:text-7xl font-bold text-gray-900 dark:text-white">
           {{ front }}
         </div>
+        {% endif %}
       </div>
-      <div class="card-back absolute inset-0 bg-white dark:bg-gray-800 shadow-lg rounded-xl flex flex-col items-center justify-center cursor-pointer p-4 sm:p-6 touch-manipulation">
+      <div class="card-back absolute inset-0 bg-white dark:bg-gray-800 shadow-lg rounded-xl flex flex-col items-center justify-center cursor-pointer p-6 sm:p-10 touch-manipulation">
         <div class="text-3xl sm:text-4xl font-bold text-indigo-600 dark:text-indigo-400 mb-2 sm:mb-3">
           {{ main_answer }}
         </div>
@@ -32,14 +41,15 @@
   </div>
 
   <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">
-    Tap card to reveal answer
+    <kbd class="px-1 py-0.5 bg-gray-200 dark:bg-gray-700 rounded text-xs">Space</kbd> flip |
+    <kbd class="px-1 py-0.5 bg-gray-200 dark:bg-gray-700 rounded text-xs">Enter</kbd> next
   </p>
 
   <div class="flex gap-2 sm:gap-3">
     <a href="/study" class="flex-1 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white font-semibold py-3 px-4 rounded-lg transition-colors text-center">
       Back to Study
     </a>
-    <form hx-post="/practice-next" hx-target="#card-container" hx-swap="outerHTML" class="flex-1">
+    <form hx-post="/practice-next" hx-target="#card-container" hx-swap="outerHTML" class="flex-1" id="practice-next-form">
       <input type="hidden" name="card_id" value="{{ card_id }}">
       <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors">
         Next

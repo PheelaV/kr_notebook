@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+
+{% block title %}Listen - Hangul Learn{% endblock %}
+
+{% block content %}
+<div class="max-w-2xl mx-auto">
+  <h1 class="text-2xl font-bold text-gray-900 dark:text-white mb-2">
+    Listening Practice
+  </h1>
+  <p class="text-gray-600 dark:text-gray-400 mb-6">
+    Hear a syllable, identify it in the matrix. Train your ear to distinguish Korean sounds.
+  </p>
+
+  {% if !tier1_available && !tier2_available %}
+  <div class="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
+    <div class="flex items-center gap-2 text-yellow-800 dark:text-yellow-200">
+      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+      </svg>
+      <span class="font-medium">No audio available</span>
+    </div>
+    <p class="mt-2 text-sm text-yellow-700 dark:text-yellow-300">
+      Go to <a href="/settings" class="underline">Settings</a> to scrape and segment pronunciation audio first.
+    </p>
+  </div>
+  {% else %}
+
+  <div class="space-y-4">
+    <!-- Tier 1 -->
+    <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 {% if tier1_available %}hover:shadow-lg transition-shadow{% else %}opacity-50{% endif %}">
+      <div class="flex items-center justify-between">
+        <div>
+          <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+            Tier 1: Basic Consonants
+          </h2>
+          <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">
+            ㄱ ㄴ ㄷ ㄹ ㅁ ㅂ ㅅ ㅈ ㅎ + 6 vowels
+          </p>
+          {% if tier1_available %}
+          <p class="text-sm text-green-600 dark:text-green-400 mt-1">
+            {{ tier1_count }} syllables available
+          </p>
+          {% else %}
+          <p class="text-sm text-gray-400 dark:text-gray-500 mt-1">
+            Audio not available
+          </p>
+          {% endif %}
+        </div>
+        {% if tier1_available %}
+        <a href="/listen/start?tier=1"
+           class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors flex items-center gap-2">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+          Start
+        </a>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Tier 2 -->
+    <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 {% if tier2_available %}hover:shadow-lg transition-shadow{% else %}opacity-50{% endif %}">
+      <div class="flex items-center justify-between">
+        <div>
+          <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+            Tier 2: Tense & Aspirated
+          </h2>
+          <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">
+            ㅇ ㄲ ㅃ ㅉ ㄸ ㅆ ㅋ ㅍ ㅊ ㅌ + 6 vowels
+          </p>
+          {% if tier2_available %}
+          <p class="text-sm text-green-600 dark:text-green-400 mt-1">
+            {{ tier2_count }} syllables available
+          </p>
+          {% else %}
+          <p class="text-sm text-gray-400 dark:text-gray-500 mt-1">
+            Audio not available
+          </p>
+          {% endif %}
+        </div>
+        {% if tier2_available %}
+        <a href="/listen/start?tier=2"
+           class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors flex items-center gap-2">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+          Start
+        </a>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <p class="mt-6 text-xs text-gray-500 dark:text-gray-500 text-center">
+    Audio sourced from howtostudykorean.com
+  </p>
+  {% endif %}
+</div>
+{% endblock %}

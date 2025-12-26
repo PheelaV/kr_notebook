@@ -1,0 +1,241 @@
+{% extends "base.html" %}
+
+{% block title %}Listen - {{ tier_name }}{% endblock %}
+
+{% block content %}
+<div class="max-w-2xl mx-auto">
+  <!-- Header with score and controls -->
+  <div class="flex flex-wrap items-center justify-between gap-4 mb-6">
+    <div>
+      <h1 class="text-xl font-bold text-gray-900 dark:text-white">
+        {{ tier_name }}
+      </h1>
+      <p class="text-sm text-gray-500 dark:text-gray-400">
+        Identify the syllable you hear
+      </p>
+    </div>
+
+    <div class="flex items-center gap-4">
+      <!-- Score -->
+      <div class="text-center">
+        <div class="text-2xl font-bold {% if total > 0 %}{% if correct * 100 / total >= 80 %}text-green-600 dark:text-green-400{% elif correct * 100 / total >= 50 %}text-yellow-600 dark:text-yellow-400{% else %}text-red-600 dark:text-red-400{% endif %}{% else %}text-gray-600 dark:text-gray-400{% endif %}">
+          {{ correct }}/{{ total }}
+        </div>
+        <div class="text-xs text-gray-500 dark:text-gray-400">correct</div>
+      </div>
+
+      <!-- Replay button -->
+      <button onclick="replayAudio()"
+              class="px-3 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors flex items-center gap-2">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+        </svg>
+        <span class="hidden sm:inline">Replay</span>
+      </button>
+
+      <!-- Toggle romanization -->
+      <button onclick="toggleRomanization()"
+              id="rom-toggle"
+              class="px-3 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors text-sm"
+              title="Toggle romanization display">
+        <span id="rom-toggle-text">Hide Rom</span>
+      </button>
+
+      <!-- Back button -->
+      <a href="/listen" class="px-3 py-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors">
+        Back
+      </a>
+    </div>
+  </div>
+
+  <!-- Feedback message -->
+  {% if show_feedback %}
+  <div id="feedback" class="mb-6 p-4 rounded-lg {% if was_correct %}bg-green-100 dark:bg-green-900/30 border border-green-300 dark:border-green-700{% else %}bg-red-100 dark:bg-red-900/30 border border-red-300 dark:border-red-700{% endif %}">
+    {% if was_correct %}
+    <div class="flex items-center justify-between">
+      <div class="flex items-center gap-2 text-green-800 dark:text-green-200">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+        </svg>
+        <span class="font-medium text-lg">Correct!</span>
+        <span class="text-3xl ml-2">{{ correct_answer }}</span>
+      </div>
+      <span class="text-sm text-green-700 dark:text-green-300">Press Enter to continue</span>
+    </div>
+    {% else %}
+    <div class="flex items-center justify-between">
+      <div class="flex items-center gap-2 text-red-800 dark:text-red-200">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+        </svg>
+        <span class="font-medium text-lg">Incorrect.</span>
+        <span class="ml-2">You selected <span class="text-xl">{{ user_answer }}</span>, correct was <span class="text-3xl font-bold">{{ correct_answer }}</span></span>
+      </div>
+      <span class="text-sm text-red-700 dark:text-red-300">Press Enter to continue</span>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <!-- Choice buttons -->
+  <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
+    <form id="answer-form" method="POST" action="/listen/answer">
+      <input type="hidden" name="tier" value="{{ tier }}">
+      <input type="hidden" name="correct_syllable" value="{{ current_syllable }}">
+      <input type="hidden" name="correct" value="{{ correct }}">
+      <input type="hidden" name="total" value="{{ total }}">
+      <input type="hidden" name="answer" id="answer-input" value="">
+
+      <div class="grid grid-cols-2 gap-4">
+        {% for choice in choices %}
+        <button type="button"
+                id="choice-{{ choice.number }}"
+                onclick="selectChoice('{{ choice.character }}', {{ choice.number }})"
+                class="choice-btn relative p-6 text-center rounded-xl border-2 border-gray-200 dark:border-gray-600 hover:border-indigo-400 dark:hover:border-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                data-syllable="{{ choice.character }}"
+                data-number="{{ choice.number }}">
+          <!-- Number badge -->
+          <span class="absolute top-2 left-2 w-6 h-6 flex items-center justify-center text-sm font-medium text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-gray-700 rounded">
+            {{ choice.number }}
+          </span>
+          <div class="flex flex-col items-center">
+            <span class="text-4xl font-medium text-gray-900 dark:text-white">{{ choice.character }}</span>
+            <span class="text-sm text-gray-500 dark:text-gray-400 mt-1 rom-text">{{ choice.romanization }}</span>
+          </div>
+        </button>
+        {% endfor %}
+      </div>
+
+      <!-- Keyboard hints -->
+      <div class="mt-6 text-center text-sm text-gray-500 dark:text-gray-400">
+        <span class="inline-flex items-center gap-1">
+          <kbd class="px-2 py-1 bg-gray-100 dark:bg-gray-700 rounded text-xs">1-4</kbd> select
+        </span>
+        <span class="mx-2">|</span>
+        <span class="inline-flex items-center gap-1">
+          <kbd class="px-2 py-1 bg-gray-100 dark:bg-gray-700 rounded text-xs">Enter</kbd> confirm
+        </span>
+        <span class="mx-2">|</span>
+        <span class="inline-flex items-center gap-1">
+          <kbd class="px-2 py-1 bg-gray-100 dark:bg-gray-700 rounded text-xs">Space</kbd> replay
+        </span>
+      </div>
+    </form>
+  </div>
+
+  <p class="mt-4 text-xs text-gray-500 dark:text-gray-500 text-center">
+    Audio sourced from howtostudykorean.com
+  </p>
+</div>
+
+<!-- Hidden audio player -->
+<audio id="audio-player" style="display:none;"></audio>
+
+<script>
+  const audioPath = '{{ current_audio }}';
+  const audioPlayer = document.getElementById('audio-player');
+  const showFeedback = {{ show_feedback }};
+  let selectedChoice = null;
+
+  // Auto-play on page load
+  window.addEventListener('DOMContentLoaded', function() {
+    playAudio();
+    applyRomanizationSetting();
+  });
+
+  // Keyboard navigation
+  document.addEventListener('keydown', function(e) {
+    // Ignore if typing in input
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+    // Space to replay audio
+    if (e.code === 'Space') {
+      e.preventDefault();
+      replayAudio();
+      return;
+    }
+
+    // If showing feedback, Enter continues to next
+    if (showFeedback && e.code === 'Enter') {
+      e.preventDefault();
+      window.location.href = '/listen/skip?tier={{ tier }}&correct={{ correct }}&total={{ total }}';
+      return;
+    }
+
+    // Number keys 1-4 to select
+    if (['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Numpad1', 'Numpad2', 'Numpad3', 'Numpad4'].includes(e.code)) {
+      e.preventDefault();
+      const num = parseInt(e.code.replace('Digit', '').replace('Numpad', ''));
+      const btn = document.getElementById('choice-' + num);
+      if (btn) {
+        selectChoice(btn.dataset.syllable, num);
+      }
+      return;
+    }
+
+    // Enter to confirm selection
+    if (e.code === 'Enter' && selectedChoice !== null) {
+      e.preventDefault();
+      submitAnswer(selectedChoice);
+    }
+  });
+
+  function playAudio() {
+    audioPlayer.src = audioPath;
+    audioPlayer.play().catch(function(err) {
+      console.log('Audio playback failed:', err);
+    });
+  }
+
+  function replayAudio() {
+    audioPlayer.currentTime = 0;
+    audioPlayer.play().catch(function(err) {
+      console.log('Audio playback failed:', err);
+    });
+  }
+
+  function selectChoice(syllable, number) {
+    // Clear previous selection
+    document.querySelectorAll('.choice-btn').forEach(btn => {
+      btn.classList.remove('border-indigo-500', 'bg-indigo-100', 'dark:bg-indigo-900/40');
+      btn.classList.add('border-gray-200', 'dark:border-gray-600');
+    });
+
+    // Highlight selected
+    const btn = document.getElementById('choice-' + number);
+    if (btn) {
+      btn.classList.remove('border-gray-200', 'dark:border-gray-600');
+      btn.classList.add('border-indigo-500', 'bg-indigo-100', 'dark:bg-indigo-900/40');
+    }
+
+    selectedChoice = syllable;
+  }
+
+  function submitAnswer(syllable) {
+    document.getElementById('answer-input').value = syllable;
+    document.getElementById('answer-form').submit();
+  }
+
+  // Romanization toggle
+  function applyRomanizationSetting() {
+    const hidden = localStorage.getItem('listenHideRom') === 'true';
+    const romTexts = document.querySelectorAll('.rom-text');
+    const toggleText = document.getElementById('rom-toggle-text');
+
+    romTexts.forEach(el => {
+      el.style.visibility = hidden ? 'hidden' : 'visible';
+    });
+
+    if (toggleText) {
+      toggleText.textContent = hidden ? 'Show Rom' : 'Hide Rom';
+    }
+  }
+
+  function toggleRomanization() {
+    const current = localStorage.getItem('listenHideRom') === 'true';
+    localStorage.setItem('listenHideRom', !current);
+    applyRomanizationSetting();
+  }
+</script>
+{% endblock %}

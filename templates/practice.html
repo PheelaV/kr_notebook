@@ -3,15 +3,67 @@
 {% block title %}Practice - Hangul Learn{% endblock %}
 
 {% block content %}
-<div class="max-w-lg mx-auto" id="study-container">
+<div class="max-w-lg mx-auto" id="study-container" data-practice-mode="{{ mode }}">
   <div class="mb-4 text-center">
-    <span class="inline-block bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200 text-sm font-medium px-3 py-1 rounded-full">
-      Practice Mode
-    </span>
-    <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+    <div class="flex items-center justify-center gap-3 mb-2">
+      <span class="inline-block bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200 text-sm font-medium px-3 py-1 rounded-full">
+        Practice Mode
+      </span>
+      <!-- Mode toggle -->
+      <div class="inline-flex rounded-lg border border-gray-300 dark:border-gray-600 overflow-hidden text-sm">
+        <a href="/practice?mode=flip"
+           class="px-3 py-1 {% if mode == "flip" %}bg-indigo-600 text-white{% else %}bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700{% endif %} transition-colors">
+          Flip
+        </a>
+        <a href="/practice?mode=interactive"
+           class="px-3 py-1 {% if mode == "interactive" %}bg-indigo-600 text-white{% else %}bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700{% endif %} transition-colors">
+          Interactive
+        </a>
+      </div>
+    </div>
+    <p class="text-xs text-gray-500 dark:text-gray-400">
       Reviews don't affect scheduling
     </p>
   </div>
+  {% if mode == "interactive" %}
+  {% include "practice_interactive_card.html" %}
+  {% else %}
   {% include "practice_card.html" %}
+  {% endif %}
 </div>
+
+{% if mode == "flip" %}
+<script>
+(function() {
+  // Single event listener for flip mode keyboard navigation
+  function handlePracticeKeydown(e) {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+    const cardInner = document.getElementById('card-inner');
+    if (!cardInner) return;
+
+    // Space to flip card
+    if (e.code === 'Space') {
+      e.preventDefault();
+      cardInner.classList.toggle('flipped');
+      return;
+    }
+
+    // Enter to go to next card
+    if (e.code === 'Enter') {
+      e.preventDefault();
+      const form = document.getElementById('practice-next-form');
+      if (form) {
+        htmx.trigger(form, 'submit');
+      }
+    }
+  }
+
+  // Remove any existing listener first (in case of page re-render)
+  document.removeEventListener('keydown', window._practiceKeyHandler);
+  window._practiceKeyHandler = handlePracticeKeydown;
+  document.addEventListener('keydown', handlePracticeKeydown);
+})();
+</script>
+{% endif %}
 {% endblock %}
