@@ -22,10 +22,12 @@ Thumbs.db
 *.db-shm
 *.db-wal
 *.db.backup
-data/
 
-# Keep data directory structure
-!data/.gitkeep
+# Data directory - ignore most, but allow scraped manifests
+data/*
+!data/scraped/
+data/scraped/**/*.mp3
+!data/scraped/**/manifest.json
 
 # Local/personal directories
 MY_LOCAL_github_pages/

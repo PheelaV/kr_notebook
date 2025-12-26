@@ -99,6 +99,242 @@
     </button>
   </form>
 
+  <!-- External Content Section -->
+  <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6">
+    <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+      Pronunciation Audio
+    </h2>
+    <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">
+      Download audio from howtostudykorean.com. Requires Python 3.8+ and uv.
+    </p>
+
+    <!-- Lesson Cards with Audio Preview -->
+    {% for lesson in lesson_audio %}
+    <div class="mb-4 p-4 rounded-lg border bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <svg class="w-5 h-5 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+          </svg>
+          <span class="font-medium text-gray-900 dark:text-white">{{ lesson.lesson_name }}</span>
+        </div>
+        <div class="flex gap-2">
+          <button type="button" onclick="toggleLessonPreview('{{ lesson.lesson_id }}')"
+                  class="px-3 py-1.5 text-sm text-indigo-600 dark:text-indigo-400 hover:underline">
+            Preview
+          </button>
+          <a href="/pronunciation" class="px-3 py-1.5 text-sm text-indigo-600 dark:text-indigo-400 hover:underline">
+            View
+          </a>
+          <form method="POST" action="/settings/delete-scraped/{% if lesson.lesson_id == "lesson1" %}1{% else %}2{% endif %}" class="inline">
+            <button type="button" onclick="if(confirm('Delete {{ lesson.lesson_name }} audio?')) this.form.submit();"
+                    class="px-3 py-1.5 text-sm bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 rounded hover:bg-red-200 dark:hover:bg-red-900/50">
+              Delete
+            </button>
+          </form>
+        </div>
+      </div>
+
+      <!-- Expandable Audio Preview -->
+      <div id="preview-{{ lesson.lesson_id }}" class="hidden mt-4 border-t border-green-200 dark:border-green-800 pt-4">
+        <p class="text-sm text-gray-600 dark:text-gray-400 mb-3">
+          Compare source audio with segments. Adjust parameters per row if needed.
+        </p>
+
+        <!-- Parameter Legend -->
+        <details class="mb-3 text-xs text-gray-500 dark:text-gray-400">
+          <summary class="cursor-pointer hover:text-gray-700 dark:hover:text-gray-300">Parameter legend</summary>
+          <div class="mt-2 p-2 bg-gray-50 dark:bg-gray-700/50 rounded grid grid-cols-2 gap-x-4 gap-y-1">
+            <div><span class="font-mono font-bold">s</span> = min silence (ms)</div>
+            <div><span class="font-mono font-bold">t</span> = threshold (dBFS)</div>
+            <div><span class="font-mono font-bold">P</span> = padding (ms)</div>
+            <div><span class="font-mono font-bold">skip</span> = skip first N segments</div>
+          </div>
+        </details>
+
+        <div class="space-y-3">
+          {% for row in lesson.rows %}
+          <div class="p-3 bg-white dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-700">
+            <div class="flex items-center gap-3 mb-2">
+              <!-- Row label -->
+              <span class="w-12 text-center">
+                <span class="text-xl font-bold text-gray-900 dark:text-white">{{ row.character }}</span>
+                <span class="block text-xs text-gray-500">{{ row.romanization }}</span>
+              </span>
+
+              <!-- Play buttons -->
+              <button onclick="playAudio('{{ lesson.lesson_id }}', 'rows/row_{{ row.romanization }}.mp3')"
+                      class="flex items-center gap-1 px-2 py-1 text-sm bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 rounded hover:bg-indigo-200"
+                      title="Play original source">
+                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M8 5v14l11-7z"/>
+                </svg>
+                Source
+              </button>
+
+              <button onclick="playSegmentsSequence('{{ lesson.lesson_id }}', {{ row.segments_json }})"
+                      class="flex items-center gap-1 px-2 py-1 text-sm bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded hover:bg-green-200"
+                      title="Play segments in sequence">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                </svg>
+                Segments ({{ row.available_segments.len() }}/{{ row.syllables.len() }})
+              </button>
+
+              <!-- Toggle params button -->
+              <button onclick="toggleRowParams('{{ lesson.lesson_id }}-{{ row.romanization }}')"
+                      class="text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">
+                Params
+              </button>
+            </div>
+
+            <!-- Per-row parameters (hidden by default) -->
+            <div id="params-{{ lesson.lesson_id }}-{{ row.romanization }}" class="hidden mt-2 p-2 bg-gray-50 dark:bg-gray-700/50 rounded">
+              <form id="segment-form-{{ lesson.lesson_id }}-{{ row.romanization }}"
+                    onsubmit="return submitSegmentForm(event, '{{ lesson.lesson_id }}', '{{ row.romanization }}')"
+                    class="flex flex-wrap items-center gap-2">
+                <input type="hidden" name="lesson" value="{{ lesson.lesson_id }}">
+                <input type="hidden" name="row" value="{{ row.romanization }}">
+
+                <label class="text-xs text-gray-600 dark:text-gray-400">
+                  <span class="font-mono font-bold">s</span>
+                  <input type="number" name="min_silence" value="{{ row.params.min_silence }}"
+                         class="w-14 px-1 py-0.5 text-xs border rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                </label>
+
+                <label class="text-xs text-gray-600 dark:text-gray-400">
+                  <span class="font-mono font-bold">t</span>
+                  <input type="number" name="threshold" value="{{ row.params.threshold }}"
+                         class="w-14 px-1 py-0.5 text-xs border rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                </label>
+
+                <label class="text-xs text-gray-600 dark:text-gray-400">
+                  <span class="font-mono font-bold">P</span>
+                  <input type="number" name="padding" value="{{ row.params.padding }}"
+                         class="w-14 px-1 py-0.5 text-xs border rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                </label>
+
+                <label class="text-xs text-gray-600 dark:text-gray-400">
+                  <span class="font-mono font-bold">skip</span>
+                  <input type="number" name="skip_first" value="{{ row.params.skip_first }}" min="0"
+                         class="w-10 px-1 py-0.5 text-xs border rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                </label>
+
+                <button type="submit" id="btn-{{ lesson.lesson_id }}-{{ row.romanization }}"
+                        class="px-2 py-0.5 text-xs bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-50">
+                  Re-segment
+                </button>
+                <span id="status-{{ lesson.lesson_id }}-{{ row.romanization }}" class="text-xs"></span>
+              </form>
+            </div>
+
+            <!-- Individual segment buttons -->
+            <div class="flex gap-1 flex-wrap mt-2">
+              {% for seg in row.available_segments %}
+              <button onclick="playAudio('{{ lesson.lesson_id }}', 'syllables/{{ seg }}.mp3')"
+                      class="px-1.5 py-0.5 text-xs bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded hover:bg-gray-200 dark:hover:bg-gray-600"
+                      title="Play {{ seg }}">
+                {{ seg }}
+              </button>
+              {% endfor %}
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+
+    <!-- Lesson 1 if not downloaded -->
+    {% if !has_lesson1 %}
+    <div class="mb-4 p-4 rounded-lg border bg-gray-50 dark:bg-gray-700/50 border-gray-200 dark:border-gray-600">
+      <div class="flex items-center justify-between">
+        <div>
+          <div class="flex items-center gap-2">
+            <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
+            </svg>
+            <span class="font-medium text-gray-900 dark:text-white">Lesson 1: Basic Consonants & Vowels</span>
+          </div>
+          <p class="text-sm text-gray-500 dark:text-gray-400 mt-1 ml-7">
+            9 consonants + 6 vowels
+          </p>
+        </div>
+        <form method="POST" action="/settings/scrape/1" class="inline">
+          <button type="button" onclick="this.disabled=true; this.textContent='Downloading...'; this.form.submit();"
+                  class="px-3 py-1.5 text-sm bg-indigo-600 text-white rounded hover:bg-indigo-700">
+            Download
+          </button>
+        </form>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Lesson 2 if not downloaded -->
+    {% if !has_lesson2 %}
+    <div class="mb-4 p-4 rounded-lg border bg-gray-50 dark:bg-gray-700/50 border-gray-200 dark:border-gray-600">
+      <div class="flex items-center justify-between">
+        <div>
+          <div class="flex items-center gap-2">
+            <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
+            </svg>
+            <span class="font-medium text-gray-900 dark:text-white">Lesson 2: Additional Consonants</span>
+          </div>
+          <p class="text-sm text-gray-500 dark:text-gray-400 mt-1 ml-7">
+            10 consonants: tense + aspirated
+          </p>
+        </div>
+        <form method="POST" action="/settings/scrape/2" class="inline">
+          <button type="button" onclick="this.disabled=true; this.textContent='Downloading...'; this.form.submit();"
+                  class="px-3 py-1.5 text-sm bg-indigo-600 text-white rounded hover:bg-indigo-700">
+            Download
+          </button>
+        </form>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Bulk Actions -->
+    <div class="flex flex-wrap gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
+      {% if has_lesson1 || has_lesson2 %}
+      <form method="POST" action="/settings/delete-scraped" class="inline">
+        <button type="button" onclick="if(confirm('Delete ALL pronunciation audio?')) this.form.submit();"
+                class="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm">
+          Delete All
+        </button>
+      </form>
+      {% endif %}
+
+      {% if !has_lesson1 || !has_lesson2 %}
+      <form method="POST" action="/settings/scrape" class="inline">
+        <button type="button" onclick="this.disabled=true; this.textContent='Downloading...'; this.form.submit();"
+                class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-sm">
+          Download All
+        </button>
+      </form>
+      {% endif %}
+    </div>
+
+    <!-- Global Re-segment Section -->
+    {% if has_lesson1 || has_lesson2 %}
+    <div class="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+      <p class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+        Re-segment all with default padding
+      </p>
+      <form method="POST" action="/settings/segment" class="flex items-center gap-3">
+        <label class="text-sm text-gray-600 dark:text-gray-400">Padding (ms):</label>
+        <input type="number" name="padding" value="75" min="0" max="200" step="5"
+               class="w-20 px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+        <button type="button" onclick="this.disabled=true; this.textContent='Segmenting...'; this.form.submit();"
+                class="px-3 py-1.5 text-sm bg-gray-600 text-white rounded hover:bg-gray-700">
+          Re-segment All
+        </button>
+      </form>
+    </div>
+    {% endif %}
+  </div>
+
 </div>
 
 <script>
@@ -117,6 +353,115 @@
     if (tierOptions) {
       tierOptions.classList.toggle('hidden', !allTiersToggle.checked);
     }
+  }
+
+  // Toggle lesson preview section
+  function toggleLessonPreview(lessonId) {
+    const section = document.getElementById('preview-' + lessonId);
+    if (section) {
+      section.classList.toggle('hidden');
+    }
+  }
+
+  // Toggle row params section
+  function toggleRowParams(rowId) {
+    const section = document.getElementById('params-' + rowId);
+    if (section) {
+      section.classList.toggle('hidden');
+    }
+  }
+
+  // Audio player for settings preview
+  let settingsAudio = null;
+  let segmentQueue = [];
+  let currentSegmentIndex = 0;
+
+  function playAudio(lesson, path) {
+    stopAudio();
+    settingsAudio = new Audio('/audio/scraped/htsk/' + lesson + '/' + path);
+    settingsAudio.play().catch(function(err) {
+      console.log('Audio playback failed:', err);
+    });
+  }
+
+  function stopAudio() {
+    if (settingsAudio) {
+      settingsAudio.pause();
+      settingsAudio.currentTime = 0;
+    }
+    segmentQueue = [];
+    currentSegmentIndex = 0;
+  }
+
+  function playSegmentsSequence(lesson, segments) {
+    stopAudio();
+    if (!segments || segments.length === 0) return;
+
+    segmentQueue = segments.map(seg => '/audio/scraped/htsk/' + lesson + '/syllables/' + seg + '.mp3');
+    currentSegmentIndex = 0;
+    playNextSegment();
+  }
+
+  function playNextSegment() {
+    if (currentSegmentIndex >= segmentQueue.length) {
+      segmentQueue = [];
+      currentSegmentIndex = 0;
+      return;
+    }
+
+    settingsAudio = new Audio(segmentQueue[currentSegmentIndex]);
+    settingsAudio.onended = function() {
+      currentSegmentIndex++;
+      setTimeout(playNextSegment, 100);
+    };
+    settingsAudio.play().catch(function(err) {
+      console.log('Segment playback failed:', err);
+      currentSegmentIndex++;
+      playNextSegment();
+    });
+  }
+
+  // Async form submission for re-segmentation
+  function submitSegmentForm(event, lesson, row) {
+    event.preventDefault();
+
+    const form = document.getElementById('segment-form-' + lesson + '-' + row);
+    const btn = document.getElementById('btn-' + lesson + '-' + row);
+    const status = document.getElementById('status-' + lesson + '-' + row);
+
+    // Show loading state
+    btn.disabled = true;
+    btn.textContent = 'Segmenting...';
+    status.textContent = '';
+    status.className = 'text-xs';
+
+    const formData = new FormData(form);
+
+    fetch('/settings/segment-row', {
+      method: 'POST',
+      body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+      btn.disabled = false;
+      btn.textContent = 'Re-segment';
+
+      if (data.success) {
+        status.textContent = data.message;
+        status.className = 'text-xs text-green-600 dark:text-green-400';
+      } else {
+        status.textContent = data.message;
+        status.className = 'text-xs text-red-600 dark:text-red-400';
+      }
+    })
+    .catch(err => {
+      btn.disabled = false;
+      btn.textContent = 'Re-segment';
+      status.textContent = 'Request failed';
+      status.className = 'text-xs text-red-600 dark:text-red-400';
+    });
+
+    return false;
   }
 </script>
 {% endblock %}

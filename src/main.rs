@@ -1,5 +1,6 @@
 use axum::{routing::get, routing::post, Router};
 use std::path::Path;
+use tower_http::services::ServeDir;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use kr_notebook::{db, handlers, profiling};
@@ -44,8 +45,16 @@ async fn main() {
     .route("/reference/tier3", get(handlers::reference_tier3))
     .route("/reference/tier4", get(handlers::reference_tier4))
     .route("/library", get(handlers::library))
+    .route("/pronunciation", get(handlers::pronunciation_page))
     .route("/settings", get(handlers::settings_page).post(handlers::update_settings))
+    .route("/settings/scrape", post(handlers::trigger_scrape))
+    .route("/settings/scrape/{lesson}", post(handlers::trigger_scrape_lesson))
+    .route("/settings/delete-scraped", post(handlers::delete_scraped))
+    .route("/settings/delete-scraped/{lesson}", post(handlers::delete_scraped_lesson))
+    .route("/settings/segment", post(handlers::trigger_segment))
+    .route("/settings/segment-row", post(handlers::trigger_row_segment))
     .route("/diagnostic", post(handlers::log_diagnostic))
+    .nest_service("/audio/scraped", ServeDir::new("data/scraped"))
     .with_state(pool);
 
   let listener = tokio::net::TcpListener::bind("0.0.0.0:3000")

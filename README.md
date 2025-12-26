@@ -86,9 +86,10 @@ cargo clippy
 | `/` | Home - cards due, quick stats |
 | `/study` | Interactive study session |
 | `/progress` | Detailed progress by tier, problem areas |
-| `/settings` | Algorithm settings, tier selection |
+| `/settings` | Algorithm settings, tier selection, audio management |
 | `/library` | Browse all unlocked characters |
 | `/reference` | Hangul reference charts |
+| `/pronunciation` | Interactive syllable audio matrix (if audio available) |
 | `/guide` | How to use the app |
 
 ### Study Flow
@@ -119,8 +120,12 @@ kr_notebook/
 │   │   ├── mod.rs           # Index handler
 │   │   ├── study.rs         # Study session logic
 │   │   ├── progress.rs      # Progress & analytics
-│   │   ├── settings.rs      # Settings management
+│   │   ├── settings.rs      # Settings + audio management
+│   │   ├── pronunciation.rs # Pronunciation matrix
 │   │   └── library.rs       # Character library
+│   ├── profiling/           # Optional profiling (--features profiling)
+│   │   ├── event.rs         # Event types
+│   │   └── logger.rs        # JSONL file logger
 │   ├── srs/                 # Spaced repetition
 │   │   ├── fsrs_scheduler.rs # FSRS implementation
 │   │   └── sm2.rs           # SM-2 fallback
@@ -146,6 +151,51 @@ Free Spaced Repetition Scheduler - tracks memory stability and difficulty per ca
 Classic SuperMemo 2 algorithm:
 - **Rating**: Again (0), Hard (2), Good (4), Easy (5)
 - **Ease factor**: Adjusts based on performance (min 1.3)
+
+## Pronunciation Audio
+
+The app supports pronunciation audio from howtostudykorean.com (Lessons 1-2).
+
+### Setup (requires Python 3.8+ and uv)
+
+```bash
+cd machine-learning
+uv run kr-scraper lesson1    # Download Lesson 1 audio
+uv run kr-scraper lesson2    # Download Lesson 2 audio
+uv run kr-scraper segment    # Segment into syllables
+```
+
+### Manifest Distribution
+
+Manifests (`data/scraped/htsk/*/manifest.json`) contain segmentation parameters
+and are version-controlled. After cloning, regenerate audio:
+
+```bash
+cd machine-learning
+uv run kr-scraper lesson1 && uv run kr-scraper lesson2 && uv run kr-scraper segment
+```
+
+This recreates audio files using saved parameters from the manifest.
+
+### Per-Row Tuning
+
+Settings → Pronunciation Audio → Preview allows adjusting parameters per row:
+- **s**: Min silence (ms) - gap detection threshold
+- **t**: Threshold (dBFS) - silence detection sensitivity
+- **P**: Padding (ms) - buffer before/after segments
+- **skip**: Skip first N segments (for noisy audio)
+
+## Profiling
+
+Enable profiling to log handler timing and DB queries:
+
+```bash
+cargo run --features profiling
+```
+
+Outputs:
+- Console: `[PROFILE] {...}` JSON lines
+- File: `data/profile_{timestamp}.jsonl`
 
 ## Documentation
 

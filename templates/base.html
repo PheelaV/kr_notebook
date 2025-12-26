@@ -214,6 +214,9 @@
             <a href="/reference" class="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 px-3 py-2 rounded-md text-sm font-medium">
               Reference
             </a>
+            <a href="/pronunciation" id="nav-pronunciation" class="hidden text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 px-3 py-2 rounded-md text-sm font-medium">
+              Pronunciation
+            </a>
             <a href="/library" class="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 px-3 py-2 rounded-md text-sm font-medium">
               Library
             </a>
@@ -257,6 +260,9 @@
           <a href="/reference" class="block text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 px-3 py-2 rounded-md text-base font-medium">
             Reference
           </a>
+          <a href="/pronunciation" id="nav-pronunciation-mobile" class="hidden text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 px-3 py-2 rounded-md text-base font-medium">
+            Pronunciation
+          </a>
           <a href="/library" class="block text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 px-3 py-2 rounded-md text-base font-medium">
             Library
           </a>
@@ -286,6 +292,22 @@
       iconClosed.classList.toggle('hidden');
       iconOpen.classList.toggle('hidden');
     }
+
+    // Check if pronunciation content exists and show/hide nav links
+    (function() {
+      fetch('/audio/scraped/htsk/lesson1/manifest.json', { method: 'HEAD' })
+        .then(function(response) {
+          if (response.ok) {
+            var navLink = document.getElementById('nav-pronunciation');
+            var navLinkMobile = document.getElementById('nav-pronunciation-mobile');
+            if (navLink) navLink.classList.remove('hidden');
+            if (navLinkMobile) navLinkMobile.classList.remove('hidden');
+          }
+        })
+        .catch(function() {
+          // Content not available, keep links hidden
+        });
+    })();
   </script>
 
   <!-- Baby Haetae Mascot (hidden on small screens, smaller on medium) -->

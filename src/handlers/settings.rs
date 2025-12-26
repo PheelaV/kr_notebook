@@ -1,20 +1,199 @@
 use askama::Template;
 use axum::{
-  extract::State,
-  response::{Html, Redirect},
+  extract::{Path, State},
+  response::{Html, Json, Redirect},
   Form,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
+use std::fs;
+use std::path::Path as StdPath;
+use std::process::Command;
 
 use crate::db::{self, DbPool};
 #[cfg(feature = "profiling")]
 use crate::profiling::EventType;
+
+/// Check if lesson1 content exists
+pub fn has_lesson1() -> bool {
+  StdPath::new("data/scraped/htsk/lesson1/manifest.json").exists()
+}
+
+/// Check if lesson2 content exists
+pub fn has_lesson2() -> bool {
+  StdPath::new("data/scraped/htsk/lesson2/manifest.json").exists()
+}
+
+/// Count segmented syllables for a lesson
+fn count_syllables(lesson: &str) -> usize {
+  let path = format!("data/scraped/htsk/{}/syllables", lesson);
+  std::fs::read_dir(path)
+    .map(|entries| {
+      entries
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().extension().map(|ext| ext == "mp3").unwrap_or(false))
+        .count()
+    })
+    .unwrap_or(0)
+}
+
+/// Segmentation parameters for a row
+pub struct SegmentParams {
+  pub min_silence: i32,
+  pub threshold: i32,
+  pub padding: i32,
+  pub skip_first: i32,
+  pub skip_last: i32,
+}
+
+impl Default for SegmentParams {
+  fn default() -> Self {
+    Self {
+      min_silence: 200,
+      threshold: -40,
+      padding: 75,
+      skip_first: 0,
+      skip_last: 0,
+    }
+  }
+}
+
+/// Audio row info for preview
+pub struct AudioRow {
+  pub character: String,
+  pub romanization: String,
+  pub syllables: Vec<String>,            // Syllable romanizations
+  pub available_segments: Vec<String>,   // Which segments have audio files
+  pub segments_json: String,             // JSON array for JS
+  pub params: SegmentParams,             // Current segmentation parameters
+}
+
+/// Lesson audio preview data
+pub struct LessonAudio {
+  pub lesson_id: String,
+  pub lesson_name: String,
+  pub rows: Vec<AudioRow>,
+  pub has_columns: bool,  // Lesson 1 has column audio
+}
+
+/// Get audio preview data for a lesson
+fn get_lesson_audio(lesson_id: &str, lesson_name: &str) -> Option<LessonAudio> {
+  let manifest_path = format!("data/scraped/htsk/{}/manifest.json", lesson_id);
+  let manifest_content = fs::read_to_string(&manifest_path).ok()?;
+  let manifest: serde_json::Value = serde_json::from_str(&manifest_content).ok()?;
+
+  // Get available syllable files
+  let syllables_dir = format!("data/scraped/htsk/{}/syllables", lesson_id);
+  let available_segments: HashSet<String> = fs::read_dir(&syllables_dir)
+    .map(|entries| {
+      entries
+        .filter_map(|e| e.ok())
+        .filter_map(|e| {
+          let path = e.path();
+          if path.extension().map(|ext| ext == "mp3").unwrap_or(false) {
+            path.file_stem().and_then(|s| s.to_str()).map(String::from)
+          } else {
+            None
+          }
+        })
+        .collect()
+    })
+    .unwrap_or_default();
+
+  let rows_data = manifest.get("rows")?;
+  let syllable_table = manifest.get("syllable_table")?;
+  let consonants_order: Vec<String> = manifest["consonants_order"]
+    .as_array()
+    .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+    .unwrap_or_default();
+
+  let mut rows = Vec::new();
+  for consonant in consonants_order {
+    if let Some(row) = rows_data.get(&consonant) {
+      let romanization = row["romanization"].as_str().unwrap_or("").to_string();
+      let syllables: Vec<String> = row["syllables"]
+        .as_array()
+        .map(|arr| {
+          arr.iter()
+            .filter_map(|s| {
+              let syllable_char = s.as_str()?;
+              syllable_table
+                .get(syllable_char)
+                .and_then(|st| st["romanization"].as_str())
+                .map(String::from)
+            })
+            .collect()
+        })
+        .unwrap_or_default();
+
+      let available: Vec<String> = syllables
+        .iter()
+        .filter(|s| available_segments.contains(*s))
+        .cloned()
+        .collect();
+
+      let segments_json = serde_json::to_string(&available).unwrap_or_else(|_| "[]".to_string());
+
+      // Read segment_params from manifest
+      let segment_params = row.get("segment_params");
+      let params = SegmentParams {
+        min_silence: segment_params
+          .and_then(|p| p.get("min_silence"))
+          .and_then(|v| v.as_i64())
+          .unwrap_or(200) as i32,
+        threshold: segment_params
+          .and_then(|p| p.get("threshold"))
+          .and_then(|v| v.as_i64())
+          .unwrap_or(-40) as i32,
+        padding: segment_params
+          .and_then(|p| p.get("padding"))
+          .and_then(|v| v.as_i64())
+          .unwrap_or(75) as i32,
+        skip_first: segment_params
+          .and_then(|p| p.get("skip_first"))
+          .and_then(|v| v.as_i64())
+          .unwrap_or(0) as i32,
+        skip_last: segment_params
+          .and_then(|p| p.get("skip_last"))
+          .and_then(|v| v.as_i64())
+          .unwrap_or(0) as i32,
+      };
+
+      rows.push(AudioRow {
+        character: consonant,
+        romanization,
+        syllables,
+        available_segments: available,
+        segments_json,
+        params,
+      });
+    }
+  }
+
+  let has_columns = manifest.get("columns").map(|c| !c.is_null()).unwrap_or(false);
+
+  Some(LessonAudio {
+    lesson_id: lesson_id.to_string(),
+    lesson_name: lesson_name.to_string(),
+    rows,
+    has_columns,
+  })
+}
 
 #[derive(Template)]
 #[template(path = "settings.html")]
 pub struct SettingsTemplate {
   pub all_tiers_unlocked: bool,
   pub enabled_tiers: Vec<u8>,
+  pub has_scraped_content: bool,
+  pub has_pronunciation: bool,
+  // Per-lesson status
+  pub has_lesson1: bool,
+  pub has_lesson2: bool,
+  pub lesson1_syllables: usize,
+  pub lesson2_syllables: usize,
+  // Audio preview data
+  pub lesson_audio: Vec<LessonAudio>,
 }
 
 pub async fn settings_page(State(pool): State<DbPool>) -> Html<String> {
@@ -28,9 +207,33 @@ pub async fn settings_page(State(pool): State<DbPool>) -> Html<String> {
   let all_tiers_unlocked = db::get_all_tiers_unlocked(&conn).unwrap_or(false);
   let enabled_tiers = db::get_enabled_tiers(&conn).unwrap_or_else(|_| vec![1, 2, 3, 4]);
 
+  let has_l1 = has_lesson1();
+  let has_l2 = has_lesson2();
+  let scraped_content_available = has_l1 || has_l2;
+
+  // Get audio preview data
+  let mut lesson_audio = Vec::new();
+  if has_l1 {
+    if let Some(audio) = get_lesson_audio("lesson1", "Lesson 1: Basic Consonants & Vowels") {
+      lesson_audio.push(audio);
+    }
+  }
+  if has_l2 {
+    if let Some(audio) = get_lesson_audio("lesson2", "Lesson 2: Additional Consonants") {
+      lesson_audio.push(audio);
+    }
+  }
+
   let template = SettingsTemplate {
     all_tiers_unlocked,
     enabled_tiers,
+    has_scraped_content: scraped_content_available,
+    has_pronunciation: scraped_content_available,
+    has_lesson1: has_l1,
+    has_lesson2: has_l2,
+    lesson1_syllables: if has_l1 { count_syllables("lesson1") } else { 0 },
+    lesson2_syllables: if has_l2 { count_syllables("lesson2") } else { 0 },
+    lesson_audio,
   };
   Html(template.render().unwrap_or_default())
 }
@@ -100,4 +303,191 @@ pub async fn update_settings(
   });
 
   Redirect::to("/settings")
+}
+
+/// Scrape all lessons
+pub async fn trigger_scrape() -> Redirect {
+  #[cfg(feature = "profiling")]
+  crate::profile_log!(EventType::HandlerStart {
+    route: "/settings/scrape".into(),
+    method: "POST".into(),
+  });
+
+  // Run the scraper commands for all lessons
+  let _ = Command::new("sh")
+    .args([
+      "-c",
+      "cd machine-learning && uv run kr-scraper lesson1 && uv run kr-scraper lesson2 && uv run kr-scraper segment --padding 75",
+    ])
+    .output();
+
+  Redirect::to("/settings")
+}
+
+/// Scrape a specific lesson
+pub async fn trigger_scrape_lesson(Path(lesson): Path<String>) -> Redirect {
+  #[cfg(feature = "profiling")]
+  crate::profile_log!(EventType::HandlerStart {
+    route: format!("/settings/scrape/{}", lesson).into(),
+    method: "POST".into(),
+  });
+
+  let cmd = match lesson.as_str() {
+    "1" => "cd machine-learning && uv run kr-scraper lesson1 && uv run kr-scraper segment -l 1 --padding 75",
+    "2" => "cd machine-learning && uv run kr-scraper lesson2 && uv run kr-scraper segment -l 2 --padding 75",
+    _ => return Redirect::to("/settings"),
+  };
+
+  let _ = Command::new("sh").args(["-c", cmd]).output();
+
+  Redirect::to("/settings")
+}
+
+/// Delete all scraped content
+pub async fn delete_scraped() -> Redirect {
+  #[cfg(feature = "profiling")]
+  crate::profile_log!(EventType::HandlerStart {
+    route: "/settings/delete-scraped".into(),
+    method: "POST".into(),
+  });
+
+  // Run the clean command
+  let _ = Command::new("sh")
+    .args(["-c", "cd machine-learning && uv run kr-scraper clean --yes"])
+    .output();
+
+  Redirect::to("/settings")
+}
+
+/// Delete a specific lesson's content
+pub async fn delete_scraped_lesson(Path(lesson): Path<String>) -> Redirect {
+  #[cfg(feature = "profiling")]
+  crate::profile_log!(EventType::HandlerStart {
+    route: format!("/settings/delete-scraped/{}", lesson).into(),
+    method: "POST".into(),
+  });
+
+  let path = match lesson.as_str() {
+    "1" => "data/scraped/htsk/lesson1",
+    "2" => "data/scraped/htsk/lesson2",
+    _ => return Redirect::to("/settings"),
+  };
+
+  let _ = std::fs::remove_dir_all(path);
+
+  Redirect::to("/settings")
+}
+
+/// Re-segment syllables with custom padding
+#[derive(Deserialize)]
+pub struct SegmentForm {
+  #[serde(default = "default_segment_padding")]
+  pub padding: u32,
+}
+
+fn default_segment_padding() -> u32 {
+  75
+}
+
+pub async fn trigger_segment(Form(form): Form<SegmentForm>) -> Redirect {
+  #[cfg(feature = "profiling")]
+  crate::profile_log!(EventType::HandlerStart {
+    route: "/settings/segment".into(),
+    method: "POST".into(),
+  });
+
+  let cmd = format!(
+    "cd machine-learning && uv run kr-scraper segment --padding {}",
+    form.padding
+  );
+
+  let _ = Command::new("sh").args(["-c", &cmd]).output();
+
+  Redirect::to("/settings")
+}
+
+/// Re-segment a single row with custom parameters
+#[derive(Deserialize)]
+pub struct RowSegmentForm {
+  pub lesson: String,
+  pub row: String,
+  #[serde(default = "row_default_min_silence")]
+  pub min_silence: i32,
+  #[serde(default = "row_default_threshold")]
+  pub threshold: i32,
+  #[serde(default = "row_default_padding")]
+  pub padding: i32,
+  #[serde(default)]
+  pub skip_first: i32,
+  #[serde(default)]
+  pub skip_last: i32,
+}
+
+fn row_default_min_silence() -> i32 {
+  200
+}
+
+fn row_default_threshold() -> i32 {
+  -40
+}
+
+fn row_default_padding() -> i32 {
+  75
+}
+
+/// Response for row segmentation
+#[derive(Serialize)]
+pub struct RowSegmentResponse {
+  pub success: bool,
+  pub segments_saved: usize,
+  pub message: String,
+}
+
+pub async fn trigger_row_segment(Form(form): Form<RowSegmentForm>) -> Json<RowSegmentResponse> {
+  #[cfg(feature = "profiling")]
+  crate::profile_log!(EventType::HandlerStart {
+    route: "/settings/segment-row".into(),
+    method: "POST".into(),
+  });
+
+  // Build the Python command to segment a single row - output JSON for parsing
+  let cmd = format!(
+    "cd machine-learning && uv run python -c \"import json; from kr_scraper.segment import segment_single_row; from pathlib import Path; result = segment_single_row(Path('../data/scraped/htsk/{}'), '{}', min_silence={}, threshold={}, padding={}, skip_first={}, skip_last={}); print(json.dumps({{'saved': result.segments_saved if result else 0, 'found': result.segments_found if result else 0}}))\"",
+    form.lesson, form.row, form.min_silence, form.threshold, form.padding, form.skip_first, form.skip_last
+  );
+
+  match Command::new("sh").args(["-c", &cmd]).output() {
+    Ok(output) if output.status.success() => {
+      let stdout = String::from_utf8_lossy(&output.stdout);
+      // Parse the JSON output from Python
+      if let Ok(result) = serde_json::from_str::<serde_json::Value>(stdout.trim()) {
+        let saved = result["saved"].as_u64().unwrap_or(0) as usize;
+        let found = result["found"].as_u64().unwrap_or(0) as usize;
+        Json(RowSegmentResponse {
+          success: true,
+          segments_saved: saved,
+          message: format!("{}/{} segments", saved, found),
+        })
+      } else {
+        Json(RowSegmentResponse {
+          success: true,
+          segments_saved: 0,
+          message: "Segmented (count unknown)".to_string(),
+        })
+      }
+    }
+    Ok(output) => {
+      let stderr = String::from_utf8_lossy(&output.stderr);
+      Json(RowSegmentResponse {
+        success: false,
+        segments_saved: 0,
+        message: format!("Failed: {}", stderr.lines().next().unwrap_or("unknown error")),
+      })
+    }
+    Err(e) => Json(RowSegmentResponse {
+      success: false,
+      segments_saved: 0,
+      message: format!("Failed to run: {}", e),
+    }),
+  }
 }
