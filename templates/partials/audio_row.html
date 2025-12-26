@@ -1,0 +1,95 @@
+<div id="audio-row-{{ lesson_id }}-{{ row.romanization }}" class="p-3 bg-white dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-700">
+  <div class="flex items-center gap-3 mb-2">
+    <!-- Row label -->
+    <span class="w-12 text-center">
+      <span class="text-xl font-bold text-gray-900 dark:text-white">{{ row.character }}</span>
+      <span class="block text-xs text-gray-500">{{ row.romanization }}</span>
+    </span>
+
+    <!-- Play buttons -->
+    <button onclick="playAudio('{{ lesson_id }}', 'rows/row_{{ row.romanization }}.mp3')"
+            class="flex items-center gap-1 px-2 py-1 text-sm bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 rounded hover:bg-indigo-200"
+            title="Play original source">
+      <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+        <path d="M8 5v14l11-7z"/>
+      </svg>
+      Source
+    </button>
+
+    <button onclick="playSegmentsSequence('{{ lesson_id }}', {{ row.segments_json }})"
+            class="flex items-center gap-1 px-2 py-1 text-sm bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded hover:bg-green-200"
+            title="Play segments in sequence">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+      </svg>
+      Segments ({{ row.available_segments.len() }}/{{ row.syllables.len() }})
+    </button>
+
+    <!-- Toggle params button -->
+    <button onclick="toggleRowParams('{{ lesson_id }}-{{ row.romanization }}')"
+            class="text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">
+      Params
+    </button>
+
+    {% if !status_message.is_empty() %}
+    <span class="text-xs {% if status_success %}text-green-600 dark:text-green-400{% else %}text-red-600 dark:text-red-400{% endif %}">
+      {{ status_message }}
+    </span>
+    {% endif %}
+  </div>
+
+  <!-- Per-row parameters (visible after re-segment) -->
+  <div id="params-{{ lesson_id }}-{{ row.romanization }}" class="{% if !show_params %}hidden{% endif %} mt-2 p-2 bg-gray-50 dark:bg-gray-700/50 rounded">
+    <form hx-post="/settings/segment-row"
+          hx-target="#audio-row-{{ lesson_id }}-{{ row.romanization }}"
+          hx-swap="outerHTML"
+          hx-indicator="#spinner-{{ lesson_id }}-{{ row.romanization }}"
+          class="flex flex-wrap items-center gap-2">
+      <input type="hidden" name="lesson" value="{{ lesson_id }}">
+      <input type="hidden" name="row" value="{{ row.romanization }}">
+
+      <label class="text-xs text-gray-600 dark:text-gray-400">
+        <span class="font-mono font-bold">s</span>
+        <input type="number" name="min_silence" value="{{ row.params.min_silence }}"
+               class="w-14 px-1 py-0.5 text-xs border rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+      </label>
+
+      <label class="text-xs text-gray-600 dark:text-gray-400">
+        <span class="font-mono font-bold">t</span>
+        <input type="number" name="threshold" value="{{ row.params.threshold }}"
+               class="w-14 px-1 py-0.5 text-xs border rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+      </label>
+
+      <label class="text-xs text-gray-600 dark:text-gray-400">
+        <span class="font-mono font-bold">P</span>
+        <input type="number" name="padding" value="{{ row.params.padding }}"
+               class="w-14 px-1 py-0.5 text-xs border rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+      </label>
+
+      <label class="text-xs text-gray-600 dark:text-gray-400">
+        <span class="font-mono font-bold">skip</span>
+        <input type="number" name="skip_first" value="{{ row.params.skip_first }}" min="0"
+               class="w-10 px-1 py-0.5 text-xs border rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+      </label>
+
+      <button type="submit"
+              class="px-2 py-0.5 text-xs bg-indigo-600 text-white rounded hover:bg-indigo-700">
+        Re-segment
+      </button>
+      <span id="spinner-{{ lesson_id }}-{{ row.romanization }}" class="htmx-indicator text-xs text-gray-500">
+        Segmenting...
+      </span>
+    </form>
+  </div>
+
+  <!-- Individual segment buttons -->
+  <div class="flex gap-1 flex-wrap mt-2">
+    {% for seg in row.available_segments %}
+    <button onclick="playAudio('{{ lesson_id }}', 'syllables/{{ seg }}.mp3')"
+            class="px-1.5 py-0.5 text-xs bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded hover:bg-gray-200 dark:hover:bg-gray-600"
+            title="Play {{ seg }}">
+      {{ seg }}
+    </button>
+    {% endfor %}
+  </div>
+</div>

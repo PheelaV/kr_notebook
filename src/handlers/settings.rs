@@ -1,10 +1,10 @@
 use askama::Template;
 use axum::{
   extract::{Path, State},
-  response::{Html, Json, Redirect},
+  response::{Html, Redirect},
   Form,
 };
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::collections::HashSet;
 use std::fs;
 use std::path::Path as StdPath;
@@ -389,21 +389,73 @@ fn default_segment_padding() -> u32 {
   75
 }
 
-pub async fn trigger_segment(Form(form): Form<SegmentForm>) -> Redirect {
+pub async fn trigger_segment(Form(form): Form<SegmentForm>) -> Html<String> {
   #[cfg(feature = "profiling")]
-  crate::profile_log!(EventType::HandlerStart {
-    route: "/settings/segment".into(),
-    method: "POST".into(),
-  });
+  crate::profile_log!(
+    EventType::Custom {
+      name: "segment_all".into(),
+      data: serde_json::json!({
+        "padding": form.padding,
+      }),
+    }
+  );
 
+  // Use --reset to ignore saved manifest params and apply CLI values
   let cmd = format!(
-    "cd machine-learning && uv run kr-scraper segment --padding {}",
+    "cd machine-learning && uv run kr-scraper segment --padding {} --reset 2>&1",
     form.padding
   );
 
-  let _ = Command::new("sh").args(["-c", &cmd]).output();
+  match Command::new("sh").args(["-c", &cmd]).output() {
+    Ok(output) if output.status.success() => {
+      let stdout = String::from_utf8_lossy(&output.stdout);
+      // Count "OK" occurrences for a rough success count
+      let ok_count = stdout.matches(" OK").count();
 
-  Redirect::to("/settings")
+      // Build response with status message + out-of-band row updates
+      let mut html = format!(
+        r#"<span class="text-green-600 dark:text-green-400">{} rows segmented with P={}ms</span>"#,
+        ok_count, form.padding
+      );
+
+      // Add out-of-band swaps for all rows in both lessons
+      for lesson_id in ["lesson1", "lesson2"] {
+        if let Some(lesson_audio) = get_lesson_audio(lesson_id, "") {
+          for row in lesson_audio.rows {
+            let row_template = AudioRowTemplate {
+              lesson_id: lesson_id.to_string(),
+              row,
+              show_params: false,
+              status_message: String::new(),
+              status_success: false,
+            };
+            if let Ok(row_html) = row_template.render() {
+              // Wrap with hx-swap-oob to update each row in place
+              html.push_str(&format!(
+                r#"<div hx-swap-oob="outerHTML:#audio-row-{}-{}">{}</div>"#,
+                lesson_id, row_template.row.romanization, row_html
+              ));
+            }
+          }
+        }
+      }
+
+      Html(html)
+    }
+    Ok(output) => {
+      let stderr = String::from_utf8_lossy(&output.stderr);
+      let stdout = String::from_utf8_lossy(&output.stdout);
+      let error = stderr.lines().chain(stdout.lines()).next().unwrap_or("unknown error");
+      Html(format!(
+        r#"<span class="text-red-600 dark:text-red-400">Failed: {}</span>"#,
+        error
+      ))
+    }
+    Err(e) => Html(format!(
+      r#"<span class="text-red-600 dark:text-red-400">Failed: {}</span>"#,
+      e
+    )),
+  }
 }
 
 /// Re-segment a single row with custom parameters
@@ -435,20 +487,33 @@ fn row_default_padding() -> i32 {
   75
 }
 
-/// Response for row segmentation
-#[derive(Serialize)]
-pub struct RowSegmentResponse {
-  pub success: bool,
-  pub segments_saved: usize,
-  pub message: String,
+/// Template for a single audio row (HTMX partial)
+#[derive(Template)]
+#[template(path = "partials/audio_row.html")]
+pub struct AudioRowTemplate {
+  pub lesson_id: String,
+  pub row: AudioRow,
+  pub show_params: bool,
+  pub status_message: String, // Empty string means no message
+  pub status_success: bool,
 }
 
-pub async fn trigger_row_segment(Form(form): Form<RowSegmentForm>) -> Json<RowSegmentResponse> {
+pub async fn trigger_row_segment(Form(form): Form<RowSegmentForm>) -> Html<String> {
   #[cfg(feature = "profiling")]
-  crate::profile_log!(EventType::HandlerStart {
-    route: "/settings/segment-row".into(),
-    method: "POST".into(),
-  });
+  crate::profile_log!(
+    EventType::Custom {
+      name: "segment_row".into(),
+      data: serde_json::json!({
+        "lesson": form.lesson,
+        "row": form.row,
+        "min_silence": form.min_silence,
+        "threshold": form.threshold,
+        "padding": form.padding,
+        "skip_first": form.skip_first,
+        "skip_last": form.skip_last,
+      }),
+    }
+  );
 
   // Build the Python command to segment a single row - output JSON for parsing
   let cmd = format!(
@@ -456,38 +521,139 @@ pub async fn trigger_row_segment(Form(form): Form<RowSegmentForm>) -> Json<RowSe
     form.lesson, form.row, form.min_silence, form.threshold, form.padding, form.skip_first, form.skip_last
   );
 
-  match Command::new("sh").args(["-c", &cmd]).output() {
+  let (status_message, status_success) = match Command::new("sh").args(["-c", &cmd]).output() {
     Ok(output) if output.status.success() => {
       let stdout = String::from_utf8_lossy(&output.stdout);
-      // Parse the JSON output from Python
       if let Ok(result) = serde_json::from_str::<serde_json::Value>(stdout.trim()) {
-        let saved = result["saved"].as_u64().unwrap_or(0) as usize;
-        let found = result["found"].as_u64().unwrap_or(0) as usize;
-        Json(RowSegmentResponse {
-          success: true,
-          segments_saved: saved,
-          message: format!("{}/{} segments", saved, found),
-        })
+        let saved = result["saved"].as_u64().unwrap_or(0);
+        let found = result["found"].as_u64().unwrap_or(0);
+        (format!("{}/{} segments", saved, found), true)
       } else {
-        Json(RowSegmentResponse {
-          success: true,
-          segments_saved: 0,
-          message: "Segmented (count unknown)".to_string(),
-        })
+        ("Segmented".to_string(), true)
       }
     }
     Ok(output) => {
       let stderr = String::from_utf8_lossy(&output.stderr);
-      Json(RowSegmentResponse {
-        success: false,
-        segments_saved: 0,
-        message: format!("Failed: {}", stderr.lines().next().unwrap_or("unknown error")),
-      })
+      (
+        format!("Failed: {}", stderr.lines().next().unwrap_or("unknown error")),
+        false,
+      )
     }
-    Err(e) => Json(RowSegmentResponse {
-      success: false,
-      segments_saved: 0,
-      message: format!("Failed to run: {}", e),
+    Err(e) => (format!("Failed: {}", e), false),
+  };
+
+  // Re-read the updated row data from manifest
+  let row_data = get_audio_row(&form.lesson, &form.row);
+
+  let template = AudioRowTemplate {
+    lesson_id: form.lesson,
+    row: row_data.unwrap_or_else(|| AudioRow {
+      character: form.row.clone(),
+      romanization: form.row,
+      syllables: vec![],
+      available_segments: vec![],
+      segments_json: "[]".to_string(),
+      params: SegmentParams::default(),
     }),
+    show_params: true, // Keep params visible after re-segment
+    status_message,
+    status_success,
+  };
+
+  Html(template.render().unwrap_or_default())
+}
+
+/// Get a single audio row from the manifest
+fn get_audio_row(lesson_id: &str, row_romanization: &str) -> Option<AudioRow> {
+  let manifest_path = format!("data/scraped/htsk/{}/manifest.json", lesson_id);
+  let manifest_content = fs::read_to_string(&manifest_path).ok()?;
+  let manifest: serde_json::Value = serde_json::from_str(&manifest_content).ok()?;
+
+  // Get available syllable files
+  let syllables_dir = format!("data/scraped/htsk/{}/syllables", lesson_id);
+  let available_segments: HashSet<String> = fs::read_dir(&syllables_dir)
+    .map(|entries| {
+      entries
+        .filter_map(|e| e.ok())
+        .filter_map(|e| {
+          let path = e.path();
+          if path.extension().map(|ext| ext == "mp3").unwrap_or(false) {
+            path.file_stem().and_then(|s| s.to_str()).map(String::from)
+          } else {
+            None
+          }
+        })
+        .collect()
+    })
+    .unwrap_or_default();
+
+  let rows = manifest.get("rows")?;
+  let syllable_table = manifest.get("syllable_table")?;
+
+  // Find the row by romanization
+  for (char, info) in rows.as_object()?.iter() {
+    let romanization = info["romanization"].as_str().unwrap_or("");
+    if romanization != row_romanization {
+      continue;
+    }
+
+    let syllables: Vec<String> = info["syllables"]
+      .as_array()
+      .map(|arr| {
+        arr
+          .iter()
+          .filter_map(|s| {
+            let syllable_char = s.as_str()?;
+            syllable_table
+              .get(syllable_char)
+              .and_then(|st| st["romanization"].as_str())
+              .map(String::from)
+          })
+          .collect()
+      })
+      .unwrap_or_default();
+
+    let available: Vec<String> = syllables
+      .iter()
+      .filter(|s| available_segments.contains(*s))
+      .cloned()
+      .collect();
+
+    let segments_json = serde_json::to_string(&available).unwrap_or_else(|_| "[]".to_string());
+
+    let segment_params = info.get("segment_params");
+    let params = SegmentParams {
+      min_silence: segment_params
+        .and_then(|p| p.get("min_silence"))
+        .and_then(|v| v.as_i64())
+        .unwrap_or(200) as i32,
+      threshold: segment_params
+        .and_then(|p| p.get("threshold"))
+        .and_then(|v| v.as_i64())
+        .unwrap_or(-40) as i32,
+      padding: segment_params
+        .and_then(|p| p.get("padding"))
+        .and_then(|v| v.as_i64())
+        .unwrap_or(75) as i32,
+      skip_first: segment_params
+        .and_then(|p| p.get("skip_first"))
+        .and_then(|v| v.as_i64())
+        .unwrap_or(0) as i32,
+      skip_last: segment_params
+        .and_then(|p| p.get("skip_last"))
+        .and_then(|v| v.as_i64())
+        .unwrap_or(0) as i32,
+    };
+
+    return Some(AudioRow {
+      character: char.clone(),
+      romanization: romanization.to_string(),
+      syllables,
+      available_segments: available,
+      segments_json,
+      params,
+    });
   }
+
+  None
 }

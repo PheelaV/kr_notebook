@@ -154,91 +154,11 @@
 
         <div class="space-y-3">
           {% for row in lesson.rows %}
-          <div class="p-3 bg-white dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-700">
-            <div class="flex items-center gap-3 mb-2">
-              <!-- Row label -->
-              <span class="w-12 text-center">
-                <span class="text-xl font-bold text-gray-900 dark:text-white">{{ row.character }}</span>
-                <span class="block text-xs text-gray-500">{{ row.romanization }}</span>
-              </span>
-
-              <!-- Play buttons -->
-              <button onclick="playAudio('{{ lesson.lesson_id }}', 'rows/row_{{ row.romanization }}.mp3')"
-                      class="flex items-center gap-1 px-2 py-1 text-sm bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 rounded hover:bg-indigo-200"
-                      title="Play original source">
-                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M8 5v14l11-7z"/>
-                </svg>
-                Source
-              </button>
-
-              <button onclick="playSegmentsSequence('{{ lesson.lesson_id }}', {{ row.segments_json }})"
-                      class="flex items-center gap-1 px-2 py-1 text-sm bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded hover:bg-green-200"
-                      title="Play segments in sequence">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
-                </svg>
-                Segments ({{ row.available_segments.len() }}/{{ row.syllables.len() }})
-              </button>
-
-              <!-- Toggle params button -->
-              <button onclick="toggleRowParams('{{ lesson.lesson_id }}-{{ row.romanization }}')"
-                      class="text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">
-                Params
-              </button>
-            </div>
-
-            <!-- Per-row parameters (hidden by default) -->
-            <div id="params-{{ lesson.lesson_id }}-{{ row.romanization }}" class="hidden mt-2 p-2 bg-gray-50 dark:bg-gray-700/50 rounded">
-              <form id="segment-form-{{ lesson.lesson_id }}-{{ row.romanization }}"
-                    onsubmit="return submitSegmentForm(event, '{{ lesson.lesson_id }}', '{{ row.romanization }}')"
-                    class="flex flex-wrap items-center gap-2">
-                <input type="hidden" name="lesson" value="{{ lesson.lesson_id }}">
-                <input type="hidden" name="row" value="{{ row.romanization }}">
-
-                <label class="text-xs text-gray-600 dark:text-gray-400">
-                  <span class="font-mono font-bold">s</span>
-                  <input type="number" name="min_silence" value="{{ row.params.min_silence }}"
-                         class="w-14 px-1 py-0.5 text-xs border rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
-                </label>
-
-                <label class="text-xs text-gray-600 dark:text-gray-400">
-                  <span class="font-mono font-bold">t</span>
-                  <input type="number" name="threshold" value="{{ row.params.threshold }}"
-                         class="w-14 px-1 py-0.5 text-xs border rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
-                </label>
-
-                <label class="text-xs text-gray-600 dark:text-gray-400">
-                  <span class="font-mono font-bold">P</span>
-                  <input type="number" name="padding" value="{{ row.params.padding }}"
-                         class="w-14 px-1 py-0.5 text-xs border rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
-                </label>
-
-                <label class="text-xs text-gray-600 dark:text-gray-400">
-                  <span class="font-mono font-bold">skip</span>
-                  <input type="number" name="skip_first" value="{{ row.params.skip_first }}" min="0"
-                         class="w-10 px-1 py-0.5 text-xs border rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
-                </label>
-
-                <button type="submit" id="btn-{{ lesson.lesson_id }}-{{ row.romanization }}"
-                        class="px-2 py-0.5 text-xs bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-50">
-                  Re-segment
-                </button>
-                <span id="status-{{ lesson.lesson_id }}-{{ row.romanization }}" class="text-xs"></span>
-              </form>
-            </div>
-
-            <!-- Individual segment buttons -->
-            <div class="flex gap-1 flex-wrap mt-2">
-              {% for seg in row.available_segments %}
-              <button onclick="playAudio('{{ lesson.lesson_id }}', 'syllables/{{ seg }}.mp3')"
-                      class="px-1.5 py-0.5 text-xs bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded hover:bg-gray-200 dark:hover:bg-gray-600"
-                      title="Play {{ seg }}">
-                {{ seg }}
-              </button>
-              {% endfor %}
-            </div>
-          </div>
+          {% let lesson_id = lesson.lesson_id %}
+          {% let show_params = false %}
+          {% let status_message = String::new() %}
+          {% let status_success = false %}
+          {% include "partials/audio_row.html" %}
           {% endfor %}
         </div>
       </div>
@@ -320,16 +240,22 @@
     {% if has_lesson1 || has_lesson2 %}
     <div class="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
       <p class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-        Re-segment all with default padding
+        Re-segment all (resets to specified padding, ignores saved params)
       </p>
-      <form method="POST" action="/settings/segment" class="flex items-center gap-3">
+      <form hx-post="/settings/segment"
+            hx-target="#segment-all-status"
+            hx-swap="innerHTML"
+            hx-indicator="#segment-all-spinner"
+            class="flex items-center gap-3">
         <label class="text-sm text-gray-600 dark:text-gray-400">Padding (ms):</label>
         <input type="number" name="padding" value="75" min="0" max="200" step="5"
                class="w-20 px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
-        <button type="button" onclick="this.disabled=true; this.textContent='Segmenting...'; this.form.submit();"
+        <button type="submit"
                 class="px-3 py-1.5 text-sm bg-gray-600 text-white rounded hover:bg-gray-700">
           Re-segment All
         </button>
+        <span id="segment-all-spinner" class="htmx-indicator text-sm text-gray-500">Segmenting...</span>
+        <span id="segment-all-status" class="text-sm"></span>
       </form>
     </div>
     {% endif %}
@@ -419,59 +345,6 @@
       currentSegmentIndex++;
       playNextSegment();
     });
-  }
-
-  // Async form submission for re-segmentation
-  function submitSegmentForm(event, lesson, row) {
-    event.preventDefault();
-
-    const form = document.getElementById('segment-form-' + lesson + '-' + row);
-    const btn = document.getElementById('btn-' + lesson + '-' + row);
-    const status = document.getElementById('status-' + lesson + '-' + row);
-
-    // Show loading state
-    btn.disabled = true;
-    btn.textContent = 'Segmenting...';
-    status.textContent = '';
-    status.className = 'text-xs';
-
-    // Use URLSearchParams for application/x-www-form-urlencoded (required by axum Form)
-    const formData = new URLSearchParams(new FormData(form));
-
-    fetch('/settings/segment-row', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: formData
-    })
-    .then(response => {
-      if (!response.ok) {
-        throw new Error('HTTP ' + response.status);
-      }
-      return response.json();
-    })
-    .then(data => {
-      btn.disabled = false;
-      btn.textContent = 'Re-segment';
-
-      if (data.success) {
-        status.textContent = data.message;
-        status.className = 'text-xs text-green-600 dark:text-green-400';
-      } else {
-        status.textContent = data.message;
-        status.className = 'text-xs text-red-600 dark:text-red-400';
-      }
-    })
-    .catch(err => {
-      btn.disabled = false;
-      btn.textContent = 'Re-segment';
-      status.textContent = 'Request failed: ' + err.message;
-      status.className = 'text-xs text-red-600 dark:text-red-400';
-      console.error('Segment error:', err);
-    });
-
-    return false;
   }
 </script>
 {% endblock %}

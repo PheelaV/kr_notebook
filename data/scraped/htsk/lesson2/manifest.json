@@ -18,7 +18,7 @@
       "segment_params": {
         "min_silence": 200,
         "threshold": -40,
-        "padding": 75
+        "padding": 150
       }
     },
     "ㄲ": {
@@ -36,7 +36,7 @@
       "segment_params": {
         "min_silence": 200,
         "threshold": -40,
-        "padding": 75
+        "padding": 150
       }
     },
     "ㅋ": {
@@ -54,7 +54,7 @@
       "segment_params": {
         "min_silence": 150,
         "threshold": -40,
-        "padding": 75
+        "padding": 150
       }
     },
     "ㅃ": {
@@ -72,7 +72,7 @@
       "segment_params": {
         "min_silence": 200,
         "threshold": -40,
-        "padding": 75
+        "padding": 150
       }
     },
     "ㅍ": {
@@ -90,7 +90,7 @@
       "segment_params": {
         "min_silence": 200,
         "threshold": -40,
-        "padding": 75
+        "padding": 150
       }
     },
     "ㅉ": {
@@ -108,7 +108,7 @@
       "segment_params": {
         "min_silence": 200,
         "threshold": -40,
-        "padding": 75
+        "padding": 150
       }
     },
     "ㅊ": {
@@ -126,7 +126,7 @@
       "segment_params": {
         "min_silence": 200,
         "threshold": -40,
-        "padding": 75
+        "padding": 150
       }
     },
     "ㄸ": {
@@ -144,7 +144,7 @@
       "segment_params": {
         "min_silence": 200,
         "threshold": -40,
-        "padding": 75
+        "padding": 150
       }
     },
     "ㅌ": {
@@ -162,7 +162,7 @@
       "segment_params": {
         "min_silence": 200,
         "threshold": -40,
-        "padding": 75
+        "padding": 150
       }
     },
     "ㅆ": {
@@ -180,7 +180,7 @@
       "segment_params": {
         "min_silence": 200,
         "threshold": -40,
-        "padding": 75
+        "padding": 150
       }
     }
   },

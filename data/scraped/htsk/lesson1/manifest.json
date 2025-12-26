@@ -17,7 +17,12 @@
         "니",
         "히",
         "리"
-      ]
+      ],
+      "segment_params": {
+        "min_silence": 200,
+        "threshold": -40,
+        "padding": 150
+      }
     },
     "ㅏ": {
       "file": "columns/col_a.mp3",
@@ -33,7 +38,12 @@
         "나",
         "하",
         "라"
-      ]
+      ],
+      "segment_params": {
+        "min_silence": 200,
+        "threshold": -40,
+        "padding": 150
+      }
     },
     "ㅓ": {
       "file": "columns/col_eo.mp3",
@@ -49,7 +59,12 @@
         "너",
         "허",
         "러"
-      ]
+      ],
+      "segment_params": {
+        "min_silence": 200,
+        "threshold": -40,
+        "padding": 150
+      }
     },
     "ㅡ": {
       "file": "columns/col_eu.mp3",
@@ -65,7 +80,12 @@
         "느",
         "흐",
         "르"
-      ]
+      ],
+      "segment_params": {
+        "min_silence": 200,
+        "threshold": -40,
+        "padding": 150
+      }
     },
     "ㅜ": {
       "file": "columns/col_u.mp3",
@@ -81,7 +101,12 @@
         "누",
         "후",
         "루"
-      ]
+      ],
+      "segment_params": {
+        "min_silence": 200,
+        "threshold": -40,
+        "padding": 150
+      }
     },
     "ㅗ": {
       "file": "columns/col_o.mp3",
@@ -97,7 +122,12 @@
         "노",
         "호",
         "로"
-      ]
+      ],
+      "segment_params": {
+        "min_silence": 200,
+        "threshold": -40,
+        "padding": 150
+      }
     }
   },
   "rows": {
@@ -112,7 +142,12 @@
         "브",
         "부",
         "보"
-      ]
+      ],
+      "segment_params": {
+        "min_silence": 200,
+        "threshold": -40,
+        "padding": 150
+      }
     },
     "ㅈ": {
       "file": "rows/row_j.mp3",
@@ -125,7 +160,12 @@
         "즈",
         "주",
         "조"
-      ]
+      ],
+      "segment_params": {
+        "min_silence": 200,
+        "threshold": -40,
+        "padding": 150
+      }
     },
     "ㄷ": {
       "file": "rows/row_d.mp3",
@@ -142,7 +182,7 @@
       "segment_params": {
         "min_silence": 200,
         "threshold": -40,
-        "padding": 75,
+        "padding": 150,
         "skip_first": 1
       }
     },
@@ -157,7 +197,12 @@
         "그",
         "구",
         "고"
-      ]
+      ],
+      "segment_params": {
+        "min_silence": 200,
+        "threshold": -40,
+        "padding": 150
+      }
     },
     "ㅅ": {
       "file": "rows/row_s.mp3",
@@ -170,7 +215,12 @@
         "스",
         "수",
         "소"
-      ]
+      ],
+      "segment_params": {
+        "min_silence": 200,
+        "threshold": -40,
+        "padding": 150
+      }
     },
     "ㅁ": {
       "file": "rows/row_m.mp3",
@@ -183,7 +233,12 @@
         "므",
         "무",
         "모"
-      ]
+      ],
+      "segment_params": {
+        "min_silence": 200,
+        "threshold": -40,
+        "padding": 150
+      }
     },
     "ㄴ": {
       "file": "rows/row_n.mp3",
@@ -196,7 +251,12 @@
         "느",
         "누",
         "노"
-      ]
+      ],
+      "segment_params": {
+        "min_silence": 200,
+        "threshold": -40,
+        "padding": 150
+      }
     },
     "ㅎ": {
       "file": "rows/row_h.mp3",
@@ -209,7 +269,12 @@
         "흐",
         "후",
         "호"
-      ]
+      ],
+      "segment_params": {
+        "min_silence": 200,
+        "threshold": -40,
+        "padding": 150
+      }
     },
     "ㄹ": {
       "file": "rows/row_r.mp3",
@@ -222,7 +287,12 @@
         "르",
         "루",
         "로"
-      ]
+      ],
+      "segment_params": {
+        "min_silence": 200,
+        "threshold": -40,
+        "padding": 150
+      }
     }
   },
   "syllable_table": {
