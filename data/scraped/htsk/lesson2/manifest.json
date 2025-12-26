@@ -18,7 +18,7 @@
       "segment_params": {
         "min_silence": 200,
         "threshold": -40,
-        "padding": 150
+        "padding": 200
       }
     },
     "ㄲ": {
@@ -34,9 +34,9 @@
         "꼬"
       ],
       "segment_params": {
-        "min_silence": 200,
-        "threshold": -40,
-        "padding": 150
+        "min_silence": 220,
+        "threshold": -30,
+        "padding": 250
       }
     },
     "ㅋ": {
@@ -54,7 +54,7 @@
       "segment_params": {
         "min_silence": 150,
         "threshold": -40,
-        "padding": 150
+        "padding": 200
       }
     },
     "ㅃ": {
@@ -72,7 +72,7 @@
       "segment_params": {
         "min_silence": 200,
         "threshold": -40,
-        "padding": 150
+        "padding": 200
       }
     },
     "ㅍ": {
@@ -88,9 +88,9 @@
         "포"
       ],
       "segment_params": {
-        "min_silence": 200,
+        "min_silence": 180,
         "threshold": -40,
-        "padding": 150
+        "padding": 200
       }
     },
     "ㅉ": {
@@ -106,9 +106,9 @@
         "쪼"
       ],
       "segment_params": {
-        "min_silence": 200,
+        "min_silence": 180,
         "threshold": -40,
-        "padding": 150
+        "padding": 250
       }
     },
     "ㅊ": {
@@ -124,9 +124,9 @@
         "초"
       ],
       "segment_params": {
-        "min_silence": 200,
-        "threshold": -40,
-        "padding": 150
+        "min_silence": 220,
+        "threshold": -30,
+        "padding": 250
       }
     },
     "ㄸ": {
@@ -142,9 +142,9 @@
         "또"
       ],
       "segment_params": {
-        "min_silence": 200,
-        "threshold": -40,
-        "padding": 150
+        "min_silence": 220,
+        "threshold": -30,
+        "padding": 500
       }
     },
     "ㅌ": {
@@ -162,7 +162,7 @@
       "segment_params": {
         "min_silence": 200,
         "threshold": -40,
-        "padding": 150
+        "padding": 300
       }
     },
     "ㅆ": {
@@ -180,7 +180,7 @@
       "segment_params": {
         "min_silence": 200,
         "threshold": -40,
-        "padding": 150
+        "padding": 250
       }
     }
   },

@@ -55,9 +55,10 @@ def romanize_syllable(syllable: str) -> str:
             jung_index = (syllable_index % 588) // 28
             jong_index = syllable_index % 28
 
-            # Initial consonants
+            # Initial consonants (Revised Romanization of Korean)
+            # Order: ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ
             CHOSEONG_ROM = [
-                "g", "gg", "n", "d", "dd", "r", "m", "b", "bb", "s",
+                "g", "kk", "n", "d", "tt", "r", "m", "b", "pp", "s",
                 "ss", "", "j", "jj", "ch", "k", "t", "p", "h",
             ]
             # Vowels
