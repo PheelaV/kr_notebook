@@ -4,7 +4,7 @@ use axum::{
   response::{Html, Redirect},
 };
 
-use crate::db::{self, DbPool, TierProgress};
+use crate::db::{self, CharacterStats, DbPool, TierProgress};
 #[cfg(feature = "profiling")]
 use crate::profiling::EventType;
 
@@ -18,6 +18,57 @@ pub struct ProblemCard {
   pub top_wrong_answers: Vec<String>,
 }
 
+/// Character stats formatted for display
+#[derive(Debug, Clone)]
+pub struct CharacterStatsDisplay {
+  pub character: String,
+  pub character_type: String,
+  pub lifetime_pct: i32,
+  pub rate_7d_pct: i32,
+  pub rate_1d_pct: i32,
+  pub attempts_1d: i64,
+  pub status: &'static str,
+  pub status_color: &'static str,
+}
+
+impl From<CharacterStats> for CharacterStatsDisplay {
+  fn from(stats: CharacterStats) -> Self {
+    let lifetime_pct = (stats.lifetime_rate() * 100.0).round() as i32;
+    let rate_7d_pct = (stats.rate_7d() * 100.0).round() as i32;
+    let rate_1d_pct = (stats.rate_1d() * 100.0).round() as i32;
+
+    // Determine status based on 24-hour rate
+    let (status, status_color) = if stats.attempts_1d == 0 {
+      ("—", "text-gray-400")
+    } else if rate_1d_pct >= 90 {
+      ("Strong", "text-green-600 dark:text-green-400")
+    } else if rate_1d_pct >= 70 {
+      ("OK", "text-yellow-600 dark:text-yellow-400")
+    } else {
+      ("Weak", "text-red-600 dark:text-red-400")
+    };
+
+    Self {
+      character: stats.character,
+      character_type: stats.character_type,
+      lifetime_pct,
+      rate_7d_pct,
+      rate_1d_pct,
+      attempts_1d: stats.attempts_1d,
+      status,
+      status_color,
+    }
+  }
+}
+
+/// Group of character stats by type
+#[derive(Debug, Clone)]
+pub struct CharacterStatsGroup {
+  pub type_name: String,
+  pub type_label: String,
+  pub stats: Vec<CharacterStatsDisplay>,
+}
+
 #[derive(Template)]
 #[template(path = "progress.html")]
 pub struct ProgressTemplate {
@@ -29,6 +80,7 @@ pub struct ProgressTemplate {
   pub can_unlock_next: bool,
   pub all_tiers_unlocked: bool,
   pub problem_cards: Vec<ProblemCard>,
+  pub character_stats_groups: Vec<CharacterStatsGroup>,
 }
 
 pub async fn progress(State(pool): State<DbPool>) -> Html<String> {
@@ -76,6 +128,10 @@ pub async fn progress(State(pool): State<DbPool>) -> Html<String> {
     })
     .collect();
 
+  // Get character stats grouped by type
+  let all_stats = db::get_all_character_stats(&conn).unwrap_or_default();
+  let character_stats_groups = build_character_stats_groups(all_stats);
+
   let template = ProgressTemplate {
     total_cards,
     total_reviews,
@@ -85,9 +141,42 @@ pub async fn progress(State(pool): State<DbPool>) -> Html<String> {
     can_unlock_next,
     all_tiers_unlocked,
     problem_cards,
+    character_stats_groups,
   };
 
   Html(template.render().unwrap_or_default())
+}
+
+/// Build character stats groups from raw stats
+fn build_character_stats_groups(all_stats: Vec<CharacterStats>) -> Vec<CharacterStatsGroup> {
+  let type_order = [
+    ("consonant", "Basic Consonants"),
+    ("vowel", "Basic Vowels"),
+    ("aspirated_consonant", "Aspirated Consonants"),
+    ("tense_consonant", "Tense Consonants"),
+    ("compound_vowel", "Compound Vowels"),
+  ];
+
+  let mut groups = Vec::new();
+
+  for (type_name, type_label) in type_order {
+    let stats: Vec<CharacterStatsDisplay> = all_stats
+      .iter()
+      .filter(|s| s.character_type == type_name)
+      .cloned()
+      .map(CharacterStatsDisplay::from)
+      .collect();
+
+    if !stats.is_empty() {
+      groups.push(CharacterStatsGroup {
+        type_name: type_name.to_string(),
+        type_label: type_label.to_string(),
+        stats,
+      });
+    }
+  }
+
+  groups
 }
 
 pub async fn unlock_tier(State(pool): State<DbPool>) -> Redirect {

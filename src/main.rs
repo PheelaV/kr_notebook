@@ -24,6 +24,11 @@ async fn main() {
   {
     let conn = pool.lock().unwrap();
     db::seed_hangul_cards(&conn).expect("Failed to seed cards");
+
+    // Refresh character stats decay windows (7D/1D) on startup
+    if let Err(e) = db::refresh_character_stats_decay(&conn) {
+      tracing::warn!("Failed to refresh character stats decay: {}", e);
+    }
   }
 
   let app = Router::new()
@@ -58,6 +63,7 @@ async fn main() {
     .route("/settings/delete-scraped/{lesson}", post(handlers::delete_scraped_lesson))
     .route("/settings/segment", post(handlers::trigger_segment))
     .route("/settings/segment-row", post(handlers::trigger_row_segment))
+    .route("/settings/make-all-due", post(handlers::make_all_due))
     .route("/diagnostic", post(handlers::log_diagnostic))
     .nest_service("/audio/scraped", ServeDir::new(paths::SCRAPED_DIR))
     .with_state(pool);

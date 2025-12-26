@@ -63,48 +63,142 @@
 
   <div class="space-y-4">
     {% for tier in tiers %}
-    <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-4 {% if !tier.is_unlocked %}opacity-50{% endif %} {% if tier.is_unlocked && !tier.is_enabled %}opacity-60 border-2 border-dashed border-gray-300 dark:border-gray-600{% endif %}">
-      <div class="flex justify-between items-center mb-2">
-        <div class="font-semibold text-gray-900 dark:text-white flex items-center">
-          {% if tier.is_unlocked && tier.is_enabled %}
-          <span class="text-green-500 mr-2">&#10003;</span>
-          {% else if tier.is_unlocked && !tier.is_enabled %}
-          <span class="text-yellow-500 mr-2">&#10007;</span>
-          {% else %}
-          <span class="text-gray-400 mr-2">&#128274;</span>
-          {% endif %}
-          Tier {{ tier.tier }}
-          <span class="text-sm font-normal text-gray-500 dark:text-gray-400 ml-2">
-            {% if tier.tier == 1 %}Basic Consonants & Vowels{% endif %}
-            {% if tier.tier == 2 %}Y-Vowels & Special Ieung{% endif %}
-            {% if tier.tier == 3 %}Aspirated & Tense Consonants{% endif %}
-            {% if tier.tier == 4 %}Compound Vowels{% endif %}
-          </span>
-          {% if tier.is_unlocked && !tier.is_enabled %}
-          <span class="ml-2 text-xs bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300 px-2 py-0.5 rounded">skipped</span>
-          {% endif %}
+    <details class="bg-white dark:bg-gray-800 shadow rounded-lg {% if !tier.is_unlocked %}opacity-50{% endif %} {% if tier.is_unlocked && !tier.is_enabled %}opacity-60 border-2 border-dashed border-gray-300 dark:border-gray-600{% endif %}">
+      <summary class="p-4 cursor-pointer list-none">
+        <div class="flex justify-between items-center mb-2">
+          <div class="font-semibold text-gray-900 dark:text-white flex items-center">
+            {% if tier.is_unlocked && tier.is_enabled %}
+            <span class="text-green-500 mr-2">&#10003;</span>
+            {% else if tier.is_unlocked && !tier.is_enabled %}
+            <span class="text-yellow-500 mr-2">&#10007;</span>
+            {% else %}
+            <span class="text-gray-400 mr-2">&#128274;</span>
+            {% endif %}
+            Tier {{ tier.tier }}
+            <span class="text-sm font-normal text-gray-500 dark:text-gray-400 ml-2">
+              {% if tier.tier == 1 %}Basic Consonants & Vowels{% endif %}
+              {% if tier.tier == 2 %}Y-Vowels & Special Ieung{% endif %}
+              {% if tier.tier == 3 %}Aspirated & Tense Consonants{% endif %}
+              {% if tier.tier == 4 %}Compound Vowels{% endif %}
+            </span>
+            {% if tier.is_unlocked && !tier.is_enabled %}
+            <span class="ml-2 text-xs bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300 px-2 py-0.5 rounded">skipped</span>
+            {% endif %}
+          </div>
+          <div class="text-sm text-gray-600 dark:text-gray-400">
+            {% if tier.is_unlocked %}
+            {{ tier.learned }} / {{ tier.total }} learned
+            {% else %}
+            Locked
+            {% endif %}
+          </div>
         </div>
-        <div class="text-sm text-gray-600 dark:text-gray-400">
+        <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3">
           {% if tier.is_unlocked %}
-          {{ tier.learned }} / {{ tier.total }}
-          {% else %}
-          Locked
+          <div class="{% if tier.is_enabled %}bg-indigo-600{% else %}bg-gray-400 dark:bg-gray-500{% endif %} h-3 rounded-full transition-all duration-300" style="width: {{ tier.percentage() }}%"></div>
           {% endif %}
         </div>
-      </div>
-      <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3">
-        {% if tier.is_unlocked %}
-        <div class="{% if tier.is_enabled %}bg-indigo-600{% else %}bg-gray-400 dark:bg-gray-500{% endif %} h-3 rounded-full transition-all duration-300" style="width: {{ tier.percentage() }}%"></div>
+        {% if tier.is_unlocked && tier.is_enabled && tier.tier == max_unlocked_tier && tier.percentage() < 80 && !all_tiers_unlocked %}
+        <div class="text-xs text-gray-500 dark:text-gray-400 mt-2">
+          Reach 80% to unlock the next tier
+        </div>
         {% endif %}
-      </div>
-      {% if tier.is_unlocked && tier.is_enabled && tier.tier == max_unlocked_tier && tier.percentage() < 80 && !all_tiers_unlocked %}
-      <div class="text-xs text-gray-500 dark:text-gray-400 mt-2">
-        Reach 80% to unlock the next tier
+      </summary>
+      {% if tier.is_unlocked %}
+      <div class="px-4 pb-4 pt-2 border-t border-gray-100 dark:border-gray-700">
+        <div class="grid grid-cols-3 gap-3 text-center text-sm">
+          <div class="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-2">
+            <div class="text-xl font-bold text-blue-600 dark:text-blue-400">{{ tier.new_cards }}</div>
+            <div class="text-xs text-gray-500 dark:text-gray-400">New</div>
+          </div>
+          <div class="bg-yellow-50 dark:bg-yellow-900/20 rounded-lg p-2">
+            <div class="text-xl font-bold text-yellow-600 dark:text-yellow-400">{{ tier.learning }}</div>
+            <div class="text-xs text-gray-500 dark:text-gray-400">Learning</div>
+          </div>
+          <div class="bg-green-50 dark:bg-green-900/20 rounded-lg p-2">
+            <div class="text-xl font-bold text-green-600 dark:text-green-400">{{ tier.learned }}</div>
+            <div class="text-xs text-gray-500 dark:text-gray-400">Learned</div>
+          </div>
+        </div>
+        <p class="text-xs text-gray-500 dark:text-gray-400 mt-3">
+          <span class="font-medium">New:</span> Never reviewed &bull;
+          <span class="font-medium">Learning:</span> 1 correct review &bull;
+          <span class="font-medium">Learned:</span> 2+ correct reviews
+        </p>
       </div>
       {% endif %}
+    </details>
+    {% endfor %}
+  </div>
+
+  {% if !character_stats_groups.is_empty() %}
+  <div class="mt-8">
+    <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-4">
+      Character Performance
+    </h2>
+    <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
+      Your accuracy for each character over different time windows.
+    </p>
+
+    {% for group in character_stats_groups %}
+    <div class="mb-6">
+      <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-3">
+        {{ group.type_label }}
+      </h3>
+      <div class="bg-white dark:bg-gray-800 shadow rounded-lg overflow-hidden">
+        <table class="w-full text-sm">
+          <thead class="bg-gray-50 dark:bg-gray-700">
+            <tr>
+              <th class="px-3 py-2 text-left text-gray-600 dark:text-gray-300 font-medium">Char</th>
+              <th class="px-3 py-2 text-center text-gray-600 dark:text-gray-300 font-medium">All Time</th>
+              <th class="px-3 py-2 text-center text-gray-600 dark:text-gray-300 font-medium">7 Day</th>
+              <th class="px-3 py-2 text-center text-gray-600 dark:text-gray-300 font-medium">24 Hour</th>
+              <th class="px-3 py-2 text-right text-gray-600 dark:text-gray-300 font-medium">Status</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
+            {% for stat in group.stats %}
+            <tr class="hover:bg-gray-50 dark:hover:bg-gray-750">
+              <td class="px-3 py-2 text-2xl font-bold text-gray-900 dark:text-white">{{ stat.character }}</td>
+              <td class="px-3 py-2 text-center">
+                {% if stat.lifetime_pct > 0 %}
+                <span class="{% if stat.lifetime_pct >= 90 %}text-green-600 dark:text-green-400{% else if stat.lifetime_pct >= 70 %}text-yellow-600 dark:text-yellow-400{% else %}text-red-600 dark:text-red-400{% endif %}">
+                  {{ stat.lifetime_pct }}%
+                </span>
+                {% else %}
+                <span class="text-gray-400">—</span>
+                {% endif %}
+              </td>
+              <td class="px-3 py-2 text-center">
+                {% if stat.rate_7d_pct > 0 %}
+                <span class="{% if stat.rate_7d_pct >= 90 %}text-green-600 dark:text-green-400{% else if stat.rate_7d_pct >= 70 %}text-yellow-600 dark:text-yellow-400{% else %}text-red-600 dark:text-red-400{% endif %}">
+                  {{ stat.rate_7d_pct }}%
+                </span>
+                {% else %}
+                <span class="text-gray-400">—</span>
+                {% endif %}
+              </td>
+              <td class="px-3 py-2 text-center">
+                {% if stat.attempts_1d > 0 %}
+                <span class="{% if stat.rate_1d_pct >= 90 %}text-green-600 dark:text-green-400{% else if stat.rate_1d_pct >= 70 %}text-yellow-600 dark:text-yellow-400{% else %}text-red-600 dark:text-red-400{% endif %}">
+                  {{ stat.rate_1d_pct }}%
+                </span>
+                {% else %}
+                <span class="text-gray-400">—</span>
+                {% endif %}
+              </td>
+              <td class="px-3 py-2 text-right">
+                <span class="{{ stat.status_color }} font-medium">{{ stat.status }}</span>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
     </div>
     {% endfor %}
   </div>
+  {% endif %}
 
   {% if !problem_cards.is_empty() %}
   <div class="mt-8">

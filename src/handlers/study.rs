@@ -8,9 +8,43 @@ use rand::seq::SliceRandom;
 use serde::Deserialize;
 
 use crate::db::{self, DbPool};
-use crate::domain::{Card, ReviewLog, ReviewQuality};
-use crate::srs;
+use crate::domain::{Card, ReviewDirection, ReviewQuality, StudyMode};
+use crate::session;
+use crate::srs::{self, select_next_card};
 use crate::validation::{validate_answer, HintGenerator};
+
+/// Determine the review direction based on card front text
+fn get_review_direction(card: &Card) -> ReviewDirection {
+  if card.front.starts_with("Which letter sounds like") {
+    // Question asking for Korean character from romanization
+    ReviewDirection::RomToKr
+  } else if is_korean(&card.front) {
+    // Korean character shown, asking for romanization
+    ReviewDirection::KrToRom
+  } else {
+    // Default to Korean to romanization
+    ReviewDirection::KrToRom
+  }
+}
+
+/// Get character type string for stats tracking
+fn get_character_type(card: &Card) -> &'static str {
+  card.card_type.as_str()
+}
+
+/// Get the character to track stats for (the Korean character being learned)
+fn get_tracked_character(card: &Card) -> &str {
+  if is_korean(&card.front) {
+    // Front is Korean, track it
+    &card.front
+  } else if is_korean(&card.main_answer) {
+    // Answer is Korean (e.g., "Which letter sounds like 'g'?" -> "ㄱ")
+    &card.main_answer
+  } else {
+    // Fallback to front
+    &card.front
+  }
+}
 #[cfg(feature = "profiling")]
 use crate::profiling::EventType;
 
@@ -108,6 +142,8 @@ pub struct InteractiveCardTemplate {
   // Multiple choice fields
   pub is_multiple_choice: bool,
   pub choices: Vec<String>,
+  // Session tracking
+  pub session_id: String,
 }
 
 /// Wrapper template for initial interactive study page load
@@ -130,6 +166,8 @@ pub struct StudyInteractiveTemplate {
   pub is_multiple_choice: bool,
   pub choices: Vec<String>,
   pub has_card: bool,
+  // Session tracking
+  pub session_id: String,
 }
 
 #[derive(Template)]
@@ -147,6 +185,8 @@ pub struct PracticeTemplate {
   pub user_answer: String,
   pub is_multiple_choice: bool,
   pub choices: Vec<String>,
+  // Progress tracking
+  pub track_progress: bool,
 }
 
 #[derive(Template)]
@@ -162,6 +202,8 @@ pub struct PracticeInteractiveCardTemplate {
   pub user_answer: String,
   pub is_multiple_choice: bool,
   pub choices: Vec<String>,
+  // Progress tracking
+  pub track_progress: bool,
 }
 
 pub async fn study_start(State(pool): State<DbPool>) -> impl IntoResponse {
@@ -195,6 +237,8 @@ pub async fn study_start(State(pool): State<DbPool>) -> impl IntoResponse {
 pub struct ReviewForm {
   pub card_id: i64,
   pub quality: u8,
+  #[serde(default)]
+  pub session_id: String,
 }
 
 pub async fn submit_review(
@@ -231,9 +275,23 @@ pub async fn submit_review(
       correct,
     );
 
-    // Log review
-    let log = ReviewLog::new(card.id, form.quality);
-    let _ = db::insert_review_log(&conn, &log);
+    // Log review with enhanced tracking
+    let direction = get_review_direction(&card);
+    let _ = db::insert_review_log_enhanced(
+      &conn,
+      card.id,
+      form.quality,
+      correct,
+      StudyMode::Classic,
+      direction,
+      None, // response_time_ms not tracked in classic mode
+      0,    // hints not available in classic mode
+    );
+
+    // Update character stats
+    let tracked_char = get_tracked_character(&card);
+    let char_type = get_character_type(&card);
+    let _ = db::update_character_stats(&conn, tracked_char, char_type, correct);
   }
 
   // Get next card, excluding sibling of the just-reviewed card
@@ -254,54 +312,6 @@ pub async fn submit_review(
   }
 }
 
-/// Get the next card to study based on FSA logic:
-/// - Normal mode: due cards only, then practice mode
-/// - Accelerated mode: due cards first, then unreviewed today, then practice mode
-fn get_next_study_card(conn: &std::sync::MutexGuard<'_, rusqlite::Connection>, exclude_sibling_of: Option<i64>) -> Option<Card> {
-  let use_interleaving = db::get_use_interleaving(conn).unwrap_or(true);
-  let accelerated = db::get_all_tiers_unlocked(conn).unwrap_or(false);
-
-  // Step 1: Try to get due cards first (both modes)
-  let due_cards = if use_interleaving {
-    db::get_due_cards_interleaved(conn, 1, exclude_sibling_of).unwrap_or_default()
-  } else {
-    db::get_due_cards(conn, 1, exclude_sibling_of).unwrap_or_default()
-  };
-
-  if let Some(card) = due_cards.into_iter().next() {
-    #[cfg(feature = "profiling")]
-    crate::profile_log!(EventType::CardSelection {
-      mode: "due".into(),
-      excluded_sibling: exclude_sibling_of,
-      cards_available: Some(1),
-    });
-    return Some(card);
-  }
-
-  // Step 2: In accelerated mode, try unreviewed cards (not reviewed today)
-  if accelerated {
-    let unreviewed = db::get_unreviewed_today(conn, 1, exclude_sibling_of).unwrap_or_default();
-    if let Some(card) = unreviewed.into_iter().next() {
-      #[cfg(feature = "profiling")]
-      crate::profile_log!(EventType::CardSelection {
-        mode: "unreviewed_today".into(),
-        excluded_sibling: exclude_sibling_of,
-        cards_available: Some(1),
-      });
-      return Some(card);
-    }
-  }
-
-  // Step 3: No cards available - will show "all done" / practice mode
-  #[cfg(feature = "profiling")]
-  crate::profile_log!(EventType::CardSelection {
-    mode: "none_available".into(),
-    excluded_sibling: exclude_sibling_of,
-    cards_available: Some(0),
-  });
-  None
-}
-
 /// Interactive study mode with input-based validation
 pub async fn study_start_interactive(State(pool): State<DbPool>) -> impl IntoResponse {
   #[cfg(feature = "profiling")]
@@ -312,59 +322,111 @@ pub async fn study_start_interactive(State(pool): State<DbPool>) -> impl IntoRes
 
   let conn = pool.lock().unwrap();
 
-  if let Some(card) = get_next_study_card(&conn, None) {
-    let hint_gen = HintGenerator::new(&card.main_answer, card.description.as_deref());
+  // Generate a new session ID for this study session
+  let session_id = session::generate_session_id();
+  let mut study_session = session::get_session(&session_id);
 
-    // Check if answer is Korean (needs multiple choice)
-    let is_multiple_choice = is_korean(&card.main_answer);
-    let choices = if is_multiple_choice {
-      // Get all cards from this tier for generating choices
-      let all_cards = db::get_cards_by_tier(&conn, card.tier).unwrap_or_default();
-      generate_choices(&card, &all_cards)
-    } else {
-      vec![]
-    };
+  // Get available cards using existing logic
+  let available_cards = get_available_study_cards(&conn);
 
-    let template = StudyInteractiveTemplate {
-      card_id: card.id,
-      front: card.front.clone(),
-      main_answer: card.main_answer.clone(),
-      description: card.description.clone(),
-      tier: card.tier,
-      validated: false,
-      is_correct: false,
-      user_answer: String::new(),
-      quality: 0,
-      hints_used: 0,
-      hint_1: hint_gen.hint_level_1(),
-      hint_2: hint_gen.hint_level_2(),
-      hint_final: hint_gen.hint_final(),
-      is_multiple_choice,
-      choices,
-      has_card: true,
-    };
-    Html(template.render().unwrap_or_default())
+  // Use weighted selection
+  let selected_card_id = if !available_cards.is_empty() {
+    select_next_card(&conn, &mut study_session, &available_cards)
+      .ok()
+      .flatten()
   } else {
-    let template = StudyInteractiveTemplate {
-      card_id: 0,
-      front: String::new(),
-      main_answer: String::new(),
-      description: None,
-      tier: 0,
-      validated: false,
-      is_correct: false,
-      user_answer: String::new(),
-      quality: 0,
-      hints_used: 0,
-      hint_1: String::new(),
-      hint_2: String::new(),
-      hint_final: String::new(),
-      is_multiple_choice: false,
-      choices: vec![],
-      has_card: false,
-    };
-    Html(template.render().unwrap_or_default())
+    None
+  };
+
+  // Save session state
+  session::update_session(&session_id, study_session);
+
+  if let Some(card_id) = selected_card_id {
+    if let Ok(Some(card)) = db::get_card_by_id(&conn, card_id) {
+      let hint_gen = HintGenerator::new(&card.main_answer, card.description.as_deref());
+
+      // Check if answer is Korean (needs multiple choice)
+      let is_multiple_choice = is_korean(&card.main_answer);
+      let choices = if is_multiple_choice {
+        let all_cards = db::get_cards_by_tier(&conn, card.tier).unwrap_or_default();
+        generate_choices(&card, &all_cards)
+      } else {
+        vec![]
+      };
+
+      let template = StudyInteractiveTemplate {
+        card_id: card.id,
+        front: card.front.clone(),
+        main_answer: card.main_answer.clone(),
+        description: card.description.clone(),
+        tier: card.tier,
+        validated: false,
+        is_correct: false,
+        user_answer: String::new(),
+        quality: 0,
+        hints_used: 0,
+        hint_1: hint_gen.hint_level_1(),
+        hint_2: hint_gen.hint_level_2(),
+        hint_final: hint_gen.hint_final(),
+        is_multiple_choice,
+        choices,
+        has_card: true,
+        session_id,
+      };
+      return Html(template.render().unwrap_or_default());
+    }
   }
+
+  // No cards available
+  let template = StudyInteractiveTemplate {
+    card_id: 0,
+    front: String::new(),
+    main_answer: String::new(),
+    description: None,
+    tier: 0,
+    validated: false,
+    is_correct: false,
+    user_answer: String::new(),
+    quality: 0,
+    hints_used: 0,
+    hint_1: String::new(),
+    hint_2: String::new(),
+    hint_final: String::new(),
+    is_multiple_choice: false,
+    choices: vec![],
+    has_card: false,
+    session_id,
+  };
+  Html(template.render().unwrap_or_default())
+}
+
+/// Get all available cards for study (due + unreviewed in accelerated mode)
+fn get_available_study_cards(conn: &std::sync::MutexGuard<'_, rusqlite::Connection>) -> Vec<Card> {
+  let use_interleaving = db::get_use_interleaving(conn).unwrap_or(true);
+  let accelerated = db::get_all_tiers_unlocked(conn).unwrap_or(false);
+
+  let mut cards = Vec::new();
+
+  // Get due cards
+  let due = if use_interleaving {
+    db::get_due_cards_interleaved(conn, 50, None).unwrap_or_default()
+  } else {
+    db::get_due_cards(conn, 50, None).unwrap_or_default()
+  };
+  cards.extend(due);
+
+  // In accelerated mode, also get unreviewed cards
+  if accelerated {
+    let unreviewed = db::get_unreviewed_today(conn, 50, None).unwrap_or_default();
+    // Avoid duplicates
+    for card in unreviewed {
+      if !cards.iter().any(|c| c.id == card.id) {
+        cards.push(card);
+      }
+    }
+  }
+
+  cards
 }
 
 #[derive(Deserialize)]
@@ -372,6 +434,8 @@ pub struct ValidateAnswerForm {
   pub card_id: i64,
   pub answer: String,
   pub hints_used: u8,
+  #[serde(default)]
+  pub session_id: String,
 }
 
 /// Validate user's typed answer
@@ -425,6 +489,7 @@ pub async fn validate_answer_handler(
       hint_final: hint_gen.hint_final(),
       is_multiple_choice,
       choices: vec![], // Not needed after validation
+      session_id: form.session_id,
     };
     Html(template.render().unwrap_or_default())
   } else {
@@ -446,8 +511,25 @@ pub async fn submit_review_interactive(
 
   let conn = pool.lock().unwrap();
 
-  // Process the review (same as regular submit_review)
+  // Get or create session
+  let session_id = if form.session_id.is_empty() {
+    session::generate_session_id()
+  } else {
+    form.session_id.clone()
+  };
+  let mut study_session = session::get_session(&session_id);
+
+  // Process the review
+  let correct = form.quality >= 2;
+
   if let Ok(Some(card)) = db::get_card_by_id(&conn, form.card_id) {
+    // Update reinforcement queue based on result
+    if correct {
+      study_session.remove_from_reinforcement(card.id);
+    } else {
+      study_session.add_failed_card(card.id);
+    }
+
     // Check if FSRS is enabled
     let use_fsrs = db::get_use_fsrs(&conn).unwrap_or(true);
 
@@ -470,7 +552,7 @@ pub async fn submit_review_interactive(
         result.stability,
         result.difficulty,
         result.state,
-        form.quality >= 2,
+        correct,
       );
     } else {
       // Use SM-2 scheduling (fallback)
@@ -481,10 +563,6 @@ pub async fn submit_review_interactive(
         card.repetitions,
         card.learning_step,
       );
-
-      let correct = ReviewQuality::from_u8(form.quality)
-        .map(|q| q.is_correct())
-        .unwrap_or(false);
 
       let _ = db::update_card_after_review(
         &conn,
@@ -498,51 +576,87 @@ pub async fn submit_review_interactive(
       );
     }
 
-    // Log review
-    let log = ReviewLog::new(card.id, form.quality);
-    let _ = db::insert_review_log(&conn, &log);
+    // Log review with enhanced tracking
+    let direction = get_review_direction(&card);
+    let _ = db::insert_review_log_enhanced(
+      &conn,
+      card.id,
+      form.quality,
+      correct,
+      StudyMode::Interactive,
+      direction,
+      None,
+      0,
+    );
+
+    // Update character stats
+    let tracked_char = get_tracked_character(&card);
+    let char_type = get_character_type(&card);
+    let _ = db::update_character_stats(&conn, tracked_char, char_type, correct);
   }
 
-  // Get next card using FSA logic
-  if let Some(next_card) = get_next_study_card(&conn, Some(form.card_id)) {
-    let hint_gen = HintGenerator::new(&next_card.main_answer, next_card.description.as_deref());
+  // Get available cards and select next using weighted selection
+  let available_cards = get_available_study_cards(&conn);
 
-    // Check if answer is Korean (needs multiple choice)
-    let is_multiple_choice = is_korean(&next_card.main_answer);
-    let choices = if is_multiple_choice {
-      let all_cards = db::get_cards_by_tier(&conn, next_card.tier).unwrap_or_default();
-      generate_choices(&next_card, &all_cards)
-    } else {
-      vec![]
-    };
-
-    let template = InteractiveCardTemplate {
-      card_id: next_card.id,
-      front: next_card.front.clone(),
-      main_answer: next_card.main_answer.clone(),
-      description: next_card.description.clone(),
-      tier: next_card.tier,
-      validated: false,
-      is_correct: false,
-      user_answer: String::new(),
-      quality: 0,
-      hints_used: 0,
-      hint_1: hint_gen.hint_level_1(),
-      hint_2: hint_gen.hint_level_2(),
-      hint_final: hint_gen.hint_final(),
-      is_multiple_choice,
-      choices,
-    };
-    Html(template.render().unwrap_or_default())
+  let selected_card_id = if !available_cards.is_empty() {
+    select_next_card(&conn, &mut study_session, &available_cards)
+      .ok()
+      .flatten()
   } else {
-    let template = NoCardsTemplate {};
-    Html(template.render().unwrap_or_default())
+    None
+  };
+
+  // Save session state
+  session::update_session(&session_id, study_session);
+
+  if let Some(card_id) = selected_card_id {
+    if let Ok(Some(next_card)) = db::get_card_by_id(&conn, card_id) {
+      let hint_gen = HintGenerator::new(&next_card.main_answer, next_card.description.as_deref());
+
+      // Check if answer is Korean (needs multiple choice)
+      let is_multiple_choice = is_korean(&next_card.main_answer);
+      let choices = if is_multiple_choice {
+        let all_cards = db::get_cards_by_tier(&conn, next_card.tier).unwrap_or_default();
+        generate_choices(&next_card, &all_cards)
+      } else {
+        vec![]
+      };
+
+      let template = InteractiveCardTemplate {
+        card_id: next_card.id,
+        front: next_card.front.clone(),
+        main_answer: next_card.main_answer.clone(),
+        description: next_card.description.clone(),
+        tier: next_card.tier,
+        validated: false,
+        is_correct: false,
+        user_answer: String::new(),
+        quality: 0,
+        hints_used: 0,
+        hint_1: hint_gen.hint_level_1(),
+        hint_2: hint_gen.hint_level_2(),
+        hint_final: hint_gen.hint_final(),
+        is_multiple_choice,
+        choices,
+        session_id,
+      };
+      return Html(template.render().unwrap_or_default());
+    }
   }
+
+  let template = NoCardsTemplate {};
+  Html(template.render().unwrap_or_default())
 }
 
 #[derive(Deserialize)]
 pub struct PracticeQuery {
   pub mode: Option<String>,
+  #[serde(default = "default_track_progress")]
+  pub track: Option<bool>,
+}
+
+fn default_track_progress() -> Option<bool> {
+  Some(true) // Default to tracking progress
 }
 
 // Practice mode - review cards even when not due
@@ -553,6 +667,7 @@ pub async fn practice_start(
   let conn = pool.lock().unwrap();
   let cards = db::get_practice_cards(&conn, 1, None).unwrap_or_default();
   let mode = query.mode.unwrap_or_else(|| "flip".to_string());
+  let track_progress = query.track.unwrap_or(true);
 
   if let Some(card) = cards.first() {
     let is_korean = is_korean(&card.main_answer);
@@ -575,6 +690,7 @@ pub async fn practice_start(
       user_answer: String::new(),
       is_multiple_choice: is_korean,
       choices,
+      track_progress,
     };
     Html(template.render().unwrap_or_default())
   } else {
@@ -585,6 +701,8 @@ pub async fn practice_start(
 #[derive(Deserialize)]
 pub struct PracticeForm {
   pub card_id: i64,
+  #[serde(default)]
+  pub track_progress: bool,
 }
 
 pub async fn practice_next(
@@ -594,6 +712,12 @@ pub async fn practice_next(
 ) -> impl IntoResponse {
   let conn = pool.lock().unwrap();
   let mode = query.mode.unwrap_or_else(|| "flip".to_string());
+  // Use form value if present, otherwise query param, otherwise default true
+  let track_progress = if form.track_progress {
+    true
+  } else {
+    query.track.unwrap_or(true)
+  };
 
   // Get next random card, excluding sibling of the just-practiced card
   let cards = db::get_practice_cards(&conn, 1, Some(form.card_id)).unwrap_or_default();
@@ -619,6 +743,7 @@ pub async fn practice_next(
         user_answer: String::new(),
         is_multiple_choice: is_korean,
         choices,
+        track_progress,
       };
       Html(template.render().unwrap_or_default())
     } else {
@@ -640,9 +765,11 @@ pub async fn practice_next(
 pub struct PracticeValidateForm {
   pub card_id: i64,
   pub answer: String,
+  #[serde(default)]
+  pub track_progress: bool,
 }
 
-/// Validate answer in practice mode (no SRS recording)
+/// Validate answer in practice mode (optionally logs to stats)
 pub async fn practice_validate(
   State(pool): State<DbPool>,
   Form(form): Form<PracticeValidateForm>,
@@ -656,6 +783,27 @@ pub async fn practice_validate(
 
   let result = validate_answer(&form.answer, &card.main_answer);
   let is_correct = matches!(result, crate::validation::AnswerResult::Correct | crate::validation::AnswerResult::CloseEnough);
+
+  // Log to stats if track_progress is enabled
+  if form.track_progress {
+    let direction = get_review_direction(&card);
+    let quality = if is_correct { 4 } else { 0 }; // Good or Again
+    let _ = db::insert_review_log_enhanced(
+      &conn,
+      card.id,
+      quality,
+      is_correct,
+      StudyMode::PracticeInteractive,
+      direction,
+      None,
+      0,
+    );
+
+    // Update character stats
+    let tracked_char = get_tracked_character(&card);
+    let char_type = get_character_type(&card);
+    let _ = db::update_character_stats(&conn, tracked_char, char_type, is_correct);
+  }
 
   let is_korean = is_korean(&card.main_answer);
   let choices = if is_korean {
@@ -676,6 +824,7 @@ pub async fn practice_validate(
     user_answer: form.answer,
     is_multiple_choice: is_korean,
     choices,
+    track_progress: form.track_progress,
   };
 
   Html(template.render().unwrap_or_default())

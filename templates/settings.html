@@ -99,6 +99,25 @@
     </button>
   </form>
 
+  <!-- Developer Tools -->
+  <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6">
+    <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+      Study Tools
+    </h2>
+
+    <div class="mb-4">
+      <form method="POST" action="/settings/make-all-due" class="inline">
+        <button type="button" onclick="if(confirm('Make all cards due for review now? This will reset scheduling for cards not yet due.')) this.form.submit();"
+                class="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 focus:ring-2 focus:ring-amber-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800">
+          Ready for Review
+        </button>
+      </form>
+      <p class="text-sm text-gray-500 dark:text-gray-400 mt-2">
+        Skip ahead to make all cards due now. Useful for intensive study sessions.
+      </p>
+    </div>
+  </div>
+
   <!-- External Content Section -->
   <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6">
     <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">

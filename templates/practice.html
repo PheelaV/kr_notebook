@@ -3,7 +3,7 @@
 {% block title %}Practice - Hangul Learn{% endblock %}
 
 {% block content %}
-<div class="max-w-lg mx-auto" id="study-container" data-practice-mode="{{ mode }}">
+<div class="max-w-lg mx-auto" id="study-container" data-practice-mode="{{ mode }}" data-track-progress="{{ track_progress }}">
   <div class="mb-4 text-center">
     <div class="flex items-center justify-center gap-3 mb-2">
       <span class="inline-block bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200 text-sm font-medium px-3 py-1 rounded-full">
@@ -11,18 +11,31 @@
       </span>
       <!-- Mode toggle -->
       <div class="inline-flex rounded-lg border border-gray-300 dark:border-gray-600 overflow-hidden text-sm">
-        <a href="/practice?mode=flip"
+        <a href="/practice?mode=flip&track={{ track_progress }}"
            class="px-3 py-1 {% if mode == "flip" %}bg-indigo-600 text-white{% else %}bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700{% endif %} transition-colors">
           Flip
         </a>
-        <a href="/practice?mode=interactive"
+        <a href="/practice?mode=interactive&track={{ track_progress }}"
            class="px-3 py-1 {% if mode == "interactive" %}bg-indigo-600 text-white{% else %}bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700{% endif %} transition-colors">
           Interactive
         </a>
       </div>
     </div>
+    <!-- Track progress toggle -->
+    <label class="inline-flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400 cursor-pointer mb-1">
+      <input type="checkbox"
+             id="track-progress-toggle"
+             {% if track_progress %}checked{% endif %}
+             onchange="window.location.href='/practice?mode={{ mode }}&track=' + this.checked"
+             class="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500">
+      <span>Track progress</span>
+    </label>
     <p class="text-xs text-gray-500 dark:text-gray-400">
-      Reviews don't affect scheduling
+      {% if track_progress %}
+      Answers contribute to your stats
+      {% else %}
+      Just drilling - no stats tracking
+      {% endif %}
     </p>
   </div>
   {% if mode == "interactive" %}

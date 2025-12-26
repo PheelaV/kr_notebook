@@ -51,6 +51,7 @@
     </a>
     <form hx-post="/practice-next" hx-target="#card-container" hx-swap="outerHTML" class="flex-1" id="practice-next-form">
       <input type="hidden" name="card_id" value="{{ card_id }}">
+      <input type="hidden" name="track_progress" value="false">
       <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors">
         Next
       </button>

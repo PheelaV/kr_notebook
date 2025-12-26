@@ -27,6 +27,7 @@
       <!-- Multiple Choice Mode (for Korean answers) -->
       <form id="answer-form" hx-post="/validate-answer" hx-target="#card-container" hx-swap="outerHTML">
         <input type="hidden" name="card_id" value="{{ card_id }}">
+        <input type="hidden" name="session_id" value="{{ session_id }}">
         <input type="hidden" name="hints_used" id="hints-used" value="{{ hints_used }}">
         <input type="hidden" name="answer" id="answer-input" value="">
 
@@ -98,6 +99,7 @@
       <!-- Text Input Mode (for romanization answers) -->
       <form id="answer-form" hx-post="/validate-answer" hx-target="#card-container" hx-swap="outerHTML">
         <input type="hidden" name="card_id" value="{{ card_id }}">
+        <input type="hidden" name="session_id" value="{{ session_id }}">
         <input type="hidden" name="hints_used" id="hints-used" value="{{ hints_used }}">
 
         <div class="mb-4">
@@ -209,6 +211,7 @@
 
       <form id="next-card-form" hx-post="/review" hx-target="#card-container" hx-swap="outerHTML">
         <input type="hidden" name="card_id" value="{{ card_id }}">
+        <input type="hidden" name="session_id" value="{{ session_id }}">
         <input type="hidden" name="quality" value="{{ quality }}">
         <button type="submit"
                 class="w-full bg-indigo-500 hover:bg-indigo-600 text-white font-semibold py-3 px-6 rounded-lg transition-colors text-lg">

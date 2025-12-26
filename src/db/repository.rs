@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use rusqlite::{params, Connection, Result};
 
-use crate::domain::{Card, CardType, FsrsState, ReviewLog};
+use crate::domain::{Card, CardType, FsrsState, ReviewDirection, ReviewLog, StudyMode};
 #[cfg(feature = "profiling")]
 use crate::profiling::EventType;
 
@@ -647,6 +647,43 @@ pub fn insert_review_log(conn: &Connection, log: &ReviewLog) -> Result<i64> {
   Ok(conn.last_insert_rowid())
 }
 
+/// Insert a review log with enhanced tracking fields
+pub fn insert_review_log_enhanced(
+  conn: &Connection,
+  card_id: i64,
+  quality: u8,
+  is_correct: bool,
+  study_mode: StudyMode,
+  direction: ReviewDirection,
+  response_time_ms: Option<i64>,
+  hints_used: i32,
+) -> Result<i64> {
+  #[cfg(feature = "profiling")]
+  crate::profile_log!(EventType::DbQuery {
+    operation: "insert_enhanced".into(),
+    table: "review_logs".into(),
+  });
+
+  let now = Utc::now().to_rfc3339();
+  conn.execute(
+    r#"
+    INSERT INTO review_logs (card_id, quality, reviewed_at, is_correct, study_mode, direction, response_time_ms, hints_used)
+    VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+    "#,
+    params![
+      card_id,
+      quality,
+      now,
+      if is_correct { 1 } else { 0 },
+      study_mode.as_str(),
+      direction.as_str(),
+      response_time_ms,
+      hints_used,
+    ],
+  )?;
+  Ok(conn.last_insert_rowid())
+}
+
 // Settings functions
 
 pub fn get_max_unlocked_tier(conn: &Connection) -> Result<u8> {
@@ -800,6 +837,8 @@ pub fn is_tier_enabled(conn: &Connection, tier: u8) -> Result<bool> {
 pub struct TierProgress {
   pub tier: u8,
   pub total: i64,
+  pub new_cards: i64,
+  pub learning: i64,
   pub learned: i64,
   pub is_unlocked: bool,
   pub is_enabled: bool,
@@ -823,6 +862,8 @@ pub fn get_progress_by_tier(conn: &Connection) -> Result<Vec<TierProgress>> {
     r#"
     SELECT tier,
            COUNT(*) as total,
+           SUM(CASE WHEN repetitions = 0 THEN 1 ELSE 0 END) as new_cards,
+           SUM(CASE WHEN repetitions > 0 AND repetitions < 2 THEN 1 ELSE 0 END) as learning,
            SUM(CASE WHEN repetitions >= 2 THEN 1 ELSE 0 END) as learned
     FROM cards
     GROUP BY tier
@@ -836,13 +877,25 @@ pub fn get_progress_by_tier(conn: &Connection) -> Result<Vec<TierProgress>> {
       Ok(TierProgress {
         tier,
         total: row.get(1)?,
-        learned: row.get(2)?,
+        new_cards: row.get(2)?,
+        learning: row.get(3)?,
+        learned: row.get(4)?,
         is_unlocked: tier <= max_tier,
         is_enabled: enabled_tiers.contains(&tier),
       })
     })?
     .collect::<Result<Vec<_>>>()?;
   Ok(progress)
+}
+
+/// Make all cards due now (for testing/accelerated learning)
+pub fn make_all_cards_due(conn: &Connection) -> Result<usize> {
+  let now = Utc::now().to_rfc3339();
+  let count = conn.execute(
+    "UPDATE cards SET next_review = ?1 WHERE next_review > ?1",
+    params![now],
+  )?;
+  Ok(count)
 }
 
 pub fn get_total_stats(conn: &Connection) -> Result<(i64, i64, i64)> {
@@ -907,5 +960,229 @@ fn row_to_card(row: &rusqlite::Row) -> Result<Card> {
     fsrs_stability: row.get(14)?,
     fsrs_difficulty: row.get(15)?,
     fsrs_state: fsrs_state_str.map(|s| FsrsState::from_str(&s)),
+  })
+}
+
+// ==================== Character Stats ====================
+
+#[derive(Debug, Clone)]
+pub struct CharacterStats {
+  pub character: String,
+  pub character_type: String,
+  pub total_attempts: i64,
+  pub total_correct: i64,
+  pub attempts_7d: i64,
+  pub correct_7d: i64,
+  pub attempts_1d: i64,
+  pub correct_1d: i64,
+  pub last_attempt_at: Option<DateTime<Utc>>,
+}
+
+impl CharacterStats {
+  pub fn lifetime_rate(&self) -> f64 {
+    if self.total_attempts > 0 {
+      self.total_correct as f64 / self.total_attempts as f64
+    } else {
+      0.0
+    }
+  }
+
+  pub fn rate_7d(&self) -> f64 {
+    if self.attempts_7d > 0 {
+      self.correct_7d as f64 / self.attempts_7d as f64
+    } else {
+      0.0
+    }
+  }
+
+  pub fn rate_1d(&self) -> f64 {
+    if self.attempts_1d > 0 {
+      self.correct_1d as f64 / self.attempts_1d as f64
+    } else {
+      0.0
+    }
+  }
+}
+
+/// Update character stats after a review
+/// This updates both the cached stats table and handles decay windows
+pub fn update_character_stats(
+  conn: &Connection,
+  character: &str,
+  character_type: &str,
+  is_correct: bool,
+) -> Result<()> {
+  let now = Utc::now().to_rfc3339();
+
+  // Try to update existing row first
+  let updated = conn.execute(
+    r#"
+    UPDATE character_stats
+    SET total_attempts = total_attempts + 1,
+        total_correct = total_correct + ?1,
+        attempts_7d = attempts_7d + 1,
+        correct_7d = correct_7d + ?1,
+        attempts_1d = attempts_1d + 1,
+        correct_1d = correct_1d + ?1,
+        last_attempt_at = ?2
+    WHERE character = ?3
+    "#,
+    params![if is_correct { 1 } else { 0 }, now, character],
+  )?;
+
+  // If no existing row, insert new one
+  if updated == 0 {
+    conn.execute(
+      r#"
+      INSERT INTO character_stats (character, character_type, total_attempts, total_correct,
+                                   attempts_7d, correct_7d, attempts_1d, correct_1d, last_attempt_at)
+      VALUES (?1, ?2, 1, ?3, 1, ?3, 1, ?3, ?4)
+      "#,
+      params![
+        character,
+        character_type,
+        if is_correct { 1 } else { 0 },
+        now
+      ],
+    )?;
+  }
+
+  Ok(())
+}
+
+/// Get character stats for a specific character
+pub fn get_character_stats(conn: &Connection, character: &str) -> Result<Option<CharacterStats>> {
+  let mut stmt = conn.prepare(
+    r#"
+    SELECT character, character_type, total_attempts, total_correct,
+           attempts_7d, correct_7d, attempts_1d, correct_1d, last_attempt_at
+    FROM character_stats
+    WHERE character = ?1
+    "#,
+  )?;
+
+  let mut rows = stmt.query(params![character])?;
+  if let Some(row) = rows.next()? {
+    Ok(Some(row_to_character_stats(row)?))
+  } else {
+    Ok(None)
+  }
+}
+
+/// Get all character stats for a given type (consonant, vowel, syllable)
+pub fn get_character_stats_by_type(conn: &Connection, character_type: &str) -> Result<Vec<CharacterStats>> {
+  let mut stmt = conn.prepare(
+    r#"
+    SELECT character, character_type, total_attempts, total_correct,
+           attempts_7d, correct_7d, attempts_1d, correct_1d, last_attempt_at
+    FROM character_stats
+    WHERE character_type = ?1
+    ORDER BY character ASC
+    "#,
+  )?;
+
+  let stats = stmt
+    .query_map(params![character_type], |row| row_to_character_stats(row))?
+    .collect::<Result<Vec<_>>>()?;
+  Ok(stats)
+}
+
+/// Get all character stats ordered by type and character
+pub fn get_all_character_stats(conn: &Connection) -> Result<Vec<CharacterStats>> {
+  let mut stmt = conn.prepare(
+    r#"
+    SELECT character, character_type, total_attempts, total_correct,
+           attempts_7d, correct_7d, attempts_1d, correct_1d, last_attempt_at
+    FROM character_stats
+    ORDER BY
+      CASE character_type
+        WHEN 'consonant' THEN 1
+        WHEN 'vowel' THEN 2
+        WHEN 'aspirated_consonant' THEN 3
+        WHEN 'tense_consonant' THEN 4
+        WHEN 'compound_vowel' THEN 5
+        ELSE 6
+      END,
+      character ASC
+    "#,
+  )?;
+
+  let stats = stmt
+    .query_map([], |row| row_to_character_stats(row))?
+    .collect::<Result<Vec<_>>>()?;
+  Ok(stats)
+}
+
+/// Refresh decay windows for all character stats
+/// Call this periodically (e.g., on app start or daily) to recalculate 7d/1d windows
+pub fn refresh_character_stats_decay(conn: &Connection) -> Result<()> {
+  let now = Utc::now();
+  let one_day_ago = (now - chrono::Duration::days(1)).to_rfc3339();
+  let seven_days_ago = (now - chrono::Duration::days(7)).to_rfc3339();
+
+  // Reset 7d and 1d counts, then recalculate from review_logs
+  conn.execute("UPDATE character_stats SET attempts_7d = 0, correct_7d = 0, attempts_1d = 0, correct_1d = 0", [])?;
+
+  // Recalculate 7d stats from review_logs joined with cards
+  conn.execute(
+    r#"
+    UPDATE character_stats
+    SET attempts_7d = (
+      SELECT COUNT(*) FROM review_logs rl
+      JOIN cards c ON rl.card_id = c.id
+      WHERE (c.front = character_stats.character OR c.main_answer = character_stats.character)
+        AND rl.reviewed_at >= ?1
+    ),
+    correct_7d = (
+      SELECT COUNT(*) FROM review_logs rl
+      JOIN cards c ON rl.card_id = c.id
+      WHERE (c.front = character_stats.character OR c.main_answer = character_stats.character)
+        AND rl.reviewed_at >= ?1
+        AND rl.is_correct = 1
+    )
+    "#,
+    params![seven_days_ago],
+  )?;
+
+  // Recalculate 1d stats
+  conn.execute(
+    r#"
+    UPDATE character_stats
+    SET attempts_1d = (
+      SELECT COUNT(*) FROM review_logs rl
+      JOIN cards c ON rl.card_id = c.id
+      WHERE (c.front = character_stats.character OR c.main_answer = character_stats.character)
+        AND rl.reviewed_at >= ?1
+    ),
+    correct_1d = (
+      SELECT COUNT(*) FROM review_logs rl
+      JOIN cards c ON rl.card_id = c.id
+      WHERE (c.front = character_stats.character OR c.main_answer = character_stats.character)
+        AND rl.reviewed_at >= ?1
+        AND rl.is_correct = 1
+    )
+    "#,
+    params![one_day_ago],
+  )?;
+
+  Ok(())
+}
+
+fn row_to_character_stats(row: &rusqlite::Row) -> Result<CharacterStats> {
+  let last_attempt_str: Option<String> = row.get(8)?;
+  Ok(CharacterStats {
+    character: row.get(0)?,
+    character_type: row.get(1)?,
+    total_attempts: row.get(2)?,
+    total_correct: row.get(3)?,
+    attempts_7d: row.get(4)?,
+    correct_7d: row.get(5)?,
+    attempts_1d: row.get(6)?,
+    correct_1d: row.get(7)?,
+    last_attempt_at: last_attempt_str.and_then(|s| {
+      DateTime::parse_from_rfc3339(&s)
+        .map(|dt| dt.with_timezone(&Utc))
+        .ok()
+    }),
   })
 }

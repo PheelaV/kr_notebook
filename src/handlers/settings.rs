@@ -670,3 +670,23 @@ fn get_audio_row(lesson_id: &str, row_romanization: &str) -> Option<AudioRow> {
 
   None
 }
+
+/// Make all cards due now for accelerated learning/testing
+pub async fn make_all_due(State(pool): State<DbPool>) -> Redirect {
+  #[cfg(feature = "profiling")]
+  crate::profile_log!(EventType::HandlerStart {
+    route: "/settings/make-all-due".into(),
+    method: "POST".into(),
+  });
+
+  let conn = pool.lock().unwrap();
+  let _count = db::make_all_cards_due(&conn).unwrap_or(0);
+
+  #[cfg(feature = "profiling")]
+  crate::profile_log!(EventType::Custom {
+    name: "make_all_due".into(),
+    data: serde_json::json!({ "cards_updated": _count }),
+  });
+
+  Redirect::to("/settings")
+}
