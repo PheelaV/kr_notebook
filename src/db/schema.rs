@@ -1,6 +1,8 @@
 use rusqlite::{Connection, Result};
 
 pub fn run_migrations(conn: &Connection) -> Result<()> {
+  // Create tables with COMPLETE schema for new databases
+  // Migrations below handle upgrades for existing databases
   conn.execute_batch(
     r#"
     CREATE TABLE IF NOT EXISTS cards (
@@ -17,7 +19,11 @@ pub fn run_migrations(conn: &Connection) -> Result<()> {
       next_review TEXT NOT NULL,
       total_reviews INTEGER NOT NULL DEFAULT 0,
       correct_reviews INTEGER NOT NULL DEFAULT 0,
-      learning_step INTEGER NOT NULL DEFAULT 0
+      learning_step INTEGER NOT NULL DEFAULT 0,
+      -- FSRS columns
+      fsrs_stability REAL,
+      fsrs_difficulty REAL,
+      fsrs_state TEXT DEFAULT 'New'
     );
 
     CREATE TABLE IF NOT EXISTS review_logs (
@@ -25,6 +31,12 @@ pub fn run_migrations(conn: &Connection) -> Result<()> {
       card_id INTEGER NOT NULL,
       quality INTEGER NOT NULL,
       reviewed_at TEXT NOT NULL,
+      -- Enhanced logging columns
+      is_correct INTEGER,
+      study_mode TEXT,
+      direction TEXT,
+      response_time_ms INTEGER,
+      hints_used INTEGER DEFAULT 0,
       FOREIGN KEY (card_id) REFERENCES cards(id)
     );
 
@@ -33,41 +45,6 @@ pub fn run_migrations(conn: &Connection) -> Result<()> {
       value TEXT NOT NULL
     );
 
-    -- Default settings (INSERT OR IGNORE is safe for existing databases)
-    INSERT OR IGNORE INTO settings (key, value) VALUES ('max_unlocked_tier', '1');
-    INSERT OR IGNORE INTO settings (key, value) VALUES ('dark_mode', 'false');
-    INSERT OR IGNORE INTO settings (key, value) VALUES ('tts_enabled', 'true');
-    INSERT OR IGNORE INTO settings (key, value) VALUES ('tts_model', 'mms');
-    INSERT OR IGNORE INTO settings (key, value) VALUES ('all_tiers_unlocked', 'false');
-    INSERT OR IGNORE INTO settings (key, value) VALUES ('enabled_tiers', '1,2,3,4');
-
-    CREATE INDEX IF NOT EXISTS idx_cards_next_review ON cards(next_review);
-    CREATE INDEX IF NOT EXISTS idx_cards_tier ON cards(tier);
-    CREATE INDEX IF NOT EXISTS idx_review_logs_card_id ON review_logs(card_id);
-    "#,
-  )?;
-
-  // Migration: Add learning_step column if it doesn't exist
-  let has_learning_step: bool = conn
-    .prepare("SELECT learning_step FROM cards LIMIT 1")
-    .is_ok();
-  if !has_learning_step {
-    conn.execute("ALTER TABLE cards ADD COLUMN learning_step INTEGER NOT NULL DEFAULT 0", [])?;
-  }
-
-  // Migration: Add FSRS columns if they don't exist (nullable for backward compatibility)
-  let has_fsrs_stability: bool = conn
-    .prepare("SELECT fsrs_stability FROM cards LIMIT 1")
-    .is_ok();
-  if !has_fsrs_stability {
-    conn.execute("ALTER TABLE cards ADD COLUMN fsrs_stability REAL", [])?;
-    conn.execute("ALTER TABLE cards ADD COLUMN fsrs_difficulty REAL", [])?;
-    conn.execute("ALTER TABLE cards ADD COLUMN fsrs_state TEXT DEFAULT 'New'", [])?;
-  }
-
-  // Migration: Add confusions table for tracking wrong answers
-  conn.execute_batch(
-    r#"
     CREATE TABLE IF NOT EXISTS confusions (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       card_id INTEGER NOT NULL,
@@ -77,40 +54,6 @@ pub fn run_migrations(conn: &Connection) -> Result<()> {
       FOREIGN KEY (card_id) REFERENCES cards(id)
     );
 
-    CREATE INDEX IF NOT EXISTS idx_confusions_card_id ON confusions(card_id);
-    "#,
-  )?;
-
-  // Migration: Add FSRS settings
-  conn.execute_batch(
-    r#"
-    INSERT OR IGNORE INTO settings (key, value) VALUES ('desired_retention', '0.9');
-    INSERT OR IGNORE INTO settings (key, value) VALUES ('use_fsrs', 'true');
-    INSERT OR IGNORE INTO settings (key, value) VALUES ('use_interleaving', 'true');
-    "#,
-  )?;
-
-  // Migration: Add enhanced review logging columns
-  let has_is_correct: bool = conn
-    .prepare("SELECT is_correct FROM review_logs LIMIT 1")
-    .is_ok();
-  if !has_is_correct {
-    conn.execute("ALTER TABLE review_logs ADD COLUMN is_correct INTEGER", [])?;
-    conn.execute("ALTER TABLE review_logs ADD COLUMN study_mode TEXT", [])?;
-    conn.execute("ALTER TABLE review_logs ADD COLUMN direction TEXT", [])?;
-    conn.execute("ALTER TABLE review_logs ADD COLUMN response_time_ms INTEGER", [])?;
-    conn.execute("ALTER TABLE review_logs ADD COLUMN hints_used INTEGER DEFAULT 0", [])?;
-
-    // Backfill is_correct from quality (quality >= 2 means correct per ReviewQuality)
-    conn.execute(
-      "UPDATE review_logs SET is_correct = CASE WHEN quality >= 2 THEN 1 ELSE 0 END",
-      [],
-    )?;
-  }
-
-  // Migration: Add character_stats table for aggregated stats
-  conn.execute_batch(
-    r#"
     CREATE TABLE IF NOT EXISTS character_stats (
       character TEXT PRIMARY KEY,
       character_type TEXT NOT NULL,
@@ -123,18 +66,85 @@ pub fn run_migrations(conn: &Connection) -> Result<()> {
       last_attempt_at TEXT
     );
 
+    -- Default settings
+    INSERT OR IGNORE INTO settings (key, value) VALUES ('max_unlocked_tier', '1');
+    INSERT OR IGNORE INTO settings (key, value) VALUES ('dark_mode', 'false');
+    INSERT OR IGNORE INTO settings (key, value) VALUES ('tts_enabled', 'true');
+    INSERT OR IGNORE INTO settings (key, value) VALUES ('tts_model', 'mms');
+    INSERT OR IGNORE INTO settings (key, value) VALUES ('all_tiers_unlocked', 'false');
+    INSERT OR IGNORE INTO settings (key, value) VALUES ('enabled_tiers', '1,2,3,4');
+    INSERT OR IGNORE INTO settings (key, value) VALUES ('desired_retention', '0.9');
+    INSERT OR IGNORE INTO settings (key, value) VALUES ('use_fsrs', 'true');
+    INSERT OR IGNORE INTO settings (key, value) VALUES ('use_interleaving', 'true');
+
+    -- Indexes
+    CREATE INDEX IF NOT EXISTS idx_cards_next_review ON cards(next_review);
+    CREATE INDEX IF NOT EXISTS idx_cards_tier ON cards(tier);
+    CREATE INDEX IF NOT EXISTS idx_review_logs_card_id ON review_logs(card_id);
     CREATE INDEX IF NOT EXISTS idx_review_logs_reviewed_at ON review_logs(reviewed_at);
     CREATE INDEX IF NOT EXISTS idx_review_logs_study_mode ON review_logs(study_mode);
+    CREATE INDEX IF NOT EXISTS idx_confusions_card_id ON confusions(card_id);
     CREATE INDEX IF NOT EXISTS idx_character_stats_type ON character_stats(character_type);
     "#,
   )?;
 
+  // ============================================================
+  // MIGRATIONS FOR EXISTING DATABASES
+  // These are no-ops for new databases (columns already exist)
+  // ============================================================
+
+  // Migration: Add learning_step column (added to cards in early version)
+  add_column_if_missing(conn, "cards", "learning_step", "INTEGER NOT NULL DEFAULT 0")?;
+
+  // Migration: Add FSRS columns
+  add_column_if_missing(conn, "cards", "fsrs_stability", "REAL")?;
+  add_column_if_missing(conn, "cards", "fsrs_difficulty", "REAL")?;
+  add_column_if_missing(conn, "cards", "fsrs_state", "TEXT DEFAULT 'New'")?;
+
+  // Migration: Add enhanced review logging columns
+  let had_is_correct = column_exists(conn, "review_logs", "is_correct");
+  add_column_if_missing(conn, "review_logs", "is_correct", "INTEGER")?;
+  add_column_if_missing(conn, "review_logs", "study_mode", "TEXT")?;
+  add_column_if_missing(conn, "review_logs", "direction", "TEXT")?;
+  add_column_if_missing(conn, "review_logs", "response_time_ms", "INTEGER")?;
+  add_column_if_missing(conn, "review_logs", "hints_used", "INTEGER DEFAULT 0")?;
+
+  // Backfill is_correct ONLY if we just added the column to an existing database with data
+  if !had_is_correct {
+    let has_reviews: bool = conn
+      .query_row("SELECT COUNT(*) > 0 FROM review_logs", [], |row| row.get(0))
+      .unwrap_or(false);
+    if has_reviews {
+      conn.execute(
+        "UPDATE review_logs SET is_correct = CASE WHEN quality >= 2 THEN 1 ELSE 0 END WHERE is_correct IS NULL",
+        [],
+      )?;
+    }
+  }
+
   // Migration: Fix repetitions for FSRS users (bug: FSRS wasn't updating repetitions)
-  // Backfill from correct_reviews where it's higher than current repetitions
   conn.execute(
     "UPDATE cards SET repetitions = correct_reviews WHERE correct_reviews > repetitions",
     [],
   )?;
 
+  Ok(())
+}
+
+/// Check if a column exists in a table
+fn column_exists(conn: &Connection, table: &str, column: &str) -> bool {
+  conn
+    .prepare(&format!("SELECT {} FROM {} LIMIT 1", column, table))
+    .is_ok()
+}
+
+/// Add a column if it doesn't already exist
+fn add_column_if_missing(conn: &Connection, table: &str, column: &str, column_def: &str) -> Result<()> {
+  if !column_exists(conn, table, column) {
+    conn.execute(
+      &format!("ALTER TABLE {} ADD COLUMN {} {}", table, column, column_def),
+      [],
+    )?;
+  }
   Ok(())
 }
