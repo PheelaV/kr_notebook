@@ -13,6 +13,7 @@ pub struct TierProgress {
     pub new_cards: i64,
     pub learning: i64,
     pub learned: i64,
+    pub total_reviews: i64,
     pub is_unlocked: bool,
     pub is_enabled: bool,
 }
@@ -251,6 +252,12 @@ pub fn get_progress_by_tier(conn: &Connection) -> Result<Vec<TierProgress>> {
             |row| row.get(0),
         )?;
 
+        let total_reviews: i64 = conn.query_row(
+            "SELECT COALESCE(SUM(total_reviews), 0) FROM cards WHERE tier = ?1",
+            params![tier],
+            |row| row.get(0),
+        )?;
+
         let is_unlocked = if all_unlocked {
             enabled_tiers.contains(&tier)
         } else {
@@ -263,6 +270,7 @@ pub fn get_progress_by_tier(conn: &Connection) -> Result<Vec<TierProgress>> {
             new_cards,
             learning,
             learned,
+            total_reviews,
             is_unlocked,
             is_enabled: enabled_tiers.contains(&tier),
         });
@@ -278,7 +286,7 @@ pub fn make_all_cards_due(conn: &Connection) -> Result<usize> {
     Ok(count)
 }
 
-/// Get total stats across all effective tiers
+/// Get total stats across ALL cards (global totals, not filtered by mode)
 pub fn get_total_stats(conn: &Connection) -> Result<(i64, i64, i64)> {
     #[cfg(feature = "profiling")]
     crate::profile_log!(EventType::DbQuery {
@@ -286,36 +294,15 @@ pub fn get_total_stats(conn: &Connection) -> Result<(i64, i64, i64)> {
         table: "cards".into(),
     });
 
-    let effective_tiers = get_effective_tiers(conn)?;
-
-    if effective_tiers.is_empty() {
-        return Ok((0, 0, 0));
-    }
-
-    let tier_list = effective_tiers
-        .iter()
-        .map(|t| t.to_string())
-        .collect::<Vec<_>>()
-        .join(",");
-
-    let total_cards: i64 = conn.query_row(
-        &format!("SELECT COUNT(*) FROM cards WHERE tier IN ({})", tier_list),
-        [],
-        |row| row.get(0),
-    )?;
+    let total_cards: i64 =
+        conn.query_row("SELECT COUNT(*) FROM cards", [], |row| row.get(0))?;
     let total_reviews: i64 = conn.query_row(
-        &format!(
-            "SELECT COALESCE(SUM(total_reviews), 0) FROM cards WHERE tier IN ({})",
-            tier_list
-        ),
+        "SELECT COALESCE(SUM(total_reviews), 0) FROM cards",
         [],
         |row| row.get(0),
     )?;
     let cards_learned: i64 = conn.query_row(
-        &format!(
-            "SELECT COUNT(*) FROM cards WHERE repetitions >= 2 AND tier IN ({})",
-            tier_list
-        ),
+        "SELECT COUNT(*) FROM cards WHERE repetitions >= 2",
         [],
         |row| row.get(0),
     )?;

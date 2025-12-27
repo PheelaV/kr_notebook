@@ -63,13 +63,13 @@
 
   <div class="space-y-4">
     {% for tier in tiers %}
-    <details class="bg-white dark:bg-gray-800 shadow rounded-lg {% if !tier.is_unlocked %}opacity-50{% endif %} {% if tier.is_unlocked && !tier.is_enabled %}opacity-60 border-2 border-dashed border-gray-300 dark:border-gray-600{% endif %}">
+    <details class="bg-white dark:bg-gray-800 shadow rounded-lg {% if !tier.is_unlocked %}opacity-50{% endif %} {% if all_tiers_unlocked && tier.is_unlocked && !tier.is_enabled %}opacity-60 border-2 border-dashed border-gray-300 dark:border-gray-600{% endif %} group">
       <summary class="p-4 cursor-pointer list-none">
         <div class="flex justify-between items-center mb-2">
           <div class="font-semibold text-gray-900 dark:text-white flex items-center">
-            {% if tier.is_unlocked && tier.is_enabled %}
+            {% if tier.is_unlocked && (tier.is_enabled || !all_tiers_unlocked) %}
             <span class="text-green-500 mr-2">&#10003;</span>
-            {% else if tier.is_unlocked && !tier.is_enabled %}
+            {% else if all_tiers_unlocked && tier.is_unlocked && !tier.is_enabled %}
             <span class="text-yellow-500 mr-2">&#10007;</span>
             {% else %}
             <span class="text-gray-400 mr-2">&#128274;</span>
@@ -81,21 +81,28 @@
               {% if tier.tier == 3 %}Aspirated & Tense Consonants{% endif %}
               {% if tier.tier == 4 %}Compound Vowels{% endif %}
             </span>
-            {% if tier.is_unlocked && !tier.is_enabled %}
+            {% if all_tiers_unlocked && tier.is_unlocked && !tier.is_enabled %}
             <span class="ml-2 text-xs bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300 px-2 py-0.5 rounded">skipped</span>
             {% endif %}
           </div>
-          <div class="text-sm text-gray-600 dark:text-gray-400">
+          <div class="flex items-center gap-2">
+            <span class="text-sm text-gray-600 dark:text-gray-400">
+              {% if tier.is_unlocked %}
+              {{ tier.learned }} / {{ tier.total }} learned
+              {% else %}
+              Locked
+              {% endif %}
+            </span>
             {% if tier.is_unlocked %}
-            {{ tier.learned }} / {{ tier.total }} learned
-            {% else %}
-            Locked
+            <svg class="w-5 h-5 text-gray-400 transition-transform duration-200 group-open:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+            </svg>
             {% endif %}
           </div>
         </div>
         <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3">
           {% if tier.is_unlocked %}
-          <div class="{% if tier.is_enabled %}bg-indigo-600{% else %}bg-gray-400 dark:bg-gray-500{% endif %} h-3 rounded-full transition-all duration-300" style="width: {{ tier.percentage() }}%"></div>
+          <div class="{% if tier.is_enabled || !all_tiers_unlocked %}bg-indigo-600{% else %}bg-gray-400 dark:bg-gray-500{% endif %} h-3 rounded-full transition-all duration-300" style="width: {{ tier.percentage() }}%"></div>
           {% endif %}
         </div>
         {% if tier.is_unlocked && tier.is_enabled && tier.tier == max_unlocked_tier && tier.percentage() < 80 && !all_tiers_unlocked %}
@@ -106,7 +113,7 @@
       </summary>
       {% if tier.is_unlocked %}
       <div class="px-4 pb-4 pt-2 border-t border-gray-100 dark:border-gray-700">
-        <div class="grid grid-cols-3 gap-3 text-center text-sm">
+        <div class="grid grid-cols-4 gap-3 text-center text-sm">
           <div class="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-2">
             <div class="text-xl font-bold text-blue-600 dark:text-blue-400">{{ tier.new_cards }}</div>
             <div class="text-xs text-gray-500 dark:text-gray-400">New</div>
@@ -118,6 +125,10 @@
           <div class="bg-green-50 dark:bg-green-900/20 rounded-lg p-2">
             <div class="text-xl font-bold text-green-600 dark:text-green-400">{{ tier.learned }}</div>
             <div class="text-xs text-gray-500 dark:text-gray-400">Learned</div>
+          </div>
+          <div class="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-2">
+            <div class="text-xl font-bold text-purple-600 dark:text-purple-400">{{ tier.total_reviews }}</div>
+            <div class="text-xs text-gray-500 dark:text-gray-400">Reviews</div>
           </div>
         </div>
         <p class="text-xs text-gray-500 dark:text-gray-400 mt-3">
