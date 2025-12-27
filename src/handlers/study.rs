@@ -8,7 +8,7 @@ use rand::seq::SliceRandom;
 use serde::Deserialize;
 
 use crate::db::{self, DbPool};
-use crate::domain::{Card, ReviewDirection, ReviewQuality, StudyMode};
+use crate::domain::{Card, InputMethod, ReviewDirection, ReviewQuality, StudyMode};
 use crate::session;
 use crate::srs::{self, select_next_card};
 use crate::validation::{validate_answer, HintGenerator};
@@ -446,6 +446,8 @@ pub struct ValidateAnswerForm {
   pub hints_used: u8,
   #[serde(default)]
   pub session_id: String,
+  #[serde(default)]
+  pub input_method: InputMethod,
 }
 
 /// Validate user's typed answer
@@ -462,9 +464,21 @@ pub async fn validate_answer_handler(
   let conn = pool.lock().unwrap();
 
   if let Ok(Some(card)) = db::get_card_by_id(&conn, form.card_id) {
-    let result = validate_answer(&form.answer, &card.main_answer);
-    let is_correct = result.is_correct();
-    let quality = result.to_quality(form.hints_used > 0);
+    // Use strict or fuzzy matching based on input method
+    let (is_correct, quality) = if form.input_method.is_strict() {
+      // Multiple choice: exact match only
+      let correct = form.answer == card.main_answer;
+      let q = if correct {
+        if form.hints_used > 0 { 2 } else { 4 } // Hard or Good
+      } else {
+        0 // Again
+      };
+      (correct, q)
+    } else {
+      // Text input: fuzzy matching allows typos
+      let result = validate_answer(&form.answer, &card.main_answer);
+      (result.is_correct(), result.to_quality(form.hints_used > 0))
+    };
 
     #[cfg(feature = "profiling")]
     crate::profile_log!(EventType::AnswerValidation {
@@ -480,7 +494,7 @@ pub async fn validate_answer_handler(
 
     let hint_gen = HintGenerator::new(&card.main_answer, card.description.as_deref());
 
-    // Check if answer is Korean (was multiple choice)
+    // Check if answer is Korean (for template display purposes)
     let is_multiple_choice = is_korean(&card.main_answer);
 
     let template = InteractiveCardTemplate {
@@ -777,6 +791,8 @@ pub struct PracticeValidateForm {
   pub answer: String,
   #[serde(default)]
   pub track_progress: bool,
+  #[serde(default)]
+  pub input_method: InputMethod,
 }
 
 /// Validate answer in practice mode (optionally logs to stats)
@@ -791,8 +807,15 @@ pub async fn practice_validate(
     _ => return Html("<p>Card not found.</p>".to_string()),
   };
 
-  let result = validate_answer(&form.answer, &card.main_answer);
-  let is_correct = matches!(result, crate::validation::AnswerResult::Correct | crate::validation::AnswerResult::CloseEnough);
+  // Use strict or fuzzy matching based on input method
+  let is_correct = if form.input_method.is_strict() {
+    // Multiple choice: exact match only
+    form.answer == card.main_answer
+  } else {
+    // Text input: fuzzy matching allows typos
+    let result = validate_answer(&form.answer, &card.main_answer);
+    matches!(result, crate::validation::AnswerResult::Correct | crate::validation::AnswerResult::CloseEnough)
+  };
 
   // Log to stats if track_progress is enabled
   if form.track_progress {

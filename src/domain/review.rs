@@ -1,6 +1,40 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
+/// Input method indicates how the user provided their answer
+/// This determines whether strict or fuzzy matching is used
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum InputMethod {
+  /// User selected from a closed set of options - use strict matching
+  MultipleChoice,
+  /// User typed the answer - use fuzzy matching to allow typos
+  #[default]
+  TextInput,
+}
+
+impl InputMethod {
+  pub fn as_str(&self) -> &'static str {
+    match self {
+      Self::MultipleChoice => "multiple_choice",
+      Self::TextInput => "text_input",
+    }
+  }
+
+  pub fn from_str(s: &str) -> Option<Self> {
+    match s {
+      "multiple_choice" => Some(Self::MultipleChoice),
+      "text_input" => Some(Self::TextInput),
+      _ => None,
+    }
+  }
+
+  /// Returns true if this input method should use strict (exact) matching
+  pub fn is_strict(&self) -> bool {
+    matches!(self, Self::MultipleChoice)
+  }
+}
+
 /// Study mode indicates which UI/interaction mode was used
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum StudyMode {
@@ -135,5 +169,48 @@ impl ReviewQuality {
 
   pub fn is_correct(&self) -> bool {
     matches!(self, Self::Hard | Self::Good | Self::Easy)
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn test_input_method_strict() {
+    assert!(InputMethod::MultipleChoice.is_strict());
+    assert!(!InputMethod::TextInput.is_strict());
+  }
+
+  #[test]
+  fn test_input_method_default() {
+    // Default should be TextInput for backwards compatibility
+    assert_eq!(InputMethod::default(), InputMethod::TextInput);
+  }
+
+  #[test]
+  fn test_input_method_serde() {
+    // Test that serde rename_all works correctly
+    let mc: InputMethod = serde_json::from_str("\"multiple_choice\"").unwrap();
+    assert_eq!(mc, InputMethod::MultipleChoice);
+
+    let ti: InputMethod = serde_json::from_str("\"text_input\"").unwrap();
+    assert_eq!(ti, InputMethod::TextInput);
+
+    assert_eq!(serde_json::to_string(&InputMethod::MultipleChoice).unwrap(), "\"multiple_choice\"");
+    assert_eq!(serde_json::to_string(&InputMethod::TextInput).unwrap(), "\"text_input\"");
+  }
+
+  #[test]
+  fn test_input_method_from_str() {
+    assert_eq!(InputMethod::from_str("multiple_choice"), Some(InputMethod::MultipleChoice));
+    assert_eq!(InputMethod::from_str("text_input"), Some(InputMethod::TextInput));
+    assert_eq!(InputMethod::from_str("invalid"), None);
+  }
+
+  #[test]
+  fn test_input_method_as_str() {
+    assert_eq!(InputMethod::MultipleChoice.as_str(), "multiple_choice");
+    assert_eq!(InputMethod::TextInput.as_str(), "text_input");
   }
 }

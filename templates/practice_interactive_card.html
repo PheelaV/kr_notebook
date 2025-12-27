@@ -29,6 +29,7 @@
             onsubmit="return validateMultipleChoice()">
         <input type="hidden" name="card_id" value="{{ card_id }}">
         <input type="hidden" name="track_progress" value="{{ track_progress }}">
+        <input type="hidden" name="input_method" value="multiple_choice">
         <input type="hidden" name="answer" id="answer-input" value="">
 
         <div class="grid grid-cols-2 gap-2 sm:gap-3 mb-4">
@@ -101,6 +102,7 @@
       <form id="answer-form" hx-post="/practice-validate" hx-target="#card-container" hx-swap="outerHTML">
         <input type="hidden" name="card_id" value="{{ card_id }}">
         <input type="hidden" name="track_progress" value="{{ track_progress }}">
+        <input type="hidden" name="input_method" value="text_input">
 
         <div class="mb-4">
           <input type="text"
