@@ -119,6 +119,33 @@ fn levenshtein_distance(a: &str, b: &str) -> usize {
   matrix[a_len][b_len]
 }
 
+/// Parse a phonetic answer into core letter and optional modifier
+/// e.g., "jj (tense)" -> ("jj", Some("tense"))
+/// e.g., "g / k" -> ("g / k", None)
+/// e.g., "ya" -> ("ya", None)
+fn parse_phonetic_answer(answer: &str) -> (String, Option<String>) {
+  let normalized = normalize_answer(answer);
+
+  // Split by whitespace and check if last part looks like a modifier
+  let parts: Vec<&str> = normalized.split_whitespace().collect();
+  if parts.len() >= 2 {
+    let last_part = parts[parts.len() - 1];
+    let letter_parts = &parts[..parts.len() - 1];
+    let letter_part = letter_parts.join(" ");
+
+    // Check if last part is or resembles a known modifier
+    let modifiers = ["tense", "aspirated"];
+    for modifier in &modifiers {
+      // Exact match or close match (1 edit distance for typos like "tenss")
+      if last_part == *modifier || levenshtein_distance(last_part, modifier) <= 1 {
+        return (letter_part, Some(last_part.to_string()));
+      }
+    }
+  }
+
+  (normalized, None)
+}
+
 /// Validate a user's answer against the correct answer
 pub fn validate_answer(user_input: &str, correct_answer: &str) -> AnswerResult {
   let normalized_input = normalize_answer(user_input);
@@ -134,16 +161,48 @@ pub fn validate_answer(user_input: &str, correct_answer: &str) -> AnswerResult {
     return AnswerResult::Correct;
   }
 
-  // Check for close match (Levenshtein distance based on length) with any variant
+  // Parse correct answer to check for phonetic pattern (letter + modifier)
+  let (correct_letter, correct_modifier) = parse_phonetic_answer(correct_answer);
+
+  // If the correct answer has a modifier (tense/aspirated), validate letter separately
+  if correct_modifier.is_some() {
+    let (input_letter, input_modifier) = parse_phonetic_answer(user_input);
+
+    // Core letter part MUST be exact - no tolerance for wrong consonants
+    if input_letter != correct_letter {
+      return AnswerResult::Incorrect;
+    }
+
+    // If letter is correct, check modifier
+    if let (Some(correct_mod), Some(input_mod)) = (&correct_modifier, &input_modifier) {
+      // Compare input modifier against the canonical correct modifier
+      let mod_distance = levenshtein_distance(input_mod, correct_mod);
+      if mod_distance == 0 {
+        return AnswerResult::Correct;
+      }
+      if mod_distance == 1 {
+        return AnswerResult::CloseEnough;
+      }
+      // Wrong modifier (e.g., "tense" vs "aspirated")
+      return AnswerResult::Incorrect;
+    }
+
+    // Letter correct but modifier missing or wrong format
+    if input_modifier.is_none() && correct_modifier.is_some() {
+      // User typed just the letter without modifier - that's incomplete
+      return AnswerResult::Incorrect;
+    }
+  }
+
+  // Standard validation for non-phonetic answers (simple letters, vowels, etc.)
   for variant in &variants {
     let distance = levenshtein_distance(&normalized_input, variant);
-    // Use character count, not byte length (important for Korean/Unicode)
     let char_count = variant.chars().count();
-    // For single-char answers, must be exact; 2-3 char allows 1 diff; 4+ allows 2
+    // For simple answers, allow 1 char tolerance for 2+ char answers
     let max_distance = match char_count {
       0..=1 => 0, // Single char must be exact
-      2..=3 => 1, // Short answers: 1 char tolerance
-      _ => 2,     // Longer answers: 2 char tolerance
+      2..=4 => 1, // Short answers: 1 char tolerance
+      _ => 1,     // Longer answers: 1 char tolerance
     };
     if distance > 0 && distance <= max_distance {
       return AnswerResult::CloseEnough;
@@ -230,6 +289,32 @@ mod tests {
     assert_eq!(validate_answer("xyz", "ya"), AnswerResult::Incorrect);  // 3 char diff = incorrect
     assert_eq!(validate_answer("abc", "ya"), AnswerResult::Incorrect);  // completely wrong
     assert_eq!(validate_answer("", "g / k"), AnswerResult::Incorrect);
+    // Different consonants should be incorrect even with same modifier
+    assert_eq!(validate_answer("ch tense", "jj (tense)"), AnswerResult::Incorrect);
+    assert_eq!(validate_answer("dd tense", "jj (tense)"), AnswerResult::Incorrect);
+    assert_eq!(validate_answer("gg tense", "jj (tense)"), AnswerResult::Incorrect);
+    // Missing modifier should be incorrect
+    assert_eq!(validate_answer("jj", "jj (tense)"), AnswerResult::Incorrect);
+    // Wrong modifier should be incorrect
+    assert_eq!(validate_answer("jj aspirated", "jj (tense)"), AnswerResult::Incorrect);
+  }
+
+  #[test]
+  fn test_phonetic_modifiers() {
+    // Exact match with modifier
+    assert_eq!(validate_answer("jj tense", "jj (tense)"), AnswerResult::Correct);
+    assert_eq!(validate_answer("jj (tense)", "jj (tense)"), AnswerResult::Correct);
+    assert_eq!(validate_answer("ch aspirated", "ch (aspirated)"), AnswerResult::Correct);
+
+    // Typo in modifier is close enough (1 edit distance)
+    assert_eq!(validate_answer("jj tenss", "jj (tense)"), AnswerResult::CloseEnough);  // extra s
+    assert_eq!(validate_answer("jj tensee", "jj (tense)"), AnswerResult::CloseEnough); // extra e
+    // 2+ edits in modifier is incorrect
+    assert_eq!(validate_answer("jj tenes", "jj (tense)"), AnswerResult::Incorrect);    // transposition = 2 edits
+
+    // Wrong letter is always incorrect
+    assert_eq!(validate_answer("ch tense", "jj (tense)"), AnswerResult::Incorrect);
+    assert_eq!(validate_answer("gg aspirated", "ch (aspirated)"), AnswerResult::Incorrect);
   }
 
   #[test]

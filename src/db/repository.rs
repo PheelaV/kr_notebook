@@ -1159,21 +1159,30 @@ pub fn get_all_character_stats(conn: &Connection) -> Result<Vec<CharacterStats>>
   Ok(stats)
 }
 
-/// Refresh decay windows for all character stats
-/// Call this periodically (e.g., on app start or daily) to recalculate 7d/1d windows
+/// Refresh all character stats from review_logs
+/// Call this periodically (e.g., on app start) to recalculate all-time, 7d, and 1d windows
 pub fn refresh_character_stats_decay(conn: &Connection) -> Result<()> {
   let now = Utc::now();
   let one_day_ago = (now - chrono::Duration::days(1)).to_rfc3339();
   let seven_days_ago = (now - chrono::Duration::days(7)).to_rfc3339();
 
-  // Reset 7d and 1d counts, then recalculate from review_logs
-  conn.execute("UPDATE character_stats SET attempts_7d = 0, correct_7d = 0, attempts_1d = 0, correct_1d = 0", [])?;
-
-  // Recalculate 7d stats from review_logs joined with cards
+  // Recalculate ALL stats from review_logs to ensure consistency
+  // This fixes any drift between total_attempts and windowed stats
   conn.execute(
     r#"
     UPDATE character_stats
-    SET attempts_7d = (
+    SET total_attempts = (
+      SELECT COUNT(*) FROM review_logs rl
+      JOIN cards c ON rl.card_id = c.id
+      WHERE c.front = character_stats.character OR c.main_answer = character_stats.character
+    ),
+    total_correct = (
+      SELECT COUNT(*) FROM review_logs rl
+      JOIN cards c ON rl.card_id = c.id
+      WHERE (c.front = character_stats.character OR c.main_answer = character_stats.character)
+        AND rl.is_correct = 1
+    ),
+    attempts_7d = (
       SELECT COUNT(*) FROM review_logs rl
       JOIN cards c ON rl.card_id = c.id
       WHERE (c.front = character_stats.character OR c.main_answer = character_stats.character)
@@ -1185,30 +1194,22 @@ pub fn refresh_character_stats_decay(conn: &Connection) -> Result<()> {
       WHERE (c.front = character_stats.character OR c.main_answer = character_stats.character)
         AND rl.reviewed_at >= ?1
         AND rl.is_correct = 1
-    )
-    "#,
-    params![seven_days_ago],
-  )?;
-
-  // Recalculate 1d stats
-  conn.execute(
-    r#"
-    UPDATE character_stats
-    SET attempts_1d = (
+    ),
+    attempts_1d = (
       SELECT COUNT(*) FROM review_logs rl
       JOIN cards c ON rl.card_id = c.id
       WHERE (c.front = character_stats.character OR c.main_answer = character_stats.character)
-        AND rl.reviewed_at >= ?1
+        AND rl.reviewed_at >= ?2
     ),
     correct_1d = (
       SELECT COUNT(*) FROM review_logs rl
       JOIN cards c ON rl.card_id = c.id
       WHERE (c.front = character_stats.character OR c.main_answer = character_stats.character)
-        AND rl.reviewed_at >= ?1
+        AND rl.reviewed_at >= ?2
         AND rl.is_correct = 1
     )
     "#,
-    params![one_day_ago],
+    params![seven_days_ago, one_day_ago],
   )?;
 
   Ok(())
