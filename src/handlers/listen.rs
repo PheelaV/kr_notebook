@@ -5,12 +5,13 @@ use axum::{
 };
 use rand::prelude::IndexedRandom;
 use serde::Deserialize;
-use std::collections::HashSet;
-use std::fs;
-use std::path::Path;
 
 use super::settings::{has_lesson1, has_lesson2};
-use crate::paths;
+use crate::audio::{
+    get_available_syllables, get_row_romanization, get_row_syllables, load_manifest,
+    vowel_romanization,
+};
+use crate::config;
 
 /// A syllable with audio info for listening practice
 #[derive(Clone)]
@@ -47,114 +48,49 @@ pub struct ListenTier {
     pub total_syllables: usize,
 }
 
-/// Get available syllable audio files for a lesson
-fn get_available_syllables(lesson: &str) -> HashSet<String> {
-    let syllables_dir = paths::syllables_dir(lesson);
-    let syllables_path = Path::new(&syllables_dir);
-
-    if syllables_path.exists() {
-        fs::read_dir(syllables_path)
-            .map(|entries| {
-                entries
-                    .filter_map(|e| e.ok())
-                    .filter_map(|e| {
-                        let path = e.path();
-                        if path.extension().map(|ext| ext == "mp3").unwrap_or(false) {
-                            path.file_stem()
-                                .and_then(|s| s.to_str())
-                                .map(String::from)
-                        } else {
-                            None
-                        }
-                    })
-                    .collect()
-            })
-            .unwrap_or_default()
-    } else {
-        HashSet::new()
-    }
-}
-
-/// Build a listening tier from manifest
+/// Build a listening tier from manifest using shared utilities
 fn build_tier_from_manifest(tier: u8, lesson_id: &str, name: &str) -> Option<ListenTier> {
-    let manifest_path = paths::manifest_path(lesson_id);
-    let manifest_content = fs::read_to_string(&manifest_path).ok()?;
-    let manifest: serde_json::Value = serde_json::from_str(&manifest_content).ok()?;
-
+    let manifest = load_manifest(lesson_id)?;
     let available_syllables = get_available_syllables(lesson_id);
+
     if available_syllables.is_empty() {
         return None;
     }
 
-    // Extract vowels order
-    let vowels: Vec<String> = manifest["vowels_order"]
-        .as_array()
-        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
-        .unwrap_or_default();
-
-    // Vowel romanizations
-    let vowel_romanizations: Vec<String> = vowels
+    // Use shared vowel romanization function
+    let vowel_romanizations: Vec<String> = manifest
+        .vowels_order
         .iter()
-        .map(|v| match v.as_str() {
-            "ㅣ" => "i",
-            "ㅏ" => "a",
-            "ㅓ" => "eo",
-            "ㅡ" => "eu",
-            "ㅜ" => "u",
-            "ㅗ" => "o",
-            _ => "",
-        }.to_string())
+        .map(|v| vowel_romanization(v).to_string())
         .collect();
-
-    // Extract consonants order
-    let consonants_order: Vec<String> = manifest["consonants_order"]
-        .as_array()
-        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
-        .unwrap_or_default();
-
-    let rows_data = &manifest["rows"];
-    let syllable_table = &manifest["syllable_table"];
 
     let mut rows = Vec::new();
     let mut total_syllables = 0;
 
-    for c in &consonants_order {
-        if let Some(row) = rows_data.get(c) {
-            let syllables: Vec<ListenSyllable> = row["syllables"]
-                .as_array()
-                .map(|arr| {
-                    arr.iter()
-                        .filter_map(|s| {
-                            let syllable_char = s.as_str()?;
-                            let rom = syllable_table
-                                .get(syllable_char)
-                                .and_then(|st| st["romanization"].as_str())
-                                .unwrap_or("")
-                                .to_string();
+    for c in &manifest.consonants_order {
+        let syllable_infos = get_row_syllables(&manifest, c);
 
-                            // Only include syllables with audio
-                            if available_syllables.contains(&rom) {
-                                Some(ListenSyllable {
-                                    character: syllable_char.to_string(),
-                                    romanization: rom.clone(),
-                                    audio_path: format!("/audio/scraped/htsk/{}/syllables/{}.mp3", lesson_id, rom),
-                                })
-                            } else {
-                                None
-                            }
-                        })
-                        .collect()
-                })
-                .unwrap_or_default();
+        // Filter to only syllables with audio and convert to ListenSyllable
+        let syllables: Vec<ListenSyllable> = syllable_infos
+            .into_iter()
+            .filter(|s| available_syllables.contains(&s.romanization))
+            .map(|s| ListenSyllable {
+                character: s.character,
+                romanization: s.romanization.clone(),
+                audio_path: format!(
+                    "/audio/scraped/htsk/{}/syllables/{}.mp3",
+                    lesson_id, s.romanization
+                ),
+            })
+            .collect();
 
-            if !syllables.is_empty() {
-                total_syllables += syllables.len();
-                rows.push(ListenRow {
-                    consonant: c.clone(),
-                    romanization: row["romanization"].as_str().unwrap_or("").to_string(),
-                    syllables,
-                });
-            }
+        if !syllables.is_empty() {
+            total_syllables += syllables.len();
+            rows.push(ListenRow {
+                consonant: c.clone(),
+                romanization: get_row_romanization(&manifest, c),
+                syllables,
+            });
         }
     }
 
@@ -166,7 +102,7 @@ fn build_tier_from_manifest(tier: u8, lesson_id: &str, name: &str) -> Option<Lis
         tier,
         lesson_id: lesson_id.to_string(),
         name: name.to_string(),
-        vowels,
+        vowels: manifest.vowels_order,
         vowel_romanizations,
         rows,
         total_syllables,
@@ -339,13 +275,15 @@ pub struct SkipQuery {
 /// GET /listen - Tier selection page
 pub async fn listen_index() -> impl IntoResponse {
     let tier1 = if has_lesson1() {
-        build_tier_from_manifest(1, "lesson1", "Basic Consonants")
+        config::get_listen_tier_info(1)
+            .and_then(|(lesson_id, name)| build_tier_from_manifest(1, lesson_id, name))
     } else {
         None
     };
 
     let tier2 = if has_lesson2() {
-        build_tier_from_manifest(2, "lesson2", "Tense & Aspirated")
+        config::get_listen_tier_info(2)
+            .and_then(|(lesson_id, name)| build_tier_from_manifest(2, lesson_id, name))
     } else {
         None
     };
@@ -362,10 +300,9 @@ pub async fn listen_index() -> impl IntoResponse {
 
 /// GET /listen/start?tier=1 - Start practice for a tier
 pub async fn listen_start(Query(query): Query<StartQuery>) -> impl IntoResponse {
-    let (lesson_id, tier_name) = match query.tier {
-        1 => ("lesson1", "Lesson 1: Basic Consonants"),
-        2 => ("lesson2", "Lesson 2: Tense & Aspirated"),
-        _ => return Html("Invalid tier".to_string()),
+    let (lesson_id, tier_name) = match config::get_listen_tier_info(query.tier) {
+        Some((lid, name)) => (lid, name),
+        None => return Html("Invalid tier".to_string()),
     };
 
     let tier = match build_tier_from_manifest(query.tier, lesson_id, tier_name) {
@@ -402,10 +339,9 @@ pub async fn listen_start(Query(query): Query<StartQuery>) -> impl IntoResponse 
 
 /// POST /listen/answer - Submit answer and get next syllable (legacy full page)
 pub async fn listen_answer(Form(form): Form<AnswerForm>) -> impl IntoResponse {
-    let (lesson_id, tier_name) = match form.tier {
-        1 => ("lesson1", "Lesson 1: Basic Consonants"),
-        2 => ("lesson2", "Lesson 2: Tense & Aspirated"),
-        _ => return Html("Invalid tier".to_string()),
+    let (lesson_id, tier_name) = match config::get_listen_tier_info(form.tier) {
+        Some((lid, name)) => (lid, name),
+        None => return Html("Invalid tier".to_string()),
     };
 
     let tier = match build_tier_from_manifest(form.tier, lesson_id, tier_name) {
@@ -447,10 +383,9 @@ pub async fn listen_answer(Form(form): Form<AnswerForm>) -> impl IntoResponse {
 
 /// POST /listen/answer-htmx - Submit answer via HTMX (partial update)
 pub async fn listen_answer_htmx(Form(form): Form<AnswerForm>) -> impl IntoResponse {
-    let lesson_id = match form.tier {
-        1 => "lesson1",
-        2 => "lesson2",
-        _ => return Html("Invalid tier".to_string()),
+    let lesson_id = match config::get_listen_tier_info(form.tier) {
+        Some((lid, _)) => lid,
+        None => return Html("Invalid tier".to_string()),
     };
 
     let tier = match build_tier_from_manifest(form.tier, lesson_id, "") {
@@ -490,10 +425,9 @@ pub async fn listen_answer_htmx(Form(form): Form<AnswerForm>) -> impl IntoRespon
 
 /// GET /listen/skip - Skip current syllable
 pub async fn listen_skip(Query(query): Query<SkipQuery>) -> impl IntoResponse {
-    let (lesson_id, tier_name) = match query.tier {
-        1 => ("lesson1", "Lesson 1: Basic Consonants"),
-        2 => ("lesson2", "Lesson 2: Tense & Aspirated"),
-        _ => return Html("Invalid tier".to_string()),
+    let (lesson_id, tier_name) = match config::get_listen_tier_info(query.tier) {
+        Some((lid, name)) => (lid, name),
+        None => return Html("Invalid tier".to_string()),
     };
 
     let tier = match build_tier_from_manifest(query.tier, lesson_id, tier_name) {

@@ -94,6 +94,9 @@ pub fn calculate_fsrs_review(card: &Card, quality: u8, desired_retention: f64) -
 
 /// Migrate a card from SM-2 to FSRS
 /// Uses the card's current SM-2 data to estimate initial FSRS state
+///
+/// TODO: Planned feature - SM2→FSRS migration tool
+/// Will be used when enabling FSRS for existing databases with SM-2 history
 #[allow(dead_code)]
 pub fn migrate_from_sm2(card: &Card, desired_retention: f64) -> Option<(f64, f64, FsrsState)> {
   // Only migrate graduated cards (those with valid SM-2 data)

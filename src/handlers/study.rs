@@ -7,7 +7,7 @@ use axum::{
 use rand::seq::SliceRandom;
 use serde::Deserialize;
 
-use crate::db::{self, DbPool};
+use crate::db::{self, try_lock, DbPool, LogOnError};
 use crate::domain::{Card, InputMethod, ReviewDirection, ReviewQuality, StudyMode};
 use crate::session;
 use crate::srs::{self, select_next_card};
@@ -208,8 +208,11 @@ pub struct PracticeTemplate {
 
 
 pub async fn study_start(State(pool): State<DbPool>) -> impl IntoResponse {
-  let conn = pool.lock().unwrap();
-  let cards = db::get_due_cards(&conn, 1, None).unwrap_or_default();
+  let conn = match try_lock(&pool) {
+    Ok(conn) => conn,
+    Err(_) => return Html("<h1>Database Error</h1><p>Please refresh the page.</p>".to_string()),
+  };
+  let cards = db::get_due_cards(&conn, 1, None).log_warn_default("Failed to get due cards");
 
   if let Some(card) = cards.first() {
     let template = StudyTemplate {
@@ -246,7 +249,10 @@ pub async fn submit_review(
   State(pool): State<DbPool>,
   Form(form): Form<ReviewForm>,
 ) -> impl IntoResponse {
-  let conn = pool.lock().unwrap();
+  let conn = match try_lock(&pool) {
+    Ok(conn) => conn,
+    Err(_) => return Html("<h1>Database Error</h1><p>Please refresh the page.</p>".to_string()),
+  };
 
   // Get current card
   if let Ok(Some(card)) = db::get_card_by_id(&conn, form.card_id) {
@@ -296,7 +302,7 @@ pub async fn submit_review(
   }
 
   // Get next card, excluding sibling of the just-reviewed card
-  let cards = db::get_due_cards(&conn, 1, Some(form.card_id)).unwrap_or_default();
+  let cards = db::get_due_cards(&conn, 1, Some(form.card_id)).log_warn_default("Failed to get due cards");
 
   if let Some(next_card) = cards.first() {
     let template = CardTemplate {
@@ -321,7 +327,10 @@ pub async fn study_start_interactive(State(pool): State<DbPool>) -> impl IntoRes
     method: "GET".into(),
   });
 
-  let conn = pool.lock().unwrap();
+  let conn = match try_lock(&pool) {
+    Ok(conn) => conn,
+    Err(_) => return Html("<h1>Database Error</h1><p>Please refresh the page.</p>".to_string()),
+  };
 
   // Generate a new session ID for this study session
   let session_id = session::generate_session_id();
@@ -349,7 +358,7 @@ pub async fn study_start_interactive(State(pool): State<DbPool>) -> impl IntoRes
       // Check if answer is Korean (needs multiple choice)
       let is_multiple_choice = is_korean(&card.main_answer);
       let choices = if is_multiple_choice {
-        let all_cards = db::get_cards_by_tier(&conn, card.tier).unwrap_or_default();
+        let all_cards = db::get_cards_by_tier(&conn, card.tier).log_warn_default("Failed to get tier cards for choices");
         generate_choices(&card, &all_cards)
       } else {
         vec![]
@@ -415,22 +424,22 @@ pub async fn study_start_interactive(State(pool): State<DbPool>) -> impl IntoRes
 
 /// Get all available cards for study (due + unreviewed in accelerated mode)
 fn get_available_study_cards(conn: &std::sync::MutexGuard<'_, rusqlite::Connection>) -> Vec<Card> {
-  let use_interleaving = db::get_use_interleaving(conn).unwrap_or(true);
-  let accelerated = db::get_all_tiers_unlocked(conn).unwrap_or(false);
+  let use_interleaving = db::get_use_interleaving(conn).log_warn_default("Failed to get interleaving setting");
+  let accelerated = db::get_all_tiers_unlocked(conn).log_warn_default("Failed to get accelerated mode setting");
 
   let mut cards = Vec::new();
 
   // Get due cards
   let due = if use_interleaving {
-    db::get_due_cards_interleaved(conn, 50, None).unwrap_or_default()
+    db::get_due_cards_interleaved(conn, 50, None).log_warn_default("Failed to get interleaved due cards")
   } else {
-    db::get_due_cards(conn, 50, None).unwrap_or_default()
+    db::get_due_cards(conn, 50, None).log_warn_default("Failed to get due cards")
   };
   cards.extend(due);
 
   // In accelerated mode, also get unreviewed cards
   if accelerated {
-    let unreviewed = db::get_unreviewed_today(conn, 50, None).unwrap_or_default();
+    let unreviewed = db::get_unreviewed_today(conn, 50, None).log_warn_default("Failed to get unreviewed cards");
     // Avoid duplicates
     for card in unreviewed {
       if !cards.iter().any(|c| c.id == card.id) {
@@ -464,7 +473,10 @@ pub async fn validate_answer_handler(
     method: "POST".into(),
   });
 
-  let conn = pool.lock().unwrap();
+  let conn = match try_lock(&pool) {
+    Ok(conn) => conn,
+    Err(_) => return Html("<h1>Database Error</h1><p>Please refresh the page.</p>".to_string()),
+  };
 
   if let Ok(Some(card)) = db::get_card_by_id(&conn, form.card_id) {
     // Use strict or fuzzy matching based on input method
@@ -538,7 +550,10 @@ pub async fn submit_review_interactive(
     method: "POST".into(),
   });
 
-  let conn = pool.lock().unwrap();
+  let conn = match try_lock(&pool) {
+    Ok(conn) => conn,
+    Err(_) => return Html("<h1>Database Error</h1><p>Please refresh the page.</p>".to_string()),
+  };
 
   // Get or create session
   let session_id = if form.session_id.is_empty() {
@@ -560,11 +575,11 @@ pub async fn submit_review_interactive(
     }
 
     // Check if FSRS is enabled
-    let use_fsrs = db::get_use_fsrs(&conn).unwrap_or(true);
+    let use_fsrs = db::get_use_fsrs(&conn).log_warn_default("Failed to get FSRS setting");
 
     if use_fsrs {
       // Use FSRS scheduling
-      let desired_retention = db::get_desired_retention(&conn).unwrap_or(0.9);
+      let desired_retention = db::get_desired_retention(&conn).log_warn_default("Failed to get desired retention");
       let result = srs::calculate_fsrs_review(&card, form.quality, desired_retention);
 
       #[cfg(feature = "profiling")]
@@ -645,7 +660,7 @@ pub async fn submit_review_interactive(
       // Check if answer is Korean (needs multiple choice)
       let is_multiple_choice = is_korean(&next_card.main_answer);
       let choices = if is_multiple_choice {
-        let all_cards = db::get_cards_by_tier(&conn, next_card.tier).unwrap_or_default();
+        let all_cards = db::get_cards_by_tier(&conn, next_card.tier).log_warn_default("Failed to get tier cards for choices");
         generate_choices(&next_card, &all_cards)
       } else {
         vec![]
@@ -695,15 +710,18 @@ pub async fn practice_start(
   State(pool): State<DbPool>,
   Query(query): Query<PracticeQuery>,
 ) -> impl IntoResponse {
-  let conn = pool.lock().unwrap();
-  let cards = db::get_practice_cards(&conn, 1, None).unwrap_or_default();
+  let conn = match try_lock(&pool) {
+    Ok(conn) => conn,
+    Err(_) => return Html("<h1>Database Error</h1><p>Please refresh the page.</p>".to_string()),
+  };
+  let cards = db::get_practice_cards(&conn, 1, None).log_warn_default("Failed to get practice cards");
   let mode = query.mode.unwrap_or_else(|| "flip".to_string());
   let track_progress = query.track.unwrap_or(true);
 
   if let Some(card) = cards.first() {
     let is_korean = is_korean(&card.main_answer);
     let choices = if is_korean && mode == "interactive" {
-      let all_cards = db::get_unlocked_cards(&conn).unwrap_or_default();
+      let all_cards = db::get_unlocked_cards(&conn).log_warn_default("Failed to get unlocked cards for choices");
       generate_choices(card, &all_cards)
     } else {
       vec![]
@@ -749,7 +767,10 @@ pub async fn practice_next(
   Query(query): Query<PracticeQuery>,
   Form(form): Form<PracticeForm>,
 ) -> impl IntoResponse {
-  let conn = pool.lock().unwrap();
+  let conn = match try_lock(&pool) {
+    Ok(conn) => conn,
+    Err(_) => return Html("<h1>Database Error</h1><p>Please refresh the page.</p>".to_string()),
+  };
   let mode = query.mode.unwrap_or_else(|| "flip".to_string());
   // Use form value if present, otherwise query param, otherwise default true
   let track_progress = if form.track_progress {
@@ -759,13 +780,13 @@ pub async fn practice_next(
   };
 
   // Get next random card, excluding sibling of the just-practiced card
-  let cards = db::get_practice_cards(&conn, 1, Some(form.card_id)).unwrap_or_default();
+  let cards = db::get_practice_cards(&conn, 1, Some(form.card_id)).log_warn_default("Failed to get practice cards");
 
   if let Some(next_card) = cards.first() {
     if mode == "interactive" {
       let is_korean = is_korean(&next_card.main_answer);
       let choices = if is_korean {
-        let all_cards = db::get_unlocked_cards(&conn).unwrap_or_default();
+        let all_cards = db::get_unlocked_cards(&conn).log_warn_default("Failed to get unlocked cards for choices");
         generate_choices(next_card, &all_cards)
       } else {
         vec![]
@@ -822,7 +843,10 @@ pub async fn practice_validate(
   State(pool): State<DbPool>,
   Form(form): Form<PracticeValidateForm>,
 ) -> impl IntoResponse {
-  let conn = pool.lock().unwrap();
+  let conn = match try_lock(&pool) {
+    Ok(conn) => conn,
+    Err(_) => return Html("<h1>Database Error</h1><p>Please refresh the page.</p>".to_string()),
+  };
 
   let card = match db::get_card_by_id(&conn, form.card_id) {
     Ok(Some(c)) => c,
@@ -862,7 +886,7 @@ pub async fn practice_validate(
 
   let is_korean = is_korean(&card.main_answer);
   let choices = if is_korean {
-    let all_cards = db::get_unlocked_cards(&conn).unwrap_or_default();
+    let all_cards = db::get_unlocked_cards(&conn).log_warn_default("Failed to get unlocked cards for choices");
     generate_choices(&card, &all_cards)
   } else {
     vec![]

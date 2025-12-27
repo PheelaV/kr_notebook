@@ -12,9 +12,12 @@ use askama::Template;
 use axum::{extract::State, response::Html};
 use chrono::{DateTime, Utc};
 
-use crate::db::{self, DbPool};
+use crate::db::{self, try_lock, DbPool, LogOnError};
 #[cfg(feature = "profiling")]
 use crate::profiling::EventType;
+
+/// Error HTML returned when database is unavailable
+const DB_ERROR_HTML: &str = r#"<!DOCTYPE html><html><head><title>Error</title></head><body><h1>Database Error</h1><p>Please refresh the page. If the problem persists, restart the application.</p></body></html>"#;
 
 #[derive(Template)]
 #[template(path = "index.html")]
@@ -58,19 +61,22 @@ pub async fn index(State(pool): State<DbPool>) -> Html<String> {
     method: "GET".into(),
   });
 
-  let conn = pool.lock().unwrap();
+  let conn = match try_lock(&pool) {
+    Ok(conn) => conn,
+    Err(_) => return Html(DB_ERROR_HTML.to_string()),
+  };
 
   // Check for auto tier unlock
-  let unlocked_tier = db::try_auto_unlock_tier(&conn).unwrap_or(None);
+  let unlocked_tier = db::try_auto_unlock_tier(&conn).log_warn("Auto tier unlock failed").flatten();
 
-  let accelerated_mode = db::get_all_tiers_unlocked(&conn).unwrap_or(false);
-  let due_count = db::get_due_count(&conn).unwrap_or(0);
+  let accelerated_mode = db::get_all_tiers_unlocked(&conn).log_warn_default("Failed to get all_tiers_unlocked");
+  let due_count = db::get_due_count(&conn).log_warn_default("Failed to get due count");
   let unreviewed_count = if accelerated_mode {
-    db::get_unreviewed_today_count(&conn).unwrap_or(0)
+    db::get_unreviewed_today_count(&conn).log_warn_default("Failed to get unreviewed count")
   } else {
     0
   };
-  let (total_cards, _, cards_learned) = db::get_total_stats(&conn).unwrap_or((0, 0, 0));
+  let (total_cards, _, cards_learned) = db::get_total_stats(&conn).log_warn_default("Failed to get total stats");
 
   // In accelerated mode, show next review only if both due and unreviewed are 0
   // In normal mode, show next review only if due is 0
@@ -81,7 +87,7 @@ pub async fn index(State(pool): State<DbPool>) -> Html<String> {
   };
 
   let next_review_time = if cards_available == 0 {
-    db::get_next_review_time(&conn).ok().flatten()
+    db::get_next_review_time(&conn).log_warn("Failed to get next review time").flatten()
   } else {
     None
   };

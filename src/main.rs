@@ -3,7 +3,7 @@ use std::path::Path;
 use tower_http::services::ServeDir;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-use kr_notebook::{db, handlers, paths, profiling};
+use kr_notebook::{config, db, handlers, paths, profiling};
 
 #[tokio::main]
 async fn main() {
@@ -22,7 +22,7 @@ async fn main() {
   let pool = db::init_db(db_path).expect("Failed to initialize database");
 
   {
-    let conn = pool.lock().unwrap();
+    let conn = pool.lock().expect("Database lock failed during startup");
     db::seed_hangul_cards(&conn).expect("Failed to seed cards");
 
     // Refresh character stats decay windows (7D/1D) on startup
@@ -70,11 +70,12 @@ async fn main() {
     .nest_service("/static", ServeDir::new("static"))
     .with_state(pool);
 
-  let listener = tokio::net::TcpListener::bind("0.0.0.0:3000")
+  let bind_addr = config::server_bind_addr();
+  let listener = tokio::net::TcpListener::bind(&bind_addr)
     .await
-    .expect("Failed to bind to port 3000");
+    .unwrap_or_else(|_| panic!("Failed to bind to {}", bind_addr));
 
-  tracing::info!("Server running on http://localhost:3000");
+  tracing::info!("Server running on http://localhost:{}", config::SERVER_PORT);
 
   axum::serve(listener, app)
     .await

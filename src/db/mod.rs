@@ -1,16 +1,78 @@
-pub mod repository;
+pub mod cards;
+pub mod reviews;
 pub mod schema;
+pub mod stats;
+pub mod tiers;
 
 use rusqlite::{Connection, Result};
 use std::path::Path;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use crate::domain::{Card, CardType};
 
-pub use repository::*;
+// Re-export all public items from submodules
+pub use cards::*;
+pub use reviews::*;
 pub use schema::run_migrations;
+pub use stats::*;
+pub use tiers::*;
 
 pub type DbPool = Arc<Mutex<Connection>>;
+
+/// Extension trait for logging errors before discarding them
+pub trait LogOnError<T> {
+    /// Log the error at warn level and return None
+    fn log_warn(self, context: &str) -> Option<T>;
+    /// Log the error at warn level and return the default
+    fn log_warn_default(self, context: &str) -> T
+    where
+        T: Default;
+}
+
+impl<T, E: std::fmt::Display> LogOnError<T> for std::result::Result<T, E> {
+    fn log_warn(self, context: &str) -> Option<T> {
+        match self {
+            Ok(v) => Some(v),
+            Err(e) => {
+                tracing::warn!("{}: {}", context, e);
+                None
+            }
+        }
+    }
+
+    fn log_warn_default(self, context: &str) -> T
+    where
+        T: Default,
+    {
+        match self {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::warn!("{}: {}", context, e);
+                T::default()
+            }
+        }
+    }
+}
+
+/// Error returned when database lock cannot be acquired
+#[derive(Debug)]
+pub struct DbLockError;
+
+impl std::fmt::Display for DbLockError {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    write!(f, "Database unavailable")
+  }
+}
+
+impl std::error::Error for DbLockError {}
+
+/// Try to acquire the database lock, returning an error if poisoned
+pub fn try_lock(pool: &DbPool) -> std::result::Result<MutexGuard<'_, Connection>, DbLockError> {
+  pool.lock().map_err(|_: PoisonError<_>| {
+    eprintln!("ERROR: Database mutex poisoned - a thread panicked while holding the lock");
+    DbLockError
+  })
+}
 
 pub fn init_db(path: &Path) -> Result<DbPool> {
   if let Some(parent) = path.parent() {

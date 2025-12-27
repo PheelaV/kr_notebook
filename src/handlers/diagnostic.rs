@@ -9,7 +9,7 @@ use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::Path;
 
-use crate::db::{self, DbPool};
+use crate::db::{self, try_lock, DbPool};
 
 #[derive(Deserialize)]
 pub struct DiagnosticForm {
@@ -22,7 +22,10 @@ pub async fn log_diagnostic(
   State(pool): State<DbPool>,
   Form(form): Form<DiagnosticForm>,
 ) -> impl IntoResponse {
-  let conn = pool.lock().unwrap();
+  let conn = match try_lock(&pool) {
+    Ok(conn) => conn,
+    Err(_) => return Html("<p>Database error - diagnostic not logged.</p>".to_string()),
+  };
   let timestamp = Utc::now();
 
   // Ensure diagnostics directory exists

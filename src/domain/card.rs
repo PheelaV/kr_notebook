@@ -124,6 +124,9 @@ impl Card {
   }
 
   /// Check if this card is a reverse card (sound->letter question format)
+  ///
+  /// TODO: Planned feature - Reverse card detection for bidirectional study
+  /// Will enable letter→sound and sound→letter practice modes
   #[allow(dead_code)]
   pub fn is_reverse_card(&self) -> bool {
     self.front.starts_with("Which letter")

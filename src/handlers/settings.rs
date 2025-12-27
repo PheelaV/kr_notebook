@@ -10,7 +10,7 @@ use std::fs;
 use std::path::Path as StdPath;
 use std::process::Command;
 
-use crate::db::{self, DbPool};
+use crate::db::{self, try_lock, DbPool, LogOnError};
 use crate::paths;
 #[cfg(feature = "profiling")]
 use crate::profiling::EventType;
@@ -197,6 +197,9 @@ pub struct SettingsTemplate {
   pub lesson_audio: Vec<LessonAudio>,
 }
 
+/// Error HTML for database unavailable
+const DB_ERROR_HTML: &str = r#"<!DOCTYPE html><html><head><title>Error</title></head><body><h1>Database Error</h1><p>Please refresh the page.</p></body></html>"#;
+
 pub async fn settings_page(State(pool): State<DbPool>) -> Html<String> {
   #[cfg(feature = "profiling")]
   crate::profile_log!(EventType::HandlerStart {
@@ -204,9 +207,12 @@ pub async fn settings_page(State(pool): State<DbPool>) -> Html<String> {
     method: "GET".into(),
   });
 
-  let conn = pool.lock().unwrap();
-  let all_tiers_unlocked = db::get_all_tiers_unlocked(&conn).unwrap_or(false);
-  let enabled_tiers = db::get_enabled_tiers(&conn).unwrap_or_else(|_| vec![1, 2, 3, 4]);
+  let conn = match try_lock(&pool) {
+    Ok(conn) => conn,
+    Err(_) => return Html(DB_ERROR_HTML.to_string()),
+  };
+  let all_tiers_unlocked = db::get_all_tiers_unlocked(&conn).log_warn_default("Failed to get all_tiers_unlocked");
+  let enabled_tiers = db::get_enabled_tiers(&conn).log_warn_default("Failed to get enabled tiers");
 
   let has_l1 = has_lesson1();
   let has_l2 = has_lesson2();
@@ -263,7 +269,10 @@ pub async fn update_settings(
     method: "POST".into(),
   });
 
-  let conn = pool.lock().unwrap();
+  let conn = match try_lock(&pool) {
+    Ok(conn) => conn,
+    Err(_) => return Redirect::to("/settings"),
+  };
 
   // Update all_tiers_unlocked
   let all_tiers_unlocked = form.all_tiers_unlocked.is_some();
@@ -679,8 +688,11 @@ pub async fn make_all_due(State(pool): State<DbPool>) -> Redirect {
     method: "POST".into(),
   });
 
-  let conn = pool.lock().unwrap();
-  let _count = db::make_all_cards_due(&conn).unwrap_or(0);
+  let conn = match try_lock(&pool) {
+    Ok(conn) => conn,
+    Err(_) => return Redirect::to("/settings"),
+  };
+  let _count = db::make_all_cards_due(&conn).log_warn_default("Failed to make all cards due");
 
   #[cfg(feature = "profiling")]
   crate::profile_log!(EventType::Custom {

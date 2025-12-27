@@ -1,0 +1,189 @@
+//! Audio utilities for syllable and manifest handling
+//!
+//! Shared functions used by listen and pronunciation handlers.
+
+use std::collections::HashSet;
+use std::fs;
+use std::path::Path;
+
+use crate::paths;
+
+/// Parsed manifest data shared between listen and pronunciation handlers
+#[derive(Debug, Clone)]
+pub struct ManifestData {
+    pub vowels_order: Vec<String>,
+    pub consonants_order: Vec<String>,
+    pub rows: serde_json::Value,
+    pub columns: serde_json::Value,
+    pub syllable_table: serde_json::Value,
+}
+
+/// Syllable info extracted from manifest
+#[derive(Debug, Clone)]
+pub struct SyllableInfo {
+    pub character: String,
+    pub romanization: String,
+}
+
+/// Load and parse a manifest file for a lesson
+pub fn load_manifest(lesson_id: &str) -> Option<ManifestData> {
+    let manifest_path = paths::manifest_path(lesson_id);
+    let manifest_content = fs::read_to_string(&manifest_path).ok()?;
+    let manifest: serde_json::Value = serde_json::from_str(&manifest_content).ok()?;
+
+    let vowels_order = manifest["vowels_order"]
+        .as_array()
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let consonants_order = manifest["consonants_order"]
+        .as_array()
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect()
+        })
+        .unwrap_or_default();
+
+    Some(ManifestData {
+        vowels_order,
+        consonants_order,
+        rows: manifest["rows"].clone(),
+        columns: manifest["columns"].clone(),
+        syllable_table: manifest["syllable_table"].clone(),
+    })
+}
+
+/// Get the fallback romanization for a vowel character
+pub fn vowel_romanization(vowel: &str) -> &'static str {
+    match vowel {
+        "ㅣ" => "i",
+        "ㅏ" => "a",
+        "ㅓ" => "eo",
+        "ㅡ" => "eu",
+        "ㅜ" => "u",
+        "ㅗ" => "o",
+        _ => "",
+    }
+}
+
+/// Get syllables from a consonant row in the manifest
+pub fn get_row_syllables(
+    manifest: &ManifestData,
+    consonant: &str,
+) -> Vec<SyllableInfo> {
+    let row = match manifest.rows.get(consonant) {
+        Some(r) => r,
+        None => return Vec::new(),
+    };
+
+    row["syllables"]
+        .as_array()
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|s| {
+                    let character = s.as_str()?.to_string();
+                    let romanization = manifest
+                        .syllable_table
+                        .get(&character)
+                        .and_then(|st| st["romanization"].as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    Some(SyllableInfo {
+                        character,
+                        romanization,
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Get romanization for a consonant row
+pub fn get_row_romanization(manifest: &ManifestData, consonant: &str) -> String {
+    manifest
+        .rows
+        .get(consonant)
+        .and_then(|row| row["romanization"].as_str())
+        .unwrap_or("")
+        .to_string()
+}
+
+/// Check if a consonant row has audio
+pub fn row_has_audio(manifest: &ManifestData, consonant: &str) -> bool {
+    manifest
+        .rows
+        .get(consonant)
+        .and_then(|row| row["file"].as_str())
+        .map(|f| !f.is_empty())
+        .unwrap_or(false)
+}
+
+/// Get available syllable audio files for a lesson
+///
+/// Returns a set of syllable romanizations that have corresponding .mp3 files.
+pub fn get_available_syllables(lesson: &str) -> HashSet<String> {
+    let syllables_dir = paths::syllables_dir(lesson);
+    let syllables_path = Path::new(&syllables_dir);
+
+    if syllables_path.exists() {
+        fs::read_dir(syllables_path)
+            .map(|entries| {
+                entries
+                    .filter_map(|e| e.ok())
+                    .filter_map(|e| {
+                        let path = e.path();
+                        if path.extension().map(|ext| ext == "mp3").unwrap_or(false) {
+                            path.file_stem()
+                                .and_then(|s| s.to_str())
+                                .map(String::from)
+                        } else {
+                            None
+                        }
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    } else {
+        HashSet::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_nonexistent_lesson_returns_empty() {
+        let result = get_available_syllables("nonexistent_lesson_xyz");
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_returns_hashset() {
+        // Even for non-existent path, should return valid HashSet
+        let result = get_available_syllables("test");
+        assert_eq!(result.len(), 0);
+    }
+
+    #[test]
+    fn test_vowel_romanization() {
+        assert_eq!(vowel_romanization("ㅣ"), "i");
+        assert_eq!(vowel_romanization("ㅏ"), "a");
+        assert_eq!(vowel_romanization("ㅓ"), "eo");
+        assert_eq!(vowel_romanization("ㅡ"), "eu");
+        assert_eq!(vowel_romanization("ㅜ"), "u");
+        assert_eq!(vowel_romanization("ㅗ"), "o");
+        assert_eq!(vowel_romanization("ㅑ"), ""); // Unknown vowel
+    }
+
+    #[test]
+    fn test_load_manifest_nonexistent() {
+        let result = load_manifest("nonexistent_lesson_xyz");
+        assert!(result.is_none());
+    }
+}

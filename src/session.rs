@@ -1,8 +1,9 @@
 //! Simple in-memory session storage for study sessions.
 //!
 //! Stores StudySession state keyed by session ID (from cookie).
-//! Sessions auto-expire after 1 hour of inactivity.
+//! Sessions auto-expire after a configurable duration of inactivity.
 
+use crate::config;
 use crate::srs::StudySession;
 use chrono::{DateTime, Duration, Utc};
 use std::collections::HashMap;
@@ -18,12 +19,9 @@ struct SessionEntry {
 static SESSIONS: LazyLock<Mutex<HashMap<String, SessionEntry>>> =
   LazyLock::new(|| Mutex::new(HashMap::new()));
 
-/// Session expiration time (1 hour)
-const SESSION_EXPIRY_HOURS: i64 = 1;
-
 /// Get or create a session for the given ID
 pub fn get_session(session_id: &str) -> StudySession {
-  let mut sessions = SESSIONS.lock().unwrap();
+  let mut sessions = SESSIONS.lock().expect("Session store lock poisoned");
 
   // Clean up expired sessions occasionally (1 in 10 chance)
   if rand::random::<u8>() < 25 {
@@ -49,7 +47,7 @@ pub fn get_session(session_id: &str) -> StudySession {
 
 /// Update a session
 pub fn update_session(session_id: &str, session: StudySession) {
-  let mut sessions = SESSIONS.lock().unwrap();
+  let mut sessions = SESSIONS.lock().expect("Session store lock poisoned");
   sessions.insert(
     session_id.to_string(),
     SessionEntry {
@@ -61,7 +59,7 @@ pub fn update_session(session_id: &str, session: StudySession) {
 
 /// Clean up expired sessions
 fn cleanup_expired(sessions: &mut HashMap<String, SessionEntry>) {
-  let expiry = Utc::now() - Duration::hours(SESSION_EXPIRY_HOURS);
+  let expiry = Utc::now() - Duration::hours(config::SESSION_EXPIRY_HOURS);
   sessions.retain(|_, entry| entry.last_access > expiry);
 }
 

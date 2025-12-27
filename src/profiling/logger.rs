@@ -77,7 +77,7 @@ impl ProfileLogger {
 ///
 /// Creates a new log file with a timestamped name in the data/ directory.
 pub fn init() {
-    let mut guard = LOGGER.lock().unwrap();
+    let mut guard = LOGGER.lock().expect("Profiler lock poisoned");
     if guard.is_some() {
         tracing::warn!("Profiler already initialized");
         return;
@@ -107,7 +107,7 @@ pub fn shutdown() {
     // Log session end before shutting down
     log_event(EventType::SessionEnd { total_events });
 
-    let mut guard = LOGGER.lock().unwrap();
+    let mut guard = LOGGER.lock().expect("Profiler lock poisoned");
     if let Some(ref mut logger) = *guard {
         logger.flush();
         tracing::info!(

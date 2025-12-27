@@ -1,7 +1,8 @@
 use askama::Template;
 use axum::{extract::State, response::Html};
 
-use crate::db::{self, DbPool};
+use crate::config;
+use crate::db::{self, try_lock, DbPool, LogOnError};
 #[cfg(feature = "profiling")]
 use crate::profiling::EventType;
 
@@ -26,16 +27,6 @@ pub struct LibraryTemplate {
   pub max_unlocked_tier: u8,
 }
 
-fn get_tier_name(tier: u8) -> String {
-  match tier {
-    1 => "Basic Consonants & Vowels".to_string(),
-    2 => "Y-Vowels & Special".to_string(),
-    3 => "Aspirated & Tense Consonants".to_string(),
-    4 => "Compound Vowels".to_string(),
-    _ => format!("Tier {}", tier),
-  }
-}
-
 pub async fn library(State(pool): State<DbPool>) -> Html<String> {
   #[cfg(feature = "profiling")]
   crate::profile_log!(EventType::HandlerStart {
@@ -43,10 +34,13 @@ pub async fn library(State(pool): State<DbPool>) -> Html<String> {
     method: "GET".into(),
   });
 
-  let conn = pool.lock().unwrap();
+  let conn = match try_lock(&pool) {
+    Ok(conn) => conn,
+    Err(_) => return Html("<h1>Database Error</h1><p>Please refresh the page.</p>".to_string()),
+  };
 
-  let cards = db::get_unlocked_cards(&conn).unwrap_or_default();
-  let max_unlocked_tier = db::get_max_unlocked_tier(&conn).unwrap_or(1);
+  let cards = db::get_unlocked_cards(&conn).log_warn_default("Failed to get unlocked cards");
+  let max_unlocked_tier = db::get_max_unlocked_tier(&conn).log_warn_default("Failed to get max unlocked tier");
 
   // Group cards by tier, filtering to only show single-character fronts (the actual jamo)
   let mut tier_map: std::collections::BTreeMap<u8, Vec<LibraryEntry>> = std::collections::BTreeMap::new();
@@ -70,7 +64,7 @@ pub async fn library(State(pool): State<DbPool>) -> Html<String> {
     .into_iter()
     .map(|(tier, entries)| TierGroup {
       tier,
-      tier_name: get_tier_name(tier),
+      tier_name: config::get_tier_name(tier),
       entries,
     })
     .collect();

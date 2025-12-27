@@ -4,11 +4,14 @@ use axum::{
   response::{Html, Redirect},
 };
 
-use crate::db::{self, CharacterStats, DbPool, TierProgress};
+use crate::db::{self, try_lock, CharacterStats, DbPool, LogOnError, TierProgress};
 #[cfg(feature = "profiling")]
 use crate::profiling::EventType;
 
 /// A card that the user frequently gets wrong
+///
+/// TODO: Planned feature - Problem card analysis
+/// Will show cards with high confusion rates and common wrong answers
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
 pub struct ProblemCard {
@@ -83,20 +86,25 @@ pub struct ProgressTemplate {
   pub character_stats_groups: Vec<CharacterStatsGroup>,
 }
 
-pub async fn progress(State(pool): State<DbPool>) -> Html<String> {
+pub async fn progress(State(pool): State<DbPool>) -> axum::response::Response {
+  use axum::response::IntoResponse;
+
   #[cfg(feature = "profiling")]
   crate::profile_log!(EventType::HandlerStart {
     route: "/progress".into(),
     method: "GET".into(),
   });
 
-  let conn = pool.lock().unwrap();
+  let conn = match try_lock(&pool) {
+    Ok(conn) => conn,
+    Err(_) => return Redirect::to("/").into_response(),
+  };
 
-  let all_tiers_unlocked = db::get_all_tiers_unlocked(&conn).unwrap_or(false);
+  let all_tiers_unlocked = db::get_all_tiers_unlocked(&conn).log_warn_default("Failed to get all_tiers_unlocked");
   let (total_cards, total_reviews, cards_learned) =
-    db::get_total_stats(&conn).unwrap_or((0, 0, 0));
-  let tiers = db::get_progress_by_tier(&conn).unwrap_or_default();
-  let max_unlocked_tier = db::get_max_unlocked_tier(&conn).unwrap_or(1);
+    db::get_total_stats(&conn).log_warn_default("Failed to get total stats");
+  let tiers = db::get_progress_by_tier(&conn).log_warn_default("Failed to get progress by tier");
+  let max_unlocked_tier = db::get_max_unlocked_tier(&conn).log_warn_default("Failed to get max unlocked tier");
 
   // Can unlock next tier if current tier has >= 80% learned (disabled if all unlocked)
   let can_unlock_next = if !all_tiers_unlocked && max_unlocked_tier < 4 {
@@ -110,12 +118,12 @@ pub async fn progress(State(pool): State<DbPool>) -> Html<String> {
   };
 
   // Get problem cards (cards with most confusions)
-  let problem_cards_raw = db::get_problem_cards(&conn, 5).unwrap_or_default();
+  let problem_cards_raw = db::get_problem_cards(&conn, 5).log_warn_default("Failed to get problem cards");
   let problem_cards: Vec<ProblemCard> = problem_cards_raw
     .into_iter()
     .map(|(id, front, count)| {
       let top_wrong = db::get_card_confusions(&conn, id, 3)
-        .unwrap_or_default()
+        .log_warn_default("Failed to get card confusions")
         .into_iter()
         .map(|(answer, _)| answer)
         .collect();
@@ -129,7 +137,7 @@ pub async fn progress(State(pool): State<DbPool>) -> Html<String> {
     .collect();
 
   // Get character stats grouped by type
-  let all_stats = db::get_all_character_stats(&conn).unwrap_or_default();
+  let all_stats = db::get_all_character_stats(&conn).log_warn_default("Failed to get character stats");
   let character_stats_groups = build_character_stats_groups(all_stats);
 
   let template = ProgressTemplate {
@@ -144,7 +152,7 @@ pub async fn progress(State(pool): State<DbPool>) -> Html<String> {
     character_stats_groups,
   };
 
-  Html(template.render().unwrap_or_default())
+  Html(template.render().unwrap_or_default()).into_response()
 }
 
 /// Build character stats groups from raw stats
@@ -186,7 +194,10 @@ pub async fn unlock_tier(State(pool): State<DbPool>) -> Redirect {
     method: "POST".into(),
   });
 
-  let conn = pool.lock().unwrap();
+  let conn = match try_lock(&pool) {
+    Ok(conn) => conn,
+    Err(_) => return Redirect::to("/progress"),
+  };
   let _ = db::unlock_next_tier(&conn);
   Redirect::to("/progress")
 }
