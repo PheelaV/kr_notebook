@@ -115,7 +115,7 @@ pub use reference::{
   reference_basics, reference_index, reference_tier1, reference_tier2, reference_tier3,
   reference_tier4,
 };
-pub use listen::{listen_index, listen_start, listen_answer, listen_skip};
+pub use listen::{listen_index, listen_start, listen_answer, listen_answer_htmx, listen_skip};
 pub use pronunciation::{has_scraped_content, pronunciation_page};
 pub use settings::{
   delete_scraped, delete_scraped_lesson, make_all_due, settings_page, trigger_scrape,

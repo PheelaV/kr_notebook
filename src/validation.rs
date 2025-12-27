@@ -137,8 +137,10 @@ pub fn validate_answer(user_input: &str, correct_answer: &str) -> AnswerResult {
   // Check for close match (Levenshtein distance based on length) with any variant
   for variant in &variants {
     let distance = levenshtein_distance(&normalized_input, variant);
+    // Use character count, not byte length (important for Korean/Unicode)
+    let char_count = variant.chars().count();
     // For single-char answers, must be exact; 2-3 char allows 1 diff; 4+ allows 2
-    let max_distance = match variant.len() {
+    let max_distance = match char_count {
       0..=1 => 0, // Single char must be exact
       2..=3 => 1, // Short answers: 1 char tolerance
       _ => 2,     // Longer answers: 2 char tolerance
@@ -260,5 +262,37 @@ mod tests {
     assert_eq!(levenshtein_distance("cat", "bat"), 1);
     assert_eq!(levenshtein_distance("cat", "cars"), 2);
     assert_eq!(levenshtein_distance("", "abc"), 3);
+  }
+
+  #[test]
+  fn test_korean_characters() {
+    // Single Korean jamo (consonants/vowels)
+    assert_eq!(validate_answer("ㄱ", "ㄱ"), AnswerResult::Correct);
+    assert_eq!(validate_answer("ㄴ", "ㄱ"), AnswerResult::Incorrect);
+    assert_eq!(validate_answer("ㅏ", "ㅏ"), AnswerResult::Correct);
+    assert_eq!(validate_answer("ㅓ", "ㅏ"), AnswerResult::Incorrect);
+
+    // Korean syllables
+    assert_eq!(validate_answer("가", "가"), AnswerResult::Correct);
+    assert_eq!(validate_answer("나", "가"), AnswerResult::Incorrect);
+    assert_eq!(validate_answer("바", "가"), AnswerResult::Incorrect);
+
+    // Different but similar looking
+    assert_eq!(validate_answer("ㄲ", "ㄱ"), AnswerResult::Incorrect);
+    assert_eq!(validate_answer("ㅃ", "ㅂ"), AnswerResult::Incorrect);
+  }
+
+  #[test]
+  fn test_korean_normalize() {
+    // Test that Korean characters survive normalization
+    let normalized = normalize_answer("가");
+    assert_eq!(normalized, "가");
+
+    let normalized = normalize_answer("ㄱ");
+    assert_eq!(normalized, "ㄱ");
+
+    // With whitespace
+    let normalized = normalize_answer("  가  ");
+    assert_eq!(normalized, "가");
   }
 }

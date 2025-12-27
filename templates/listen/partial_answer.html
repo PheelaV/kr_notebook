@@ -1,0 +1,109 @@
+{# HTMX partial response for listen answer #}
+
+{# Main quiz area update #}
+<div id="quiz-area"
+     data-audio="{{ current_audio }}"
+     data-correct-syllable="{{ current_syllable }}"
+     data-was-correct="{{ was_correct }}"
+     data-correct-answer="{{ correct_answer }}"
+     data-user-answer="{{ user_answer }}">
+
+  {% if hard_mode %}
+  <!-- Hard mode: full matrix -->
+  <div class="grid grid-cols-6 gap-2">
+    {% for choice in all_syllables %}
+    <button type="button"
+            onclick="selectChoice('{{ choice.character }}', {{ choice.number }})"
+            class="choice-btn p-3 text-center rounded-lg border-2 border-gray-200 dark:border-gray-600 hover:border-indigo-400 dark:hover:border-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            data-syllable="{{ choice.character }}"
+            data-number="{{ choice.number }}">
+      <div class="flex flex-col items-center">
+        <span class="text-2xl font-medium text-gray-900 dark:text-white">{{ choice.character }}</span>
+        <span class="text-xs text-gray-500 dark:text-gray-400 rom-text">{{ choice.romanization }}</span>
+      </div>
+    </button>
+    {% endfor %}
+  </div>
+  {% else %}
+  <!-- Normal mode: 4 choices -->
+  <div class="grid grid-cols-2 gap-4">
+    {% for choice in choices %}
+    <button type="button"
+            id="choice-{{ choice.number }}"
+            onclick="selectChoice('{{ choice.character }}', {{ choice.number }})"
+            class="choice-btn relative p-6 text-center rounded-xl border-2 border-gray-200 dark:border-gray-600 hover:border-indigo-400 dark:hover:border-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            data-syllable="{{ choice.character }}"
+            data-number="{{ choice.number }}">
+      <!-- Number badge -->
+      <span class="absolute top-2 left-2 w-6 h-6 flex items-center justify-center text-sm font-medium text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-gray-700 rounded">
+        {{ choice.number }}
+      </span>
+      <div class="flex flex-col items-center">
+        <span class="text-4xl font-medium text-gray-900 dark:text-white">{{ choice.character }}</span>
+        <span class="text-sm text-gray-500 dark:text-gray-400 mt-1 rom-text">{{ choice.romanization }}</span>
+      </div>
+    </button>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <!-- Confirm button (for mouse/touch) -->
+  <div class="mt-6 flex justify-center">
+    <button type="button" id="confirm-btn" onclick="confirmSelection()"
+            class="hidden px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg transition-colors flex items-center gap-2">
+      Confirm
+      <kbd class="px-1.5 py-0.5 bg-indigo-700 rounded text-xs">Enter</kbd>
+    </button>
+  </div>
+
+  <!-- Keyboard hints -->
+  <div class="mt-4 text-center text-sm text-gray-500 dark:text-gray-400">
+    {% if !hard_mode %}
+    <span class="inline-flex items-center gap-1">
+      <kbd class="px-2 py-1 bg-gray-100 dark:bg-gray-700 rounded text-xs">1-4</kbd> select
+    </span>
+    <span class="mx-2">|</span>
+    {% endif %}
+    <span class="inline-flex items-center gap-1">
+      <kbd class="px-2 py-1 bg-gray-100 dark:bg-gray-700 rounded text-xs">Space</kbd> replay
+    </span>
+  </div>
+</div>
+
+{# Out-of-band updates #}
+
+<!-- Update hidden form inputs -->
+<input type="hidden" name="correct_syllable" value="{{ current_syllable }}" hx-swap-oob="true" id="input-correct-syllable">
+<input type="hidden" name="correct" value="{{ correct }}" hx-swap-oob="true" id="input-correct">
+<input type="hidden" name="total" value="{{ total }}" hx-swap-oob="true" id="input-total">
+
+<!-- Update score display -->
+<div id="score-display" hx-swap-oob="true"
+     class="text-2xl font-bold {% if total > 0 %}{% if correct * 100 / total >= 80 %}text-green-600 dark:text-green-400{% elif correct * 100 / total >= 50 %}text-yellow-600 dark:text-yellow-400{% else %}text-red-600 dark:text-red-400{% endif %}{% else %}text-gray-600 dark:text-gray-400{% endif %}">
+  {{ correct }}/{{ total }}
+</div>
+
+<!-- Toast notification -->
+<div id="toast" hx-swap-oob="true"
+     class="fixed top-4 left-1/2 -translate-x-1/2 z-50 px-6 py-4 rounded-lg shadow-lg text-lg font-medium transition-all duration-500 {% if was_correct %}bg-green-500 text-white{% else %}bg-red-500 text-white{% endif %}"
+     data-auto-hide="{{ was_correct }}">
+  {% if was_correct %}
+  <span class="flex items-center gap-2">
+    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+    </svg>
+    Correct! {{ correct_answer }}
+  </span>
+  {% else %}
+  <span class="flex items-center gap-3">
+    <svg class="w-6 h-6 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+    </svg>
+    <span>
+      <span class="text-red-200">{{ user_answer }}</span>
+      <span class="mx-2">→</span>
+      <span class="text-2xl font-bold">{{ correct_answer }}</span>
+    </span>
+  </span>
+  {% endif %}
+</div>

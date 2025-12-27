@@ -18,7 +18,7 @@
     <div class="flex items-center gap-4">
       <!-- Score -->
       <div class="text-center">
-        <div class="text-2xl font-bold {% if total > 0 %}{% if correct * 100 / total >= 80 %}text-green-600 dark:text-green-400{% elif correct * 100 / total >= 50 %}text-yellow-600 dark:text-yellow-400{% else %}text-red-600 dark:text-red-400{% endif %}{% else %}text-gray-600 dark:text-gray-400{% endif %}">
+        <div id="score-display" class="text-2xl font-bold {% if total > 0 %}{% if correct * 100 / total >= 80 %}text-green-600 dark:text-green-400{% elif correct * 100 / total >= 50 %}text-yellow-600 dark:text-yellow-400{% else %}text-red-600 dark:text-red-400{% endif %}{% else %}text-gray-600 dark:text-gray-400{% endif %}">
           {{ correct }}/{{ total }}
         </div>
         <div class="text-xs text-gray-500 dark:text-gray-400">correct</div>
@@ -42,6 +42,14 @@
         <span id="rom-toggle-text">Hide Rom</span>
       </button>
 
+      <!-- Difficulty toggle -->
+      <button onclick="toggleHardMode()"
+              id="hard-toggle"
+              class="px-3 py-2 rounded-lg transition-colors text-sm font-medium"
+              title="Toggle between easy (4 choices) and hard (full matrix)">
+        <span id="hard-toggle-text">Easy</span>
+      </button>
+
       <!-- Back button -->
       <a href="/listen" class="px-3 py-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors">
         Back
@@ -49,44 +57,42 @@
     </div>
   </div>
 
-  <!-- Feedback message -->
-  {% if show_feedback %}
-  <div id="feedback" class="mb-6 p-4 rounded-lg {% if was_correct %}bg-green-100 dark:bg-green-900/30 border border-green-300 dark:border-green-700{% else %}bg-red-100 dark:bg-red-900/30 border border-red-300 dark:border-red-700{% endif %}">
-    {% if was_correct %}
-    <div class="flex items-center justify-between">
-      <div class="flex items-center gap-2 text-green-800 dark:text-green-200">
-        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
-        </svg>
-        <span class="font-medium text-lg">Correct!</span>
-        <span class="text-3xl ml-2">{{ correct_answer }}</span>
-      </div>
-      <span class="text-sm text-green-700 dark:text-green-300">Press Enter to continue</span>
-    </div>
-    {% else %}
-    <div class="flex items-center justify-between">
-      <div class="flex items-center gap-2 text-red-800 dark:text-red-200">
-        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-        </svg>
-        <span class="font-medium text-lg">Incorrect.</span>
-        <span class="ml-2">You selected <span class="text-xl">{{ user_answer }}</span>, correct was <span class="text-3xl font-bold">{{ correct_answer }}</span></span>
-      </div>
-      <span class="text-sm text-red-700 dark:text-red-300">Press Enter to continue</span>
-    </div>
-    {% endif %}
-  </div>
-  {% endif %}
+  <!-- Toast notification container -->
+  <div id="toast" class="hidden fixed top-4 left-1/2 -translate-x-1/2 z-50 px-6 py-4 rounded-lg shadow-lg text-lg font-medium transition-all duration-500"></div>
 
   <!-- Choice buttons -->
   <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
-    <form id="answer-form" method="POST" action="/listen/answer">
-      <input type="hidden" name="tier" value="{{ tier }}">
-      <input type="hidden" name="correct_syllable" value="{{ current_syllable }}">
-      <input type="hidden" name="correct" value="{{ correct }}">
-      <input type="hidden" name="total" value="{{ total }}">
-      <input type="hidden" name="answer" id="answer-input" value="">
+    <!-- Hidden inputs for HTMX form -->
+    <input type="hidden" name="tier" id="input-tier" value="{{ tier }}">
+    <input type="hidden" name="correct_syllable" id="input-correct-syllable" value="{{ current_syllable }}">
+    <input type="hidden" name="correct" id="input-correct" value="{{ correct }}">
+    <input type="hidden" name="total" id="input-total" value="{{ total }}">
+    <input type="hidden" name="hard_mode" id="input-hard-mode" value="{{ hard_mode }}">
+    <input type="hidden" name="answer" id="answer-input" value="">
 
+    <!-- Quiz area - this gets swapped by HTMX -->
+    <div id="quiz-area"
+         data-audio="{{ current_audio }}"
+         data-correct-syllable="{{ current_syllable }}">
+
+      {% if hard_mode %}
+      <!-- Hard mode: full matrix -->
+      <div class="grid grid-cols-6 gap-2">
+        {% for choice in all_syllables %}
+        <button type="button"
+                onclick="selectChoice('{{ choice.character }}', {{ choice.number }})"
+                class="choice-btn p-3 text-center rounded-lg border-2 border-gray-200 dark:border-gray-600 hover:border-indigo-400 dark:hover:border-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                data-syllable="{{ choice.character }}"
+                data-number="{{ choice.number }}">
+          <div class="flex flex-col items-center">
+            <span class="text-2xl font-medium text-gray-900 dark:text-white">{{ choice.character }}</span>
+            <span class="text-xs text-gray-500 dark:text-gray-400 rom-text">{{ choice.romanization }}</span>
+          </div>
+        </button>
+        {% endfor %}
+      </div>
+      {% else %}
+      <!-- Normal mode: 4 choices -->
       <div class="grid grid-cols-2 gap-4">
         {% for choice in choices %}
         <button type="button"
@@ -106,22 +112,30 @@
         </button>
         {% endfor %}
       </div>
+      {% endif %}
+
+      <!-- Confirm button (for mouse/touch) -->
+      <div class="mt-6 flex justify-center">
+        <button type="button" id="confirm-btn" onclick="confirmSelection()"
+                class="hidden px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg transition-colors flex items-center gap-2">
+          Confirm
+          <kbd class="px-1.5 py-0.5 bg-indigo-700 rounded text-xs">Enter</kbd>
+        </button>
+      </div>
 
       <!-- Keyboard hints -->
-      <div class="mt-6 text-center text-sm text-gray-500 dark:text-gray-400">
+      <div class="mt-4 text-center text-sm text-gray-500 dark:text-gray-400">
+        {% if !hard_mode %}
         <span class="inline-flex items-center gap-1">
           <kbd class="px-2 py-1 bg-gray-100 dark:bg-gray-700 rounded text-xs">1-4</kbd> select
         </span>
         <span class="mx-2">|</span>
-        <span class="inline-flex items-center gap-1">
-          <kbd class="px-2 py-1 bg-gray-100 dark:bg-gray-700 rounded text-xs">Enter</kbd> confirm
-        </span>
-        <span class="mx-2">|</span>
+        {% endif %}
         <span class="inline-flex items-center gap-1">
           <kbd class="px-2 py-1 bg-gray-100 dark:bg-gray-700 rounded text-xs">Space</kbd> replay
         </span>
       </div>
-    </form>
+    </div>
   </div>
 
   <p class="mt-4 text-xs text-gray-500 dark:text-gray-500 text-center">
@@ -133,21 +147,73 @@
 <audio id="audio-player" style="display:none;"></audio>
 
 <script>
-  const audioPath = '{{ current_audio }}';
+  let audioPath = '{{ current_audio }}';
   const audioPlayer = document.getElementById('audio-player');
-  const showFeedback = {{ show_feedback }};
+  const hardMode = {{ hard_mode }};
+  const tier = {{ tier }};
+  let correctSyllable = '{{ current_syllable }}';
   let selectedChoice = null;
+  let isSubmitting = false;
 
   // Auto-play on page load
   window.addEventListener('DOMContentLoaded', function() {
     playAudio();
     applyRomanizationSetting();
+    applyHardModeSetting();
   });
+
+  // Handle HTMX swap - play new audio and handle toast
+  document.body.addEventListener('htmx:afterSwap', function(evt) {
+    if (evt.detail.target.id === 'quiz-area') {
+      // Get new audio path and correct syllable from quiz-area data attributes
+      const quizArea = document.getElementById('quiz-area');
+      if (quizArea) {
+        audioPath = quizArea.dataset.audio;
+        correctSyllable = quizArea.dataset.correctSyllable;
+
+        // Check if this was a correct/incorrect answer
+        const wasCorrect = quizArea.dataset.wasCorrect === 'true';
+        const correctAnswer = quizArea.dataset.correctAnswer;
+        const userAnswer = quizArea.dataset.userAnswer;
+
+        // Play new audio after a delay
+        setTimeout(function() {
+          playAudio();
+        }, wasCorrect ? 800 : 2500); // Longer delay for incorrect to let user see the mistake
+      }
+
+      // Reset state
+      selectedChoice = null;
+      isSubmitting = false;
+
+      // Apply romanization setting to new buttons
+      applyRomanizationSetting();
+
+      // Handle toast auto-hide
+      handleToastAutoHide();
+    }
+  });
+
+  function handleToastAutoHide() {
+    const toast = document.getElementById('toast');
+    if (!toast) return;
+
+    const autoHide = toast.dataset.autoHide === 'true';
+    const hideDelay = autoHide ? 1500 : 4000; // Quick hide for correct, long for incorrect
+
+    setTimeout(function() {
+      toast.style.opacity = '0';
+      setTimeout(function() {
+        toast.classList.add('hidden');
+        toast.style.opacity = '1';
+      }, 500);
+    }, hideDelay);
+  }
 
   // Keyboard navigation
   document.addEventListener('keydown', function(e) {
-    // Ignore if typing in input
-    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+    // Ignore if typing in input or submitting
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || isSubmitting) return;
 
     // Space to replay audio
     if (e.code === 'Space') {
@@ -156,15 +222,8 @@
       return;
     }
 
-    // If showing feedback, Enter continues to next
-    if (showFeedback && e.code === 'Enter') {
-      e.preventDefault();
-      window.location.href = '/listen/skip?tier={{ tier }}&correct={{ correct }}&total={{ total }}';
-      return;
-    }
-
-    // Number keys 1-4 to select
-    if (['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Numpad1', 'Numpad2', 'Numpad3', 'Numpad4'].includes(e.code)) {
+    // Number keys 1-4 to select (only in normal mode)
+    if (!hardMode && ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Numpad1', 'Numpad2', 'Numpad3', 'Numpad4'].includes(e.code)) {
       e.preventDefault();
       const num = parseInt(e.code.replace('Digit', '').replace('Numpad', ''));
       const btn = document.getElementById('choice-' + num);
@@ -195,26 +254,97 @@
     });
   }
 
+  let lastClickTime = 0;
+  let lastClickSyllable = null;
+
   function selectChoice(syllable, number) {
+    if (isSubmitting) return;
+    const now = Date.now();
+
+    // Double-click detection - confirm if same syllable clicked within 400ms (both modes)
+    if (lastClickSyllable === syllable && (now - lastClickTime) < 400) {
+      submitAnswer(syllable);
+      return;
+    }
+
+    lastClickTime = now;
+    lastClickSyllable = syllable;
+
     // Clear previous selection
     document.querySelectorAll('.choice-btn').forEach(btn => {
       btn.classList.remove('border-indigo-500', 'bg-indigo-100', 'dark:bg-indigo-900/40');
       btn.classList.add('border-gray-200', 'dark:border-gray-600');
     });
 
-    // Highlight selected
-    const btn = document.getElementById('choice-' + number);
-    if (btn) {
-      btn.classList.remove('border-gray-200', 'dark:border-gray-600');
-      btn.classList.add('border-indigo-500', 'bg-indigo-100', 'dark:bg-indigo-900/40');
-    }
+    // Highlight selected - find by data-syllable since hard mode doesn't have IDs
+    const allBtns = document.querySelectorAll('.choice-btn');
+    allBtns.forEach(btn => {
+      if (btn.dataset.syllable === syllable) {
+        btn.classList.remove('border-gray-200', 'dark:border-gray-600');
+        btn.classList.add('border-indigo-500', 'bg-indigo-100', 'dark:bg-indigo-900/40');
+      }
+    });
 
     selectedChoice = syllable;
+
+    // Show confirm button
+    const confirmBtn = document.getElementById('confirm-btn');
+    if (confirmBtn) {
+      confirmBtn.classList.remove('hidden');
+      confirmBtn.classList.add('flex');
+    }
+  }
+
+  function confirmSelection() {
+    if (selectedChoice !== null && !isSubmitting) {
+      submitAnswer(selectedChoice);
+    }
   }
 
   function submitAnswer(syllable) {
-    document.getElementById('answer-input').value = syllable;
-    document.getElementById('answer-form').submit();
+    if (isSubmitting) return;
+    isSubmitting = true;
+
+    // Disable buttons during submission
+    document.querySelectorAll('.choice-btn').forEach(btn => {
+      btn.disabled = true;
+      btn.style.pointerEvents = 'none';
+    });
+    const confirmBtn = document.getElementById('confirm-btn');
+    if (confirmBtn) {
+      confirmBtn.disabled = true;
+      confirmBtn.classList.add('hidden');
+    }
+
+    // Get current values from hidden inputs
+    const tierVal = document.getElementById('input-tier').value;
+    const correctSyllableVal = document.getElementById('input-correct-syllable').value;
+    const correctVal = document.getElementById('input-correct').value;
+    const totalVal = document.getElementById('input-total').value;
+    const hardModeVal = document.getElementById('input-hard-mode').value;
+
+    // Build form data
+    const formData = new FormData();
+    formData.append('tier', tierVal);
+    formData.append('correct_syllable', correctSyllableVal);
+    formData.append('correct', correctVal);
+    formData.append('total', totalVal);
+    formData.append('hard_mode', hardModeVal);
+    formData.append('answer', syllable);
+
+    // Submit via HTMX
+    htmx.ajax('POST', '/listen/answer-htmx', {
+      target: '#quiz-area',
+      swap: 'outerHTML',
+      values: {
+        tier: tierVal,
+        correct_syllable: correctSyllableVal,
+        correct: correctVal,
+        total: totalVal,
+        hard_mode: hardModeVal,
+        answer: syllable
+      }
+    });
   }
 
   // Romanization toggle
@@ -237,5 +367,37 @@
     localStorage.setItem('listenHideRom', !current);
     applyRomanizationSetting();
   }
+
+  // Hard mode toggle (persisted in localStorage)
+  function applyHardModeSetting() {
+    const toggleBtn = document.getElementById('hard-toggle');
+    const toggleText = document.getElementById('hard-toggle-text');
+    if (!toggleBtn || !toggleText) return;
+
+    if (hardMode) {
+      toggleBtn.classList.remove('bg-green-500');
+      toggleBtn.classList.add('bg-orange-500', 'text-white');
+      toggleText.textContent = 'Hard';
+    } else {
+      toggleBtn.classList.remove('bg-orange-500');
+      toggleBtn.classList.add('bg-green-500', 'text-white');
+      toggleText.textContent = 'Easy';
+    }
+  }
+
+  function toggleHardMode() {
+    const newHardMode = !hardMode;
+    localStorage.setItem('listenHardMode', newHardMode);
+    window.location.href = '/listen/start?tier=' + tier + '&hard_mode=' + newHardMode;
+  }
+
+  // Check localStorage on page load and redirect if needed
+  (function() {
+    const storedHardMode = localStorage.getItem('listenHardMode') === 'true';
+    if (storedHardMode !== hardMode) {
+      // Redirect to match stored preference
+      window.location.href = '/listen/start?tier=' + tier + '&hard_mode=' + storedHardMode;
+    }
+  })();
 </script>
 {% endblock %}

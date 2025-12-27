@@ -597,20 +597,29 @@ pub fn get_card_confusions(conn: &Connection, card_id: i64, limit: usize) -> Res
 }
 
 /// Get cards with most confusions (problem areas)
+/// Prioritizes recent confusions (last 7 days) over all-time totals
 pub fn get_problem_cards(conn: &Connection, limit: usize) -> Result<Vec<(i64, String, i64)>> {
+  let seven_days_ago = (Utc::now() - chrono::Duration::days(7)).to_rfc3339();
+
   let mut stmt = conn.prepare(
     r#"
     SELECT c.id, c.front, SUM(cf.count) as total_confusions
     FROM cards c
     JOIN confusions cf ON c.id = cf.card_id
     GROUP BY c.id
-    ORDER BY total_confusions DESC
-    LIMIT ?1
+    ORDER BY
+      -- Prioritize cards with recent confusions (within 7 days)
+      CASE WHEN MAX(cf.last_confused_at) >= ?1 THEN 1 ELSE 0 END DESC,
+      -- Then by recency of last confusion
+      MAX(cf.last_confused_at) DESC,
+      -- Then by total confusion count
+      total_confusions DESC
+    LIMIT ?2
     "#,
   )?;
 
   let problems = stmt
-    .query_map(params![limit as i64], |row| {
+    .query_map(params![seven_days_ago, limit as i64], |row| {
       Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?, row.get::<_, i64>(2)?))
     })?
     .collect::<Result<Vec<_>>>()?;

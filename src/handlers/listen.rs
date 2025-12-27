@@ -189,6 +189,23 @@ fn pick_random_syllable(tier: &ListenTier) -> Option<(String, String)> {
     syllables.choose(&mut rand::rng()).cloned()
 }
 
+/// Get all syllables as choices (for hard mode)
+fn get_all_choices(tier: &ListenTier) -> Vec<ListenChoice> {
+    let choices: Vec<ListenChoice> = tier.rows
+        .iter()
+        .flat_map(|row| row.syllables.clone())
+        .enumerate()
+        .map(|(i, s)| ListenChoice {
+            character: s.character,
+            romanization: s.romanization,
+            number: (i + 1) as u8,
+        })
+        .collect();
+
+    // Sort by consonant row order (already in order from tier.rows)
+    choices
+}
+
 /// Generate 4 choices: 1 correct answer + 3 random distractors
 fn generate_choices(tier: &ListenTier, correct_syllable: &str) -> Vec<ListenChoice> {
     use rand::seq::SliceRandom;
@@ -268,6 +285,24 @@ pub struct ListenPracticeTemplate {
     pub was_correct: bool,
     pub correct_answer: String,
     pub user_answer: String,
+    pub hard_mode: bool,
+    pub all_syllables: Vec<ListenChoice>, // Full matrix for hard mode
+}
+
+#[derive(Template)]
+#[template(path = "listen/partial_answer.html")]
+pub struct ListenAnswerPartialTemplate {
+    pub tier: u8,
+    pub choices: Vec<ListenChoice>,
+    pub current_syllable: String,
+    pub current_audio: String,
+    pub correct: u32,
+    pub total: u32,
+    pub was_correct: bool,
+    pub correct_answer: String,
+    pub user_answer: String,
+    pub hard_mode: bool,
+    pub all_syllables: Vec<ListenChoice>,
 }
 
 // ============ Query/Form structs ============
@@ -275,6 +310,8 @@ pub struct ListenPracticeTemplate {
 #[derive(Deserialize)]
 pub struct StartQuery {
     pub tier: u8,
+    #[serde(default)]
+    pub hard_mode: bool,
 }
 
 #[derive(Deserialize)]
@@ -284,6 +321,8 @@ pub struct AnswerForm {
     pub correct_syllable: String,
     pub correct: u32,
     pub total: u32,
+    #[serde(default)]
+    pub hard_mode: bool,
 }
 
 #[derive(Deserialize)]
@@ -291,6 +330,8 @@ pub struct SkipQuery {
     pub tier: u8,
     pub correct: u32,
     pub total: u32,
+    #[serde(default)]
+    pub hard_mode: bool,
 }
 
 // ============ Handlers ============
@@ -338,6 +379,7 @@ pub async fn listen_start(Query(query): Query<StartQuery>) -> impl IntoResponse 
     };
 
     let choices = generate_choices(&tier, &current_syllable);
+    let all_syllables = get_all_choices(&tier);
 
     let template = ListenPracticeTemplate {
         tier: query.tier,
@@ -351,12 +393,14 @@ pub async fn listen_start(Query(query): Query<StartQuery>) -> impl IntoResponse 
         was_correct: false,
         correct_answer: String::new(),
         user_answer: String::new(),
+        hard_mode: query.hard_mode,
+        all_syllables,
     };
 
     Html(template.render().unwrap_or_default())
 }
 
-/// POST /listen/answer - Submit answer and get next syllable
+/// POST /listen/answer - Submit answer and get next syllable (legacy full page)
 pub async fn listen_answer(Form(form): Form<AnswerForm>) -> impl IntoResponse {
     let (lesson_id, tier_name) = match form.tier {
         1 => ("lesson1", "Lesson 1: Basic Consonants"),
@@ -380,6 +424,7 @@ pub async fn listen_answer(Form(form): Form<AnswerForm>) -> impl IntoResponse {
     };
 
     let choices = generate_choices(&tier, &next_syllable);
+    let all_syllables = get_all_choices(&tier);
 
     let template = ListenPracticeTemplate {
         tier: form.tier,
@@ -393,6 +438,51 @@ pub async fn listen_answer(Form(form): Form<AnswerForm>) -> impl IntoResponse {
         was_correct,
         correct_answer: form.correct_syllable,
         user_answer: form.answer,
+        hard_mode: form.hard_mode,
+        all_syllables,
+    };
+
+    Html(template.render().unwrap_or_default())
+}
+
+/// POST /listen/answer-htmx - Submit answer via HTMX (partial update)
+pub async fn listen_answer_htmx(Form(form): Form<AnswerForm>) -> impl IntoResponse {
+    let lesson_id = match form.tier {
+        1 => "lesson1",
+        2 => "lesson2",
+        _ => return Html("Invalid tier".to_string()),
+    };
+
+    let tier = match build_tier_from_manifest(form.tier, lesson_id, "") {
+        Some(t) => t,
+        None => return Html("Tier not available".to_string()),
+    };
+
+    let was_correct = form.answer == form.correct_syllable;
+    let new_correct = form.correct + if was_correct { 1 } else { 0 };
+    let new_total = form.total + 1;
+
+    // Pick next syllable
+    let (next_syllable, next_audio) = match pick_random_syllable(&tier) {
+        Some((s, a)) => (s, a),
+        None => return Html("No syllables available".to_string()),
+    };
+
+    let choices = generate_choices(&tier, &next_syllable);
+    let all_syllables = get_all_choices(&tier);
+
+    let template = ListenAnswerPartialTemplate {
+        tier: form.tier,
+        choices,
+        current_syllable: next_syllable,
+        current_audio: next_audio,
+        correct: new_correct,
+        total: new_total,
+        was_correct,
+        correct_answer: form.correct_syllable,
+        user_answer: form.answer,
+        hard_mode: form.hard_mode,
+        all_syllables,
     };
 
     Html(template.render().unwrap_or_default())
@@ -417,6 +507,7 @@ pub async fn listen_skip(Query(query): Query<SkipQuery>) -> impl IntoResponse {
     };
 
     let choices = generate_choices(&tier, &next_syllable);
+    let all_syllables = get_all_choices(&tier);
 
     let template = ListenPracticeTemplate {
         tier: query.tier,
@@ -430,6 +521,8 @@ pub async fn listen_skip(Query(query): Query<SkipQuery>) -> impl IntoResponse {
         was_correct: false,
         correct_answer: String::new(),
         user_answer: String::new(),
+        hard_mode: query.hard_mode,
+        all_syllables,
     };
 
     Html(template.render().unwrap_or_default())

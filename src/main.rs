@@ -55,6 +55,7 @@ async fn main() {
     .route("/listen", get(handlers::listen_index))
     .route("/listen/start", get(handlers::listen_start))
     .route("/listen/answer", post(handlers::listen_answer))
+    .route("/listen/answer-htmx", post(handlers::listen_answer_htmx))
     .route("/listen/skip", get(handlers::listen_skip))
     .route("/settings", get(handlers::settings_page).post(handlers::update_settings))
     .route("/settings/scrape", post(handlers::trigger_scrape))
