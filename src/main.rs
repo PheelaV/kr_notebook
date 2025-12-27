@@ -67,6 +67,7 @@ async fn main() {
     .route("/settings/make-all-due", post(handlers::make_all_due))
     .route("/diagnostic", post(handlers::log_diagnostic))
     .nest_service("/audio/scraped", ServeDir::new(paths::SCRAPED_DIR))
+    .nest_service("/static", ServeDir::new("static"))
     .with_state(pool);
 
   let listener = tokio::net::TcpListener::bind("0.0.0.0:3000")

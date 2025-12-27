@@ -25,94 +25,35 @@
     <div id="input-phase">
       {% if is_multiple_choice %}
       <!-- Multiple Choice Mode (for Korean answers) -->
-      <form id="answer-form" hx-post="/validate-answer" hx-target="#card-container" hx-swap="outerHTML"
-            onsubmit="return validateMultipleChoice()">
+      <form id="answer-form" hx-post="{% if is_tracked %}/validate-answer{% else %}/practice-validate{% endif %}" hx-target="#card-container" hx-swap="outerHTML"
+            onsubmit="return CardInteractions.validateMultipleChoice()">
         <input type="hidden" name="card_id" value="{{ card_id }}">
+        {% if is_tracked %}
         <input type="hidden" name="session_id" value="{{ session_id }}">
         <input type="hidden" name="hints_used" id="hints-used" value="{{ hints_used }}">
+        {% else %}
+        <input type="hidden" name="track_progress" value="{{ track_progress }}">
+        {% endif %}
         <input type="hidden" name="input_method" value="multiple_choice">
         <input type="hidden" name="answer" id="answer-input" value="">
 
-        <div class="grid grid-cols-2 gap-2 sm:gap-3 mb-4">
-          {% for choice in choices %}
-          <button type="button"
-                  id="choice-{{ loop.index }}"
-                  data-choice="{{ choice }}"
-                  onclick="selectAnswer(this, '{{ choice }}')"
-                  class="choice-btn relative text-3xl sm:text-4xl p-4 sm:p-6 min-h-[4rem] sm:min-h-[5rem] bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 active:bg-indigo-200 dark:active:bg-indigo-800 text-gray-900 dark:text-white font-bold rounded-lg transition-colors border-2 border-transparent touch-manipulation">
-            <span class="absolute top-1 left-2 text-xs font-normal text-gray-400 dark:text-gray-500">{{ loop.index }}</span>
-            {{ choice }}
-          </button>
-          {% endfor %}
-        </div>
+        {% include "partials/multiple_choice_grid.html" %}
 
         <button type="submit" id="submit-btn" disabled
                 class="w-full bg-indigo-500 hover:bg-indigo-600 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-semibold py-3 px-4 rounded-lg transition-colors">
           Check <span class="text-xs opacity-75">(Enter)</span>
         </button>
       </form>
-
-      <script>
-        let selectedAnswer = null;
-
-        function validateMultipleChoice() {
-          // Prevent form submission if no answer selected
-          if (!selectedAnswer || !document.getElementById('answer-input').value) {
-            return false;
-          }
-          return true;
-        }
-
-        function selectAnswer(btn, answer) {
-          // Clear previous selection
-          document.querySelectorAll('.choice-btn').forEach(b => {
-            b.classList.remove('border-indigo-500', 'bg-indigo-100', 'dark:bg-indigo-900', 'selected');
-            b.classList.add('border-transparent');
-          });
-
-          // Mark this button as selected
-          btn.classList.remove('border-transparent');
-          btn.classList.add('border-indigo-500', 'bg-indigo-100', 'dark:bg-indigo-900', 'selected');
-
-          // Set the answer value
-          document.getElementById('answer-input').value = answer;
-          selectedAnswer = answer;
-
-          // Enable submit button
-          document.getElementById('submit-btn').disabled = false;
-        }
-
-        // Keyboard navigation for multiple choice
-        document.addEventListener('keydown', function(e) {
-          if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
-
-          // Number keys 1-4 to select choice
-          const keyMap = {'Digit1': 1, 'Digit2': 2, 'Digit3': 3, 'Digit4': 4,
-                          'Numpad1': 1, 'Numpad2': 2, 'Numpad3': 3, 'Numpad4': 4};
-          if (keyMap[e.code]) {
-            e.preventDefault();
-            const btn = document.getElementById('choice-' + keyMap[e.code]);
-            if (btn) {
-              selectAnswer(btn, btn.dataset.choice);
-            }
-            return;
-          }
-
-          // Enter to submit only if answer selected
-          if (e.code === 'Enter') {
-            e.preventDefault();
-            if (selectedAnswer) {
-              document.getElementById('answer-form').requestSubmit();
-            }
-          }
-        });
-      </script>
       {% else %}
       <!-- Text Input Mode (for romanization answers) -->
-      <form id="answer-form" hx-post="/validate-answer" hx-target="#card-container" hx-swap="outerHTML">
+      <form id="answer-form" hx-post="{% if is_tracked %}/validate-answer{% else %}/practice-validate{% endif %}" hx-target="#card-container" hx-swap="outerHTML">
         <input type="hidden" name="card_id" value="{{ card_id }}">
+        {% if is_tracked %}
         <input type="hidden" name="session_id" value="{{ session_id }}">
         <input type="hidden" name="hints_used" id="hints-used" value="{{ hints_used }}">
+        {% else %}
+        <input type="hidden" name="track_progress" value="{{ track_progress }}">
+        {% endif %}
         <input type="hidden" name="input_method" value="text_input">
 
         <div class="mb-4">
@@ -125,20 +66,30 @@
                  class="w-full p-3 text-lg text-center border-2 border-gray-300 dark:border-gray-600 rounded-lg focus:border-indigo-500 dark:focus:border-indigo-400 focus:outline-none bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
         </div>
 
+        {% if is_tracked %}
+        <!-- Study mode: Check and Hint buttons -->
         <div class="grid grid-cols-2 gap-3 mb-4">
           <button type="submit"
                   class="w-full bg-indigo-500 hover:bg-indigo-600 text-white font-semibold py-3 px-4 rounded-lg transition-colors">
             Check
           </button>
           <button type="button" id="hint-btn"
-                  onclick="showHint()"
+                  onclick="CardInteractions.showHint()"
                   class="w-full bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 font-semibold py-3 px-4 rounded-lg transition-colors">
             Hint <span class="text-xs opacity-75">(H)</span>
           </button>
         </div>
+        {% else %}
+        <!-- Practice mode: Just Check button -->
+        <button type="submit"
+                class="w-full bg-indigo-500 hover:bg-indigo-600 text-white font-semibold py-3 px-4 rounded-lg transition-colors">
+          Check
+        </button>
+        {% endif %}
       </form>
 
-      <!-- Hint Display Area -->
+      {% if is_tracked %}
+      <!-- Hint Display Area (study mode only) -->
       <div id="hint-area" class="hidden">
         <div class="p-3 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700 rounded-lg text-amber-800 dark:text-amber-200">
           <span id="hint-text"></span>
@@ -146,41 +97,10 @@
       </div>
 
       <script>
-        // Hint data passed from server
-        const hints = [
-          "{{ hint_1|escape }}",
-          "{{ hint_2|escape }}",
-          "{{ hint_final|escape }}"
-        ];
-        let currentHint = 0;
-        let hintsUsed = {{ hints_used }};
-
-        function showHint() {
-          const hintArea = document.getElementById('hint-area');
-          const hintText = document.getElementById('hint-text');
-          const hintsUsedInput = document.getElementById('hints-used');
-
-          if (currentHint < hints.length) {
-            hintText.textContent = hints[currentHint];
-            hintArea.classList.remove('hidden');
-            currentHint++;
-            hintsUsed = currentHint;
-            hintsUsedInput.value = hintsUsed;
-          }
-        }
-
-        // Focus input on load
-        document.getElementById('answer-input')?.focus();
-
-        // Keyboard shortcut for hint (H key when not in input)
-        document.addEventListener('keydown', function(e) {
-          // H for hint when not focused on input
-          if (e.code === 'KeyH' && document.activeElement.tagName !== 'INPUT') {
-            e.preventDefault();
-            showHint();
-          }
-        });
+        // Initialize hints for this card
+        CardInteractions.initHints("{{ hint_1|escape }}", "{{ hint_2|escape }}", "{{ hint_final|escape }}", {{ hints_used }});
       </script>
+      {% endif %}
       {% endif %}
     </div>
     {% endif %}
@@ -188,40 +108,10 @@
     {% if validated %}
     <!-- Result Phase -->
     <div id="result-phase">
-      <div class="mb-4">
-        {% if is_correct %}
-        <div class="flex items-center justify-center gap-2 text-green-600 dark:text-green-400 mb-2">
-          <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
-          </svg>
-          <span class="text-2xl font-bold">Correct!</span>
-        </div>
-        {% else %}
-        <div class="flex items-center justify-center gap-2 text-red-600 dark:text-red-400 mb-2">
-          <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
-          </svg>
-          <span class="text-2xl font-bold">Incorrect</span>
-        </div>
-        {% endif %}
+      {% include "partials/card_result.html" %}
 
-        <div class="text-xl text-gray-600 dark:text-gray-300 mb-2">
-          {% if !is_correct %}
-          <span class="text-gray-500 dark:text-gray-400">You answered: </span>
-          <span class="text-red-500 {% if is_multiple_choice %}text-4xl{% endif %}">{{ user_answer }}</span>
-          <br>
-          {% endif %}
-          <span class="text-gray-500 dark:text-gray-400">Correct answer: </span>
-          <span class="text-indigo-600 dark:text-indigo-400 font-semibold {% if is_multiple_choice %}text-4xl{% endif %}">{{ main_answer }}</span>
-        </div>
-
-        {% if let Some(desc) = description %}
-        <div class="text-base text-gray-500 dark:text-gray-400">
-          {{ desc }}
-        </div>
-        {% endif %}
-      </div>
-
+      {% if is_tracked %}
+      <!-- Study mode: Submit review and get next card -->
       <form id="next-card-form" hx-post="/review" hx-target="#card-container" hx-swap="outerHTML">
         <input type="hidden" name="card_id" value="{{ card_id }}">
         <input type="hidden" name="session_id" value="{{ session_id }}">
@@ -231,18 +121,22 @@
           Next Card <span class="text-sm opacity-75">(Enter)</span>
         </button>
       </form>
-
-      <script>
-        document.addEventListener('keydown', function(e) {
-          if (e.code === 'Enter' && e.target.tagName !== 'INPUT') {
-            e.preventDefault();
-            const form = document.getElementById('next-card-form');
-            if (form) {
-              htmx.trigger(form, 'submit');
-            }
-          }
-        });
-      </script>
+      {% else %}
+      <!-- Practice mode: Back to Study and Next buttons -->
+      <div class="flex gap-2 sm:gap-3">
+        <a href="/study" class="flex-1 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white font-semibold py-3 px-4 rounded-lg transition-colors text-center">
+          Back to Study
+        </a>
+        <form id="practice-next-form" hx-post="/practice-next?mode=interactive" hx-target="#card-container" hx-swap="outerHTML" class="flex-1">
+          <input type="hidden" name="card_id" value="{{ card_id }}">
+          <input type="hidden" name="track_progress" value="{{ track_progress }}">
+          <button type="submit"
+                  class="w-full bg-indigo-500 hover:bg-indigo-600 text-white font-semibold py-3 px-4 rounded-lg transition-colors">
+            Next <span class="text-sm opacity-75">(Enter)</span>
+          </button>
+        </form>
+      </div>
+      {% endif %}
     </div>
     {% endif %}
   </div>

@@ -123,6 +123,7 @@ pub struct PracticeCardTemplate {
 pub struct NoCardsTemplate {}
 
 /// Interactive card template with input-based validation
+/// Used for both study mode (tracked) and practice mode (optional tracking)
 #[derive(Template)]
 #[template(path = "interactive_card.html")]
 pub struct InteractiveCardTemplate {
@@ -142,8 +143,11 @@ pub struct InteractiveCardTemplate {
   // Multiple choice fields
   pub is_multiple_choice: bool,
   pub choices: Vec<String>,
-  // Session tracking
+  // Session tracking (study mode)
   pub session_id: String,
+  // Mode control
+  pub is_tracked: bool,        // true = study mode, false = practice mode
+  pub track_progress: bool,    // for practice mode: whether to log progress
 }
 
 /// Wrapper template for initial interactive study page load
@@ -168,6 +172,9 @@ pub struct StudyInteractiveTemplate {
   pub has_card: bool,
   // Session tracking
   pub session_id: String,
+  // Mode control
+  pub is_tracked: bool,
+  pub track_progress: bool,
   // Testing mode flag
   pub testing_mode: bool,
 }
@@ -189,24 +196,16 @@ pub struct PracticeTemplate {
   pub choices: Vec<String>,
   // Progress tracking
   pub track_progress: bool,
+  // Fields for unified interactive_card.html (unused in practice mode but required)
+  pub quality: u8,
+  pub hints_used: u8,
+  pub hint_1: String,
+  pub hint_2: String,
+  pub hint_final: String,
+  pub session_id: String,
+  pub is_tracked: bool,
 }
 
-#[derive(Template)]
-#[template(path = "practice_interactive_card.html")]
-pub struct PracticeInteractiveCardTemplate {
-  pub card_id: i64,
-  pub front: String,
-  pub main_answer: String,
-  pub description: Option<String>,
-  pub tier: u8,
-  pub validated: bool,
-  pub is_correct: bool,
-  pub user_answer: String,
-  pub is_multiple_choice: bool,
-  pub choices: Vec<String>,
-  // Progress tracking
-  pub track_progress: bool,
-}
 
 pub async fn study_start(State(pool): State<DbPool>) -> impl IntoResponse {
   let conn = pool.lock().unwrap();
@@ -374,6 +373,8 @@ pub async fn study_start_interactive(State(pool): State<DbPool>) -> impl IntoRes
         choices,
         has_card: true,
         session_id,
+        is_tracked: true,
+        track_progress: false,
         #[cfg(feature = "testing")]
         testing_mode: true,
         #[cfg(not(feature = "testing"))]
@@ -402,6 +403,8 @@ pub async fn study_start_interactive(State(pool): State<DbPool>) -> impl IntoRes
     choices: vec![],
     has_card: false,
     session_id,
+    is_tracked: true,
+    track_progress: false,
     #[cfg(feature = "testing")]
     testing_mode: true,
     #[cfg(not(feature = "testing"))]
@@ -514,6 +517,8 @@ pub async fn validate_answer_handler(
       is_multiple_choice,
       choices: vec![], // Not needed after validation
       session_id: form.session_id,
+      is_tracked: true,
+      track_progress: false,
     };
     Html(template.render().unwrap_or_default())
   } else {
@@ -663,6 +668,8 @@ pub async fn submit_review_interactive(
         is_multiple_choice,
         choices,
         session_id,
+        is_tracked: true,
+        track_progress: false,
       };
       return Html(template.render().unwrap_or_default());
     }
@@ -715,6 +722,14 @@ pub async fn practice_start(
       is_multiple_choice: is_korean,
       choices,
       track_progress,
+      // Unused in practice mode (is_tracked: false)
+      quality: 0,
+      hints_used: 0,
+      hint_1: String::new(),
+      hint_2: String::new(),
+      hint_final: String::new(),
+      session_id: String::new(),
+      is_tracked: false,
     };
     Html(template.render().unwrap_or_default())
   } else {
@@ -756,7 +771,7 @@ pub async fn practice_next(
         vec![]
       };
 
-      let template = PracticeInteractiveCardTemplate {
+      let template = InteractiveCardTemplate {
         card_id: next_card.id,
         front: next_card.front.clone(),
         main_answer: next_card.main_answer.clone(),
@@ -765,8 +780,15 @@ pub async fn practice_next(
         validated: false,
         is_correct: false,
         user_answer: String::new(),
+        quality: 0,
+        hints_used: 0,
+        hint_1: String::new(),
+        hint_2: String::new(),
+        hint_final: String::new(),
         is_multiple_choice: is_korean,
         choices,
+        session_id: String::new(),
+        is_tracked: false,
         track_progress,
       };
       Html(template.render().unwrap_or_default())
@@ -846,7 +868,7 @@ pub async fn practice_validate(
     vec![]
   };
 
-  let template = PracticeInteractiveCardTemplate {
+  let template = InteractiveCardTemplate {
     card_id: card.id,
     front: card.front.clone(),
     main_answer: card.main_answer.clone(),
@@ -855,8 +877,15 @@ pub async fn practice_validate(
     validated: true,
     is_correct,
     user_answer: form.answer,
+    quality: 0,
+    hints_used: 0,
+    hint_1: String::new(),
+    hint_2: String::new(),
+    hint_final: String::new(),
     is_multiple_choice: is_korean,
     choices,
+    session_id: String::new(),
+    is_tracked: false,
     track_progress: form.track_progress,
   };
 
