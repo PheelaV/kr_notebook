@@ -125,7 +125,7 @@ kr_notebook/
 ├── build.rs                # Compile-time asset hashing
 ├── askama.toml             # Askama configuration
 ├── Dockerfile              # Multi-stage Rust build
-├── docker-compose.yml      # LAN deployment
+├── docker-compose.yml      # LAN deployment (kr_notebook + py-tools)
 ├── src/                    # Rust backend
 │   ├── main.rs             # Server entry point
 │   ├── lib.rs              # Module exports
@@ -156,6 +156,7 @@ kr_notebook/
 │   ├── profiling/          # Optional (--features profiling)
 │   └── srs/                # Spaced repetition (FSRS + SM-2)
 ├── py_scripts/             # Python tools
+│   ├── Dockerfile          # Python + ffmpeg image
 │   ├── pyproject.toml
 │   └── src/
 │       ├── kr_scraper/     # Audio scraper
@@ -195,18 +196,33 @@ uv run kr-scraper lesson2    # Download Lesson 2 audio
 uv run kr-scraper segment    # Segment into syllables
 ```
 
-### Docker Note
+### Option A: Docker (py-tools service)
 
-The Docker image is Rust-only and does not include Python/uv. To use pronunciation
-audio with Docker, run the scraper on your host machine first:
+The `docker-compose.yml` includes a `py-tools` service with Python 3.12 and ffmpeg pre-installed:
 
 ```bash
-# On host (before docker compose up)
-cd py_scripts && uv sync && uv run kr-scraper lesson1 && uv run kr-scraper lesson2 && uv run kr-scraper segment
-cd .. && docker compose up -d
+docker compose run --rm py-tools kr-scraper lesson1
+docker compose run --rm py-tools kr-scraper lesson2
+docker compose run --rm py-tools kr-scraper segment
+docker compose run --rm py-tools kr-scraper status
 ```
 
-The `data/` directory is mounted into the container, so scraped audio will be available.
+The `data/` directory is shared between `py-tools` and the main `kr_notebook` service.
+
+### Option B: Native (host machine)
+
+Requires Python 3.12+, [uv](https://docs.astral.sh/uv/), and **ffmpeg** (for audio segmentation):
+
+```bash
+# Install ffmpeg (Ubuntu/Debian)
+sudo apt install ffmpeg
+
+# Run scraper
+cd py_scripts && uv sync
+uv run kr-scraper lesson1
+uv run kr-scraper lesson2
+uv run kr-scraper segment
+```
 
 ### Manifest Distribution
 
