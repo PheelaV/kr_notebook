@@ -1,0 +1,588 @@
+{
+  "source": "howtostudykorean.com",
+  "lesson": "unit0/lesson3",
+  "scraped_at": "2025-12-28T04:38:36.216454+00:00",
+  "rows": {
+    "ㅐ": {
+      "file": "rows/row_ae.mp3",
+      "romanization": "ae",
+      "source_url": "https://www.howtostudykorean.com/wp-content/uploads/2014/08/Unit0Lesson31.mp3",
+      "syllables": [
+        "애",
+        "배",
+        "재",
+        "대",
+        "개",
+        "새",
+        "매",
+        "내",
+        "해",
+        "래"
+      ],
+      "segment_params": {
+        "min_silence": 200,
+        "threshold": -40,
+        "padding": 50
+      }
+    },
+    "ㅔ": {
+      "file": "rows/row_e.mp3",
+      "romanization": "e",
+      "source_url": "https://www.howtostudykorean.com/wp-content/uploads/2014/08/Unit0Lesson31.mp3",
+      "syllables": [
+        "에",
+        "베",
+        "제",
+        "데",
+        "게",
+        "세",
+        "메",
+        "네",
+        "헤",
+        "레"
+      ],
+      "shares_audio_with": "ㅐ",
+      "segment_params": {
+        "min_silence": 200,
+        "threshold": -40,
+        "padding": 50
+      }
+    },
+    "ㅒ": {
+      "file": "rows/row_yae.mp3",
+      "romanization": "yae",
+      "source_url": "https://www.howtostudykorean.com/wp-content/uploads/2014/08/Unit0Lesson39.mp3",
+      "syllables": [
+        "얘"
+      ],
+      "segment_params": {
+        "min_silence": 200,
+        "threshold": -40,
+        "padding": 50
+      }
+    },
+    "ㅖ": {
+      "file": "rows/row_ye.mp3",
+      "romanization": "ye",
+      "source_url": "https://www.howtostudykorean.com/wp-content/uploads/2014/08/Unit0Lesson37.mp3",
+      "syllables": [
+        "예",
+        "계",
+        "혜"
+      ],
+      "segment_params": {
+        "min_silence": 200,
+        "threshold": -40,
+        "padding": 50
+      }
+    },
+    "ㅘ": {
+      "file": "rows/row_wa.mp3",
+      "romanization": "wa",
+      "source_url": "https://www.howtostudykorean.com/wp-content/uploads/2014/08/Unit0Lesson35.mp3",
+      "syllables": [
+        "와",
+        "봐",
+        "좌",
+        "돠",
+        "과",
+        "솨",
+        "놔"
+      ],
+      "segment_params": {
+        "min_silence": 200,
+        "threshold": -40,
+        "padding": 50
+      }
+    },
+    "ㅙ": {
+      "file": "rows/row_wae.mp3",
+      "romanization": "wae",
+      "source_url": "https://www.howtostudykorean.com/wp-content/uploads/2014/08/Unit0Lesson38.mp3",
+      "syllables": [
+        "왜"
+      ],
+      "segment_params": {
+        "min_silence": 200,
+        "threshold": -40,
+        "padding": 50
+      }
+    },
+    "ㅚ": {
+      "file": "rows/row_oe.mp3",
+      "romanization": "oe",
+      "source_url": "https://www.howtostudykorean.com/wp-content/uploads/2014/08/Unit0Lesson34.mp3",
+      "syllables": [
+        "외",
+        "뵈",
+        "죄",
+        "되",
+        "괴",
+        "쇠",
+        "뇌"
+      ],
+      "segment_params": {
+        "min_silence": 200,
+        "threshold": -40,
+        "padding": 50
+      }
+    },
+    "ㅝ": {
+      "file": "rows/row_wo.mp3",
+      "romanization": "wo",
+      "source_url": "https://www.howtostudykorean.com/wp-content/uploads/2014/08/Unit0Lesson33.mp3",
+      "syllables": [
+        "워",
+        "붜",
+        "줘",
+        "둬",
+        "궈",
+        "숴",
+        "눠"
+      ],
+      "segment_params": {
+        "min_silence": 200,
+        "threshold": -40,
+        "padding": 50
+      }
+    },
+    "ㅞ": {
+      "file": "rows/row_we.mp3",
+      "romanization": "we",
+      "source_url": "https://www.howtostudykorean.com/wp-content/uploads/2014/08/Unit0Lesson310.mp3",
+      "syllables": [
+        "웨"
+      ],
+      "segment_params": {
+        "min_silence": 200,
+        "threshold": -40,
+        "padding": 50
+      }
+    },
+    "ㅟ": {
+      "file": "rows/row_wi.mp3",
+      "romanization": "wi",
+      "source_url": "https://www.howtostudykorean.com/wp-content/uploads/2014/08/Unit0Lesson32.mp3",
+      "syllables": [
+        "위",
+        "뷔",
+        "쥐",
+        "뒤",
+        "귀",
+        "쉬",
+        "뉘"
+      ],
+      "segment_params": {
+        "min_silence": 200,
+        "threshold": -40,
+        "padding": 50
+      }
+    },
+    "ㅢ": {
+      "file": "rows/row_ui.mp3",
+      "romanization": "ui",
+      "source_url": "https://www.howtostudykorean.com/wp-content/uploads/2016/01/Unit0Pron1.mp3",
+      "syllables": [
+        "의",
+        "븨",
+        "즤",
+        "듸",
+        "긔",
+        "싀",
+        "늬"
+      ],
+      "segment_params": {
+        "min_silence": 200,
+        "threshold": -40,
+        "padding": 50
+      }
+    }
+  },
+  "syllable_table": {
+    "애": {
+      "consonant": "ㅇ",
+      "vowel": "ㅐ",
+      "romanization": "ae",
+      "segment_file": null
+    },
+    "배": {
+      "consonant": "ㅂ",
+      "vowel": "ㅐ",
+      "romanization": "bae",
+      "segment_file": null
+    },
+    "재": {
+      "consonant": "ㅈ",
+      "vowel": "ㅐ",
+      "romanization": "jae",
+      "segment_file": null
+    },
+    "대": {
+      "consonant": "ㄷ",
+      "vowel": "ㅐ",
+      "romanization": "dae",
+      "segment_file": null
+    },
+    "개": {
+      "consonant": "ㄱ",
+      "vowel": "ㅐ",
+      "romanization": "gae",
+      "segment_file": null
+    },
+    "새": {
+      "consonant": "ㅅ",
+      "vowel": "ㅐ",
+      "romanization": "sae",
+      "segment_file": null
+    },
+    "매": {
+      "consonant": "ㅁ",
+      "vowel": "ㅐ",
+      "romanization": "mae",
+      "segment_file": null
+    },
+    "내": {
+      "consonant": "ㄴ",
+      "vowel": "ㅐ",
+      "romanization": "nae",
+      "segment_file": null
+    },
+    "해": {
+      "consonant": "ㅎ",
+      "vowel": "ㅐ",
+      "romanization": "hae",
+      "segment_file": null
+    },
+    "래": {
+      "consonant": "ㄹ",
+      "vowel": "ㅐ",
+      "romanization": "lae",
+      "segment_file": null
+    },
+    "에": {
+      "consonant": "ㅇ",
+      "vowel": "ㅔ",
+      "romanization": "e",
+      "segment_file": null
+    },
+    "베": {
+      "consonant": "ㅂ",
+      "vowel": "ㅔ",
+      "romanization": "be",
+      "segment_file": null
+    },
+    "제": {
+      "consonant": "ㅈ",
+      "vowel": "ㅔ",
+      "romanization": "je",
+      "segment_file": null
+    },
+    "데": {
+      "consonant": "ㄷ",
+      "vowel": "ㅔ",
+      "romanization": "de",
+      "segment_file": null
+    },
+    "게": {
+      "consonant": "ㄱ",
+      "vowel": "ㅔ",
+      "romanization": "ge",
+      "segment_file": null
+    },
+    "세": {
+      "consonant": "ㅅ",
+      "vowel": "ㅔ",
+      "romanization": "se",
+      "segment_file": null
+    },
+    "메": {
+      "consonant": "ㅁ",
+      "vowel": "ㅔ",
+      "romanization": "me",
+      "segment_file": null
+    },
+    "네": {
+      "consonant": "ㄴ",
+      "vowel": "ㅔ",
+      "romanization": "ne",
+      "segment_file": null
+    },
+    "헤": {
+      "consonant": "ㅎ",
+      "vowel": "ㅔ",
+      "romanization": "he",
+      "segment_file": null
+    },
+    "레": {
+      "consonant": "ㄹ",
+      "vowel": "ㅔ",
+      "romanization": "le",
+      "segment_file": null
+    },
+    "얘": {
+      "consonant": "ㅇ",
+      "vowel": "ㅒ",
+      "romanization": "yae",
+      "segment_file": null
+    },
+    "예": {
+      "consonant": "ㅇ",
+      "vowel": "ㅖ",
+      "romanization": "ye",
+      "segment_file": null
+    },
+    "계": {
+      "consonant": "ㄱ",
+      "vowel": "ㅖ",
+      "romanization": "gye",
+      "segment_file": null
+    },
+    "혜": {
+      "consonant": "ㅎ",
+      "vowel": "ㅖ",
+      "romanization": "hye",
+      "segment_file": null
+    },
+    "와": {
+      "consonant": "ㅇ",
+      "vowel": "ㅘ",
+      "romanization": "wa",
+      "segment_file": null
+    },
+    "봐": {
+      "consonant": "ㅂ",
+      "vowel": "ㅘ",
+      "romanization": "bwa",
+      "segment_file": null
+    },
+    "좌": {
+      "consonant": "ㅈ",
+      "vowel": "ㅘ",
+      "romanization": "jwa",
+      "segment_file": null
+    },
+    "돠": {
+      "consonant": "ㄷ",
+      "vowel": "ㅘ",
+      "romanization": "dwa",
+      "segment_file": null
+    },
+    "과": {
+      "consonant": "ㄱ",
+      "vowel": "ㅘ",
+      "romanization": "gwa",
+      "segment_file": null
+    },
+    "솨": {
+      "consonant": "ㅅ",
+      "vowel": "ㅘ",
+      "romanization": "swa",
+      "segment_file": null
+    },
+    "놔": {
+      "consonant": "ㄴ",
+      "vowel": "ㅘ",
+      "romanization": "nwa",
+      "segment_file": null
+    },
+    "왜": {
+      "consonant": "ㅇ",
+      "vowel": "ㅙ",
+      "romanization": "wae",
+      "segment_file": null
+    },
+    "외": {
+      "consonant": "ㅇ",
+      "vowel": "ㅚ",
+      "romanization": "oe",
+      "segment_file": null
+    },
+    "뵈": {
+      "consonant": "ㅂ",
+      "vowel": "ㅚ",
+      "romanization": "boe",
+      "segment_file": null
+    },
+    "죄": {
+      "consonant": "ㅈ",
+      "vowel": "ㅚ",
+      "romanization": "joe",
+      "segment_file": null
+    },
+    "되": {
+      "consonant": "ㄷ",
+      "vowel": "ㅚ",
+      "romanization": "doe",
+      "segment_file": null
+    },
+    "괴": {
+      "consonant": "ㄱ",
+      "vowel": "ㅚ",
+      "romanization": "goe",
+      "segment_file": null
+    },
+    "쇠": {
+      "consonant": "ㅅ",
+      "vowel": "ㅚ",
+      "romanization": "soe",
+      "segment_file": null
+    },
+    "뇌": {
+      "consonant": "ㄴ",
+      "vowel": "ㅚ",
+      "romanization": "noe",
+      "segment_file": null
+    },
+    "워": {
+      "consonant": "ㅇ",
+      "vowel": "ㅝ",
+      "romanization": "wo",
+      "segment_file": null
+    },
+    "붜": {
+      "consonant": "ㅂ",
+      "vowel": "ㅝ",
+      "romanization": "bwo",
+      "segment_file": null
+    },
+    "줘": {
+      "consonant": "ㅈ",
+      "vowel": "ㅝ",
+      "romanization": "jwo",
+      "segment_file": null
+    },
+    "둬": {
+      "consonant": "ㄷ",
+      "vowel": "ㅝ",
+      "romanization": "dwo",
+      "segment_file": null
+    },
+    "궈": {
+      "consonant": "ㄱ",
+      "vowel": "ㅝ",
+      "romanization": "gwo",
+      "segment_file": null
+    },
+    "숴": {
+      "consonant": "ㅅ",
+      "vowel": "ㅝ",
+      "romanization": "swo",
+      "segment_file": null
+    },
+    "눠": {
+      "consonant": "ㄴ",
+      "vowel": "ㅝ",
+      "romanization": "nwo",
+      "segment_file": null
+    },
+    "웨": {
+      "consonant": "ㅇ",
+      "vowel": "ㅞ",
+      "romanization": "we",
+      "segment_file": null
+    },
+    "위": {
+      "consonant": "ㅇ",
+      "vowel": "ㅟ",
+      "romanization": "wi",
+      "segment_file": null
+    },
+    "뷔": {
+      "consonant": "ㅂ",
+      "vowel": "ㅟ",
+      "romanization": "bwi",
+      "segment_file": null
+    },
+    "쥐": {
+      "consonant": "ㅈ",
+      "vowel": "ㅟ",
+      "romanization": "jwi",
+      "segment_file": null
+    },
+    "뒤": {
+      "consonant": "ㄷ",
+      "vowel": "ㅟ",
+      "romanization": "dwi",
+      "segment_file": null
+    },
+    "귀": {
+      "consonant": "ㄱ",
+      "vowel": "ㅟ",
+      "romanization": "gwi",
+      "segment_file": null
+    },
+    "쉬": {
+      "consonant": "ㅅ",
+      "vowel": "ㅟ",
+      "romanization": "swi",
+      "segment_file": null
+    },
+    "뉘": {
+      "consonant": "ㄴ",
+      "vowel": "ㅟ",
+      "romanization": "nwi",
+      "segment_file": null
+    },
+    "의": {
+      "consonant": "ㅇ",
+      "vowel": "ㅢ",
+      "romanization": "ui",
+      "segment_file": null
+    },
+    "븨": {
+      "consonant": "ㅂ",
+      "vowel": "ㅢ",
+      "romanization": "bui",
+      "segment_file": null
+    },
+    "즤": {
+      "consonant": "ㅈ",
+      "vowel": "ㅢ",
+      "romanization": "jui",
+      "segment_file": null
+    },
+    "듸": {
+      "consonant": "ㄷ",
+      "vowel": "ㅢ",
+      "romanization": "dui",
+      "segment_file": null
+    },
+    "긔": {
+      "consonant": "ㄱ",
+      "vowel": "ㅢ",
+      "romanization": "gui",
+      "segment_file": null
+    },
+    "싀": {
+      "consonant": "ㅅ",
+      "vowel": "ㅢ",
+      "romanization": "sui",
+      "segment_file": null
+    },
+    "늬": {
+      "consonant": "ㄴ",
+      "vowel": "ㅢ",
+      "romanization": "nui",
+      "segment_file": null
+    }
+  },
+  "vowels_order": [
+    "ㅐ",
+    "ㅔ",
+    "ㅒ",
+    "ㅖ",
+    "ㅘ",
+    "ㅙ",
+    "ㅚ",
+    "ㅝ",
+    "ㅞ",
+    "ㅟ",
+    "ㅢ"
+  ],
+  "vowels_no_audio": [
+    "ㅑ",
+    "ㅕ",
+    "ㅠ",
+    "ㅛ"
+  ]
+}
