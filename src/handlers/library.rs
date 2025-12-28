@@ -40,7 +40,7 @@ pub async fn library(State(pool): State<DbPool>) -> Html<String> {
     Err(_) => return Html("<h1>Database Error</h1><p>Please refresh the page.</p>".to_string()),
   };
 
-  let cards = db::get_unlocked_cards(&conn).log_warn_default("Failed to get unlocked cards");
+  let cards = db::get_all_unlocked_cards(&conn).log_warn_default("Failed to get unlocked cards");
   let max_unlocked_tier = db::get_max_unlocked_tier(&conn).log_warn_default("Failed to get max unlocked tier");
 
   // Group cards by tier, filtering to only show single-character fronts (the actual jamo)

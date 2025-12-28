@@ -7,7 +7,7 @@ use crate::domain::{Card, CardType, FsrsState};
 #[cfg(feature = "profiling")]
 use crate::profiling::EventType;
 
-use super::tiers::get_effective_tiers;
+use super::tiers::{get_all_tiers_unlocked, get_effective_tiers, get_enabled_tiers, get_max_unlocked_tier};
 
 pub fn insert_card(conn: &Connection, card: &Card) -> Result<i64> {
     conn.execute(
@@ -358,6 +358,51 @@ pub fn get_unlocked_cards(conn: &Connection) -> Result<Vec<Card>> {
     }
 
     let tier_list = effective_tiers
+        .iter()
+        .map(|t| t.to_string())
+        .collect::<Vec<_>>()
+        .join(",");
+
+    let query = format!(
+        r#"
+    SELECT id, front, main_answer, description, card_type, tier, audio_hint, ease_factor,
+           interval_days, repetitions, next_review, total_reviews, correct_reviews, learning_step,
+           fsrs_stability, fsrs_difficulty, fsrs_state
+    FROM cards
+    WHERE tier IN ({})
+    ORDER BY tier ASC, id ASC
+    "#,
+        tier_list
+    );
+    let mut stmt = conn.prepare(&query)?;
+
+    let cards = stmt
+        .query_map([], |row| row_to_card(row))?
+        .collect::<Result<Vec<_>>>()?;
+    Ok(cards)
+}
+
+/// Get all unlocked cards ignoring focus mode (for library/reference pages)
+pub fn get_all_unlocked_cards(conn: &Connection) -> Result<Vec<Card>> {
+    #[cfg(feature = "profiling")]
+    crate::profile_log!(EventType::DbQuery {
+        operation: "select_all_unlocked".into(),
+        table: "cards".into(),
+    });
+
+    let all_unlocked = get_all_tiers_unlocked(conn)?;
+    let tiers: Vec<u8> = if all_unlocked {
+        get_enabled_tiers(conn)?
+    } else {
+        let max_tier = get_max_unlocked_tier(conn)?;
+        (1..=max_tier).collect()
+    };
+
+    if tiers.is_empty() {
+        return Ok(vec![]);
+    }
+
+    let tier_list = tiers
         .iter()
         .map(|t| t.to_string())
         .collect::<Vec<_>>()
