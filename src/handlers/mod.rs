@@ -117,8 +117,8 @@ pub use reference::{
 pub use listen::{listen_index, listen_start, listen_answer, listen_answer_htmx, listen_skip};
 pub use pronunciation::{has_scraped_content, pronunciation_page};
 pub use settings::{
-  delete_scraped, delete_scraped_lesson, make_all_due, settings_page, trigger_scrape,
-  trigger_scrape_lesson, trigger_segment, trigger_row_segment, update_settings,
+  delete_scraped, delete_scraped_lesson, graduate_tier, make_all_due, restore_tier, settings_page,
+  trigger_scrape, trigger_scrape_lesson, trigger_segment, trigger_row_segment, update_settings,
 };
 pub use study::{
   next_card_interactive, practice_next, practice_start, practice_validate, study_start,

@@ -131,3 +131,20 @@ pub const PROBLEM_CARDS_LIMIT: i64 = 5;
 
 /// Limit for confusion entries per card
 pub const CONFUSIONS_LIMIT: i64 = 3;
+
+// ==================== SRS Learning Steps ====================
+
+/// Normal learning steps in minutes: 1min → 10min → 1hr → 4hr (~5 hours to graduate)
+pub const LEARNING_STEPS_NORMAL: [i64; 4] = [1, 10, 60, 240];
+
+/// Focus mode learning steps in minutes: 1min → 5min → 15min → 30min (~50 minutes to graduate)
+pub const LEARNING_STEPS_FOCUS: [i64; 4] = [1, 5, 15, 30];
+
+/// Get learning steps based on focus mode
+pub fn get_learning_steps(focus_mode: bool) -> &'static [i64; 4] {
+    if focus_mode {
+        &LEARNING_STEPS_FOCUS
+    } else {
+        &LEARNING_STEPS_NORMAL
+    }
+}

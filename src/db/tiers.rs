@@ -375,6 +375,161 @@ pub fn make_all_cards_due(conn: &Connection) -> Result<usize> {
     Ok(count)
 }
 
+/// Graduate all cards in a tier (escape hatch for users who know the material)
+/// Sets cards to graduated state with 3-day review interval
+/// Automatically backs up card state before graduation
+pub fn graduate_tier(conn: &Connection, tier: u8) -> Result<usize> {
+    use chrono::{Duration, Utc};
+
+    // Skip if already fully graduated
+    if is_tier_fully_graduated(conn, tier)? {
+        return Ok(0);
+    }
+
+    // Backup current state before graduating
+    backup_tier_state(conn, tier)?;
+
+    let next_review = (Utc::now() + Duration::days(3)).to_rfc3339();
+
+    let count = conn.execute(
+        "UPDATE cards SET
+            learning_step = 4,
+            repetitions = 2,
+            fsrs_stability = 3.0,
+            fsrs_state = 'Review',
+            next_review = ?1
+         WHERE tier = ?2",
+        params![next_review, tier],
+    )?;
+
+    Ok(count)
+}
+
+// ==================== Tier Graduation Backup ====================
+
+use serde::{Deserialize, Serialize};
+
+/// Card state backup for undo graduation
+#[derive(Debug, Serialize, Deserialize)]
+struct CardStateBackup {
+    id: i64,
+    learning_step: i64,
+    repetitions: i64,
+    fsrs_stability: Option<f64>,
+    fsrs_difficulty: Option<f64>,
+    fsrs_state: Option<String>,
+    next_review: String,
+}
+
+/// Check if a tier is fully graduated (all cards have learning_step >= 4)
+pub fn is_tier_fully_graduated(conn: &Connection, tier: u8) -> Result<bool> {
+    let count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM cards WHERE tier = ?1 AND learning_step < 4",
+        params![tier],
+        |row| row.get(0),
+    )?;
+    Ok(count == 0)
+}
+
+/// Backup current card states for a tier before graduation
+pub fn backup_tier_state(conn: &Connection, tier: u8) -> Result<()> {
+    use chrono::Utc;
+
+    let mut stmt = conn.prepare(
+        "SELECT id, learning_step, repetitions, fsrs_stability, fsrs_difficulty, fsrs_state, next_review
+         FROM cards WHERE tier = ?1",
+    )?;
+
+    let backups: Vec<CardStateBackup> = stmt
+        .query_map(params![tier], |row| {
+            Ok(CardStateBackup {
+                id: row.get(0)?,
+                learning_step: row.get(1)?,
+                repetitions: row.get(2)?,
+                fsrs_stability: row.get(3)?,
+                fsrs_difficulty: row.get(4)?,
+                fsrs_state: row.get(5)?,
+                next_review: row.get(6)?,
+            })
+        })?
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+
+    let backup_json = serde_json::to_string(&backups).map_err(|e| {
+        rusqlite::Error::ToSqlConversionFailure(Box::new(e))
+    })?;
+
+    let created_at = Utc::now().to_rfc3339();
+
+    conn.execute(
+        "INSERT OR REPLACE INTO tier_graduation_backups (tier, backup_data, created_at)
+         VALUES (?1, ?2, ?3)",
+        params![tier, backup_json, created_at],
+    )?;
+
+    Ok(())
+}
+
+/// Restore card states from backup (undo graduation)
+pub fn restore_tier_state(conn: &Connection, tier: u8) -> Result<usize> {
+    let backup_json: String = conn.query_row(
+        "SELECT backup_data FROM tier_graduation_backups WHERE tier = ?1",
+        params![tier],
+        |row| row.get(0),
+    )?;
+
+    let backups: Vec<CardStateBackup> = serde_json::from_str(&backup_json).map_err(|e| {
+        rusqlite::Error::FromSqlConversionFailure(0, rusqlite::types::Type::Text, Box::new(e))
+    })?;
+
+    let mut restored = 0;
+    for backup in &backups {
+        conn.execute(
+            "UPDATE cards SET
+                learning_step = ?1,
+                repetitions = ?2,
+                fsrs_stability = ?3,
+                fsrs_difficulty = ?4,
+                fsrs_state = ?5,
+                next_review = ?6
+             WHERE id = ?7",
+            params![
+                backup.learning_step,
+                backup.repetitions,
+                backup.fsrs_stability,
+                backup.fsrs_difficulty,
+                backup.fsrs_state,
+                backup.next_review,
+                backup.id
+            ],
+        )?;
+        restored += 1;
+    }
+
+    // Delete the backup after successful restore
+    delete_tier_backup(conn, tier)?;
+
+    Ok(restored)
+}
+
+/// Check if a backup exists for a tier
+pub fn has_tier_backup(conn: &Connection, tier: u8) -> Result<bool> {
+    let count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM tier_graduation_backups WHERE tier = ?1",
+        params![tier],
+        |row| row.get(0),
+    )?;
+    Ok(count > 0)
+}
+
+/// Delete a tier backup
+pub fn delete_tier_backup(conn: &Connection, tier: u8) -> Result<()> {
+    conn.execute(
+        "DELETE FROM tier_graduation_backups WHERE tier = ?1",
+        params![tier],
+    )?;
+    Ok(())
+}
+
 /// Get total stats across ALL cards (global totals, not filtered by mode)
 pub fn get_total_stats(conn: &Connection) -> Result<(i64, i64, i64)> {
     #[cfg(feature = "profiling")]

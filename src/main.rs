@@ -66,6 +66,8 @@ async fn main() {
     .route("/settings/segment", post(handlers::trigger_segment))
     .route("/settings/segment-row", post(handlers::trigger_row_segment))
     .route("/settings/make-all-due", post(handlers::make_all_due))
+    .route("/settings/graduate-tier/{tier}", post(handlers::graduate_tier))
+    .route("/settings/restore-tier/{tier}", post(handlers::restore_tier))
     .route("/diagnostic", post(handlers::log_diagnostic))
     .nest_service("/audio/scraped", ServeDir::new(paths::SCRAPED_DIR))
     .nest_service("/static", ServeDir::new("static"))

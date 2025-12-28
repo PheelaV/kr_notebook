@@ -79,6 +79,13 @@ pub struct LessonAudio {
   pub has_columns: bool,  // Lesson 1 has column audio
 }
 
+/// Tier graduation status for UI
+pub struct TierGraduationStatus {
+  pub tier: u8,
+  pub is_fully_graduated: bool,
+  pub has_backup: bool,
+}
+
 /// Get audio preview data for a lesson
 fn get_lesson_audio(lesson_id: &str, lesson_name: &str) -> Option<LessonAudio> {
   let manifest_path = paths::manifest_path(lesson_id);
@@ -200,6 +207,8 @@ pub struct SettingsTemplate {
   pub lesson2_syllables: usize,
   // Audio preview data
   pub lesson_audio: Vec<LessonAudio>,
+  // Tier graduation status
+  pub tier_graduation: Vec<TierGraduationStatus>,
 }
 
 /// Error HTML for database unavailable
@@ -240,6 +249,15 @@ pub async fn settings_page(State(pool): State<DbPool>) -> Html<String> {
     }
   }
 
+  // Get tier graduation status
+  let tier_graduation: Vec<TierGraduationStatus> = (1..=4u8)
+    .map(|tier| TierGraduationStatus {
+      tier,
+      is_fully_graduated: db::is_tier_fully_graduated(&conn, tier).unwrap_or(false),
+      has_backup: db::has_tier_backup(&conn, tier).unwrap_or(false),
+    })
+    .collect();
+
   let template = SettingsTemplate {
     all_tiers_unlocked,
     enabled_tiers,
@@ -253,6 +271,7 @@ pub async fn settings_page(State(pool): State<DbPool>) -> Html<String> {
     lesson1_syllables: if has_l1 { count_syllables("lesson1") } else { 0 },
     lesson2_syllables: if has_l2 { count_syllables("lesson2") } else { 0 },
     lesson_audio,
+    tier_graduation,
   };
   Html(template.render().unwrap_or_default())
 }
@@ -744,6 +763,57 @@ pub async fn make_all_due(State(pool): State<DbPool>) -> Redirect {
   crate::profile_log!(EventType::Custom {
     name: "make_all_due".into(),
     data: serde_json::json!({ "cards_updated": _count }),
+  });
+
+  Redirect::to("/settings")
+}
+
+/// Graduate all cards in a tier (escape hatch for users who know the material)
+pub async fn graduate_tier(State(pool): State<DbPool>, Path(tier): Path<u8>) -> Redirect {
+  #[cfg(feature = "profiling")]
+  crate::profile_log!(EventType::HandlerStart {
+    route: format!("/settings/graduate-tier/{}", tier),
+    method: "POST".into(),
+  });
+
+  let conn = match try_lock(&pool) {
+    Ok(conn) => conn,
+    Err(_) => return Redirect::to("/settings"),
+  };
+
+  let _count = db::graduate_tier(&conn, tier).log_warn_default("Failed to graduate tier");
+
+  // Try to unlock next tier if applicable
+  let _ = db::try_auto_unlock_tier(&conn);
+
+  #[cfg(feature = "profiling")]
+  crate::profile_log!(EventType::Custom {
+    name: "graduate_tier".into(),
+    data: serde_json::json!({ "tier": tier, "cards_graduated": _count }),
+  });
+
+  Redirect::to("/settings")
+}
+
+/// Restore a tier to its pre-graduation state (undo graduation)
+pub async fn restore_tier(State(pool): State<DbPool>, Path(tier): Path<u8>) -> Redirect {
+  #[cfg(feature = "profiling")]
+  crate::profile_log!(EventType::HandlerStart {
+    route: format!("/settings/restore-tier/{}", tier),
+    method: "POST".into(),
+  });
+
+  let conn = match try_lock(&pool) {
+    Ok(conn) => conn,
+    Err(_) => return Redirect::to("/settings"),
+  };
+
+  let _count = db::restore_tier_state(&conn, tier).log_warn_default("Failed to restore tier");
+
+  #[cfg(feature = "profiling")]
+  crate::profile_log!(EventType::Custom {
+    name: "restore_tier".into(),
+    data: serde_json::json!({ "tier": tier, "cards_restored": _count }),
   });
 
   Redirect::to("/settings")

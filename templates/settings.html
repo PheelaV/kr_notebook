@@ -176,6 +176,45 @@
         Skip ahead to make all cards due now. Useful for intensive study sessions.
       </p>
     </div>
+
+    <!-- Advanced Section (Collapsible) -->
+    <details class="mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">
+      <summary class="cursor-pointer text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white">
+        Advanced options...
+      </summary>
+      <div class="mt-4 p-4 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-200 dark:border-amber-800">
+        <p class="text-sm text-amber-700 dark:text-amber-300 mb-3">
+          <strong>Graduate Tier:</strong> Mark all cards in a tier as learned with 3-day review interval.
+          Use only if you already know the material.
+        </p>
+        <div class="flex flex-wrap gap-2">
+          {% for status in tier_graduation %}
+          <div class="inline-flex gap-1">
+            {% if status.is_fully_graduated %}
+            <span class="px-3 py-1.5 text-sm bg-gray-400 text-white rounded cursor-not-allowed opacity-60">
+              Tier {{ status.tier }} ✓
+            </span>
+            {% else %}
+            <form method="POST" action="/settings/graduate-tier/{{ status.tier }}" class="inline">
+              <button type="button" onclick="if(confirm('Graduate all Tier {{ status.tier }} cards? They will be scheduled for review in 3 days.')) this.form.submit();"
+                      class="px-3 py-1.5 text-sm {% if status.tier == 1 %}bg-green-600 hover:bg-green-700{% else %}{% if status.tier == 2 %}bg-blue-600 hover:bg-blue-700{% else %}{% if status.tier == 3 %}bg-purple-600 hover:bg-purple-700{% else %}bg-orange-600 hover:bg-orange-700{% endif %}{% endif %}{% endif %} text-white rounded">
+                Graduate Tier {{ status.tier }}
+              </button>
+            </form>
+            {% endif %}
+            {% if status.has_backup %}
+            <form method="POST" action="/settings/restore-tier/{{ status.tier }}" class="inline">
+              <button type="button" onclick="if(confirm('Restore Tier {{ status.tier }} to pre-graduation state?')) this.form.submit();"
+                      class="px-2 py-1.5 text-sm bg-gray-500 text-white rounded hover:bg-gray-600" title="Undo graduation">
+                ↩
+              </button>
+            </form>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </details>
   </div>
 
   <!-- External Content Section -->

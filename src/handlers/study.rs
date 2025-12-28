@@ -555,10 +555,11 @@ pub async fn validate_answer_handler(
 
     // Update SRS based on FSRS or SM-2
     let use_fsrs = db::get_use_fsrs(&conn).log_warn_default("Failed to get FSRS setting");
+    let focus_mode = db::is_focus_mode_active(&conn).unwrap_or(false);
 
     if use_fsrs {
       let desired_retention = db::get_desired_retention(&conn).log_warn_default("Failed to get desired retention");
-      let result = srs::calculate_fsrs_review(&card, quality, desired_retention);
+      let result = srs::calculate_fsrs_review(&card, quality, desired_retention, focus_mode);
 
       #[cfg(feature = "profiling")]
       crate::profile_log!(EventType::SrsCalculation {

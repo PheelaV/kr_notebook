@@ -66,6 +66,12 @@ pub fn run_migrations(conn: &Connection) -> Result<()> {
       last_attempt_at TEXT
     );
 
+    CREATE TABLE IF NOT EXISTS tier_graduation_backups (
+      tier INTEGER PRIMARY KEY,
+      backup_data TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+
     -- Default settings
     INSERT OR IGNORE INTO settings (key, value) VALUES ('max_unlocked_tier', '1');
     INSERT OR IGNORE INTO settings (key, value) VALUES ('dark_mode', 'false');
