@@ -9,9 +9,10 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy everything needed for the build
-COPY Cargo.toml Cargo.lock ./
+COPY Cargo.toml Cargo.lock build.rs ./
 COPY src ./src
 COPY templates ./templates
+COPY static ./static
 
 # Build the application
 RUN cargo build --release
@@ -31,6 +32,9 @@ RUN mkdir -p /app/data
 
 # Copy the binary from builder
 COPY --from=builder /app/target/release/kr_notebook /app/kr_notebook
+
+# Copy static assets for runtime serving
+COPY --from=builder /app/static /app/static
 
 EXPOSE 3000
 

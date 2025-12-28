@@ -9,3 +9,8 @@ services:
       - RUST_LOG=kr_notebook=info,tower_http=info
     user: "${UID:-1000}:${GID:-1000}"
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
