@@ -13,6 +13,7 @@ dependencies = [
     "requests>=2.32.0",
     "pydub>=0.25.0",
     "pyrootutils>=1.0.4",
+    "tomlkit>=0.13.3",
 ]
 
 [project.scripts]

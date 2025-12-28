@@ -6,6 +6,7 @@ services:
       dockerfile: py_scripts/Dockerfile
     volumes:
       - ./data:/app/data
+      - ./config.toml:/app/config.toml
     user: "${UID:-1000}:${GID:-1000}"
     working_dir: /app/py_scripts
 
@@ -15,6 +16,7 @@ services:
       - "3000:3000"
     volumes:
       - ./data:/app/data
+      - ./config.toml:/app/config.toml:ro
     environment:
       - RUST_LOG=kr_notebook=info,tower_http=info
     user: "${UID:-1000}:${GID:-1000}"

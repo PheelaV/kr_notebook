@@ -350,10 +350,20 @@ def use(name: str) -> None:
 
     # Update config.toml
     if name == "production":
-        # Remove database override from config.toml
+        # Remove database section from config.toml (preserves comments/formatting)
         if CONFIG_TOML.exists():
-            os.remove(CONFIG_TOML)
-            click.echo("Removed config.toml override")
+            import tomlkit
+
+            with open(CONFIG_TOML, "r") as f:
+                config = tomlkit.load(f)
+
+            if "database" in config:
+                del config["database"]
+                with open(CONFIG_TOML, "w") as f:
+                    tomlkit.dump(config, f)
+                click.echo("Removed database override from config.toml")
+            else:
+                click.echo("No database override in config.toml")
         click.echo(click.style(f"Switched to production database", fg="green"))
     else:
         # Write config.toml with database path

@@ -37,9 +37,10 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Create directories
+# Create directories and ensure config exists
 mkdir -p "$LOG_DIR"
 mkdir -p "$PROJECT_DIR/data"
+touch "$PROJECT_DIR/config.toml"
 
 cd "$PROJECT_DIR"
 
