@@ -3,387 +3,644 @@
 {% block title %}Guide - Hangul Learn{% endblock %}
 
 {% block content %}
-<div class="max-w-3xl mx-auto">
-  <h1 class="text-3xl font-bold text-gray-900 dark:text-white mb-6">
-    How to Use Hangul Learn
-  </h1>
+<div class="lg:flex lg:gap-8">
+  <!-- Mobile TOC - Sticky horizontal scroll -->
+  <nav class="lg:hidden sticky top-0 z-40 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 -mx-4 px-4 py-3 mb-6">
+    <div class="flex gap-2 overflow-x-auto pb-2 scrollbar-thin">
+      <a href="#quick-start" class="toc-link shrink-0 px-3 py-1.5 text-xs font-medium rounded-full bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-indigo-100 dark:hover:bg-indigo-900 hover:text-indigo-700 dark:hover:text-indigo-300">Quick Start</a>
+      <a href="#interactive" class="toc-link shrink-0 px-3 py-1.5 text-xs font-medium rounded-full bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-indigo-100 dark:hover:bg-indigo-900 hover:text-indigo-700 dark:hover:text-indigo-300">Interactive</a>
+      <a href="#hints" class="toc-link shrink-0 px-3 py-1.5 text-xs font-medium rounded-full bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-indigo-100 dark:hover:bg-indigo-900 hover:text-indigo-700 dark:hover:text-indigo-300">Hints</a>
+      <a href="#srs" class="toc-link shrink-0 px-3 py-1.5 text-xs font-medium rounded-full bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-indigo-100 dark:hover:bg-indigo-900 hover:text-indigo-700 dark:hover:text-indigo-300">SRS</a>
+      <a href="#scoring" class="toc-link shrink-0 px-3 py-1.5 text-xs font-medium rounded-full bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-indigo-100 dark:hover:bg-indigo-900 hover:text-indigo-700 dark:hover:text-indigo-300">Scoring</a>
+      <a href="#tiers" class="toc-link shrink-0 px-3 py-1.5 text-xs font-medium rounded-full bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-indigo-100 dark:hover:bg-indigo-900 hover:text-indigo-700 dark:hover:text-indigo-300">Tiers</a>
+      <a href="#accelerated" class="toc-link shrink-0 px-3 py-1.5 text-xs font-medium rounded-full bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-indigo-100 dark:hover:bg-indigo-900 hover:text-indigo-700 dark:hover:text-indigo-300">Accelerated</a>
+      <a href="#focus" class="toc-link shrink-0 px-3 py-1.5 text-xs font-medium rounded-full bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-indigo-100 dark:hover:bg-indigo-900 hover:text-indigo-700 dark:hover:text-indigo-300">Focus</a>
+      <a href="#retention" class="toc-link shrink-0 px-3 py-1.5 text-xs font-medium rounded-full bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-indigo-100 dark:hover:bg-indigo-900 hover:text-indigo-700 dark:hover:text-indigo-300">Retention</a>
+      <a href="#problem-areas" class="toc-link shrink-0 px-3 py-1.5 text-xs font-medium rounded-full bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-indigo-100 dark:hover:bg-indigo-900 hover:text-indigo-700 dark:hover:text-indigo-300">Problems</a>
+      <a href="#tips" class="toc-link shrink-0 px-3 py-1.5 text-xs font-medium rounded-full bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-indigo-100 dark:hover:bg-indigo-900 hover:text-indigo-700 dark:hover:text-indigo-300">Tips</a>
+      <a href="#learned" class="toc-link shrink-0 px-3 py-1.5 text-xs font-medium rounded-full bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-indigo-100 dark:hover:bg-indigo-900 hover:text-indigo-700 dark:hover:text-indigo-300">Learned</a>
+      <a href="#practice" class="toc-link shrink-0 px-3 py-1.5 text-xs font-medium rounded-full bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-indigo-100 dark:hover:bg-indigo-900 hover:text-indigo-700 dark:hover:text-indigo-300">Practice</a>
+      <a href="#shortcuts" class="toc-link shrink-0 px-3 py-1.5 text-xs font-medium rounded-full bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-indigo-100 dark:hover:bg-indigo-900 hover:text-indigo-700 dark:hover:text-indigo-300">Shortcuts</a>
+    </div>
+  </nav>
 
-  <!-- Quick Start -->
-  <section class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6">
-    <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-4">
-      Quick Start
-    </h2>
-    <ol class="list-decimal list-inside space-y-2 text-gray-700 dark:text-gray-300">
-      <li>Go to <a href="/study" class="text-indigo-600 dark:text-indigo-400 hover:underline">Study</a> to start learning</li>
-      <li>Look at the Korean letter on the card</li>
-      <li>Type the romanization (e.g., "g" or "a") and tap Check</li>
-      <li>For reverse cards, select the correct Korean letter from the choices</li>
-      <li>Use the Hint button if you're stuck</li>
-      <li>Repeat daily for best results</li>
-    </ol>
-  </section>
+  <!-- Desktop TOC - Fixed sidebar -->
+  <aside class="hidden lg:block lg:w-56 shrink-0">
+    <nav class="sticky top-4 bg-white dark:bg-gray-800 shadow rounded-lg p-4">
+      <h3 class="text-sm font-bold text-gray-900 dark:text-white mb-3 uppercase tracking-wide">Contents</h3>
+      <ul class="space-y-1 text-sm">
+        <li><a href="#quick-start" class="toc-link block py-1.5 px-2 rounded text-gray-600 dark:text-gray-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors">Quick Start</a></li>
+        <li><a href="#interactive" class="toc-link block py-1.5 px-2 rounded text-gray-600 dark:text-gray-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors">Interactive Learning</a></li>
+        <li><a href="#hints" class="toc-link block py-1.5 px-2 rounded text-gray-600 dark:text-gray-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors">Using Hints</a></li>
+        <li><a href="#srs" class="toc-link block py-1.5 px-2 rounded text-gray-600 dark:text-gray-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors">Spaced Repetition</a></li>
+        <li><a href="#scoring" class="toc-link block py-1.5 px-2 rounded text-gray-600 dark:text-gray-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors">Answer Scoring</a></li>
+        <li class="border-t border-gray-200 dark:border-gray-700 pt-1 mt-1">
+          <a href="#tiers" class="toc-link block py-1.5 px-2 rounded text-gray-600 dark:text-gray-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors">Learning Tiers</a>
+        </li>
+        <li><a href="#accelerated" class="toc-link block py-1.5 px-2 rounded text-gray-600 dark:text-gray-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors">Accelerated Mode</a></li>
+        <li><a href="#focus" class="toc-link block py-1.5 px-2 rounded text-gray-600 dark:text-gray-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors">Focus Mode</a></li>
+        <li><a href="#retention" class="toc-link block py-1.5 px-2 rounded text-gray-600 dark:text-gray-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors">Retention Target</a></li>
+        <li class="border-t border-gray-200 dark:border-gray-700 pt-1 mt-1">
+          <a href="#problem-areas" class="toc-link block py-1.5 px-2 rounded text-gray-600 dark:text-gray-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors">Problem Areas</a>
+        </li>
+        <li><a href="#tips" class="toc-link block py-1.5 px-2 rounded text-gray-600 dark:text-gray-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors">Tips for Success</a></li>
+        <li><a href="#learned" class="toc-link block py-1.5 px-2 rounded text-gray-600 dark:text-gray-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors">What "Learned" Means</a></li>
+        <li><a href="#practice" class="toc-link block py-1.5 px-2 rounded text-gray-600 dark:text-gray-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors">Practice Mode</a></li>
+        <li><a href="#shortcuts" class="toc-link block py-1.5 px-2 rounded text-gray-600 dark:text-gray-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors">Keyboard Shortcuts</a></li>
+      </ul>
+    </nav>
+  </aside>
 
-  <!-- Interactive Learning -->
-  <section class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6">
-    <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-4">
-      Interactive Learning
-    </h2>
-    <p class="text-gray-700 dark:text-gray-300 mb-4">
-      This app uses <strong>active recall</strong> - you prove you know the answer instead of just revealing it.
-      Research shows this leads to 20-40% better retention than passive review.
-    </p>
-    <div class="space-y-4">
-      <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
-        <div class="font-semibold text-gray-900 dark:text-white mb-2">Korean to Romanization</div>
-        <p class="text-gray-700 dark:text-gray-300 text-sm">
-          When you see a Korean letter (like ), type its sound ("g" or "k").
-          The system accepts common variations - "g / k" will match either "g", "k", or both.
+  <!-- Main Content -->
+  <div class="flex-1 max-w-3xl">
+    <h1 class="text-3xl font-bold text-gray-900 dark:text-white mb-6">
+      How to Use Hangul Learn
+    </h1>
+
+    <!-- Quick Start -->
+    <section id="quick-start" class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6 scroll-mt-16">
+      <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-4">
+        Quick Start
+      </h2>
+      <ol class="list-decimal list-inside space-y-2 text-gray-700 dark:text-gray-300">
+        <li>Go to <a href="/study" class="text-indigo-600 dark:text-indigo-400 hover:underline">Study</a> to start learning</li>
+        <li>Look at the Korean letter on the card</li>
+        <li>Type the romanization (e.g., "g" or "a") and tap Check</li>
+        <li>For reverse cards, select the correct Korean letter from the choices</li>
+        <li>Use the Hint button if you're stuck</li>
+        <li>Repeat daily for best results</li>
+      </ol>
+    </section>
+
+    <!-- Interactive Learning -->
+    <section id="interactive" class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6 scroll-mt-16">
+      <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-4">
+        Interactive Learning
+      </h2>
+      <p class="text-gray-700 dark:text-gray-300 mb-4">
+        This app uses <strong>active recall</strong> - you prove you know the answer instead of just revealing it.
+        Research shows this leads to 20-40% better retention than passive review.
+      </p>
+      <div class="space-y-4">
+        <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+          <div class="font-semibold text-gray-900 dark:text-white mb-2">Korean to Romanization</div>
+          <p class="text-gray-700 dark:text-gray-300 text-sm">
+            When you see a Korean letter (like ), type its sound ("g" or "k").
+            The system accepts common variations - "g / k" will match either "g", "k", or both.
+          </p>
+        </div>
+        <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+          <div class="font-semibold text-gray-900 dark:text-white mb-2">Romanization to Korean</div>
+          <p class="text-gray-700 dark:text-gray-300 text-sm">
+            When asked "Which letter sounds like 'g / k'?", select the correct Korean letter
+            from the multiple choice buttons. No Korean keyboard needed!
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Hints System -->
+    <section id="hints" class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6 scroll-mt-16">
+      <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-4">
+        Using Hints
+      </h2>
+      <p class="text-gray-700 dark:text-gray-300 mb-4">
+        Stuck on an answer? Tap the <strong>Hint</strong> button for progressive help:
+      </p>
+      <div class="space-y-2 text-gray-700 dark:text-gray-300 text-sm sm:text-base">
+        <div class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-0">
+          <span class="w-20 shrink-0 text-amber-600 dark:text-amber-400 font-semibold">Hint 1:</span>
+          <span>Shows the answer length (e.g., "_ _ _" for a 3-letter answer)</span>
+        </div>
+        <div class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-0">
+          <span class="w-20 shrink-0 text-amber-600 dark:text-amber-400 font-semibold">Hint 2:</span>
+          <span>Shows the description/pronunciation guide</span>
+        </div>
+        <div class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-0">
+          <span class="w-20 shrink-0 text-amber-600 dark:text-amber-400 font-semibold">Hint 3:</span>
+          <span>Reveals the first and last letters</span>
+        </div>
+      </div>
+      <p class="text-gray-600 dark:text-gray-400 mt-4 text-sm">
+        Note: Using hints counts as a "Hard" answer, so the card will appear again sooner.
+        Try to answer without hints when possible!
+      </p>
+    </section>
+
+    <!-- How Spaced Repetition Works -->
+    <section id="srs" class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6 scroll-mt-16">
+      <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-4">
+        How Spaced Repetition Works
+      </h2>
+      <p class="text-gray-700 dark:text-gray-300 mb-4">
+        This app uses a <strong>hybrid scheduling system</strong> that combines the best of two proven algorithms:
+        fixed learning steps for new cards, then the modern <strong>FSRS algorithm</strong> for long-term retention.
+      </p>
+
+      <!-- Phase 1: Learning -->
+      <div class="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-4 mb-4">
+        <div class="flex items-center gap-2 mb-2">
+          <span class="text-amber-600 dark:text-amber-400 text-lg">1</span>
+          <span class="font-semibold text-gray-900 dark:text-white">Learning Phase (SM-2 style)</span>
+        </div>
+        <p class="text-gray-700 dark:text-gray-300 text-sm mb-2">
+          New cards go through fixed, short intervals to build initial memory:
+        </p>
+        <div class="text-sm text-gray-600 dark:text-gray-400 font-mono">
+          1 min &rarr; 10 min &rarr; 1 hour &rarr; 4 hours &rarr; <span class="text-green-600 dark:text-green-400 font-semibold">graduated!</span>
+        </div>
+        <p class="text-gray-600 dark:text-gray-400 text-xs mt-2">
+          You'll see new cards multiple times in your first session. Get one wrong? Back to 1 minute.
         </p>
       </div>
-      <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
-        <div class="font-semibold text-gray-900 dark:text-white mb-2">Romanization to Korean</div>
-        <p class="text-gray-700 dark:text-gray-300 text-sm">
-          When asked "Which letter sounds like 'g / k'?", select the correct Korean letter
-          from the multiple choice buttons. No Korean keyboard needed!
+
+      <!-- Phase 2: FSRS -->
+      <div class="bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-lg p-4 mb-4">
+        <div class="flex items-center gap-2 mb-2">
+          <span class="text-indigo-600 dark:text-indigo-400 text-lg">2</span>
+          <span class="font-semibold text-gray-900 dark:text-white">Review Phase (FSRS)</span>
+        </div>
+        <p class="text-gray-700 dark:text-gray-300 text-sm mb-2">
+          After graduation, the <strong>FSRS algorithm</strong> takes over. It tracks two things for each card:
+        </p>
+        <ul class="text-sm text-gray-700 dark:text-gray-300 space-y-1 ml-4 list-disc">
+          <li><strong>Stability</strong> &ndash; how well the memory is anchored (grows with correct reviews)</li>
+          <li><strong>Difficulty</strong> &ndash; how hard the card is for you personally (adapts over time)</li>
+        </ul>
+        <p class="text-gray-600 dark:text-gray-400 text-xs mt-2">
+          FSRS calculates the optimal review time based on your retention target. Intervals grow exponentially:
+          1 day &rarr; 3 days &rarr; 1 week &rarr; 2 weeks &rarr; months...
         </p>
       </div>
-    </div>
-  </section>
 
-  <!-- Hints System -->
-  <section class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6">
-    <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-4">
-      Using Hints
-    </h2>
-    <p class="text-gray-700 dark:text-gray-300 mb-4">
-      Stuck on an answer? Tap the <strong>Hint</strong> button for progressive help:
-    </p>
-    <div class="space-y-2 text-gray-700 dark:text-gray-300 text-sm sm:text-base">
-      <div class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-0">
-        <span class="w-20 shrink-0 text-amber-600 dark:text-amber-400 font-semibold">Hint 1:</span>
-        <span>Shows the answer length (e.g., "_ _ _" for a 3-letter answer)</span>
+      <!-- Why hybrid -->
+      <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+        <p class="text-gray-700 dark:text-gray-300 text-sm">
+          <strong>Why hybrid?</strong> Research shows fixed short intervals work best for brand-new information,
+          while adaptive algorithms like FSRS excel at long-term scheduling. This combination gives you
+          fast initial learning plus optimized long-term retention.
+        </p>
       </div>
-      <div class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-0">
-        <span class="w-20 shrink-0 text-amber-600 dark:text-amber-400 font-semibold">Hint 2:</span>
-        <span>Shows the description/pronunciation guide</span>
-      </div>
-      <div class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-0">
-        <span class="w-20 shrink-0 text-amber-600 dark:text-amber-400 font-semibold">Hint 3:</span>
-        <span>Reveals the first and last letters</span>
-      </div>
-    </div>
-    <p class="text-gray-600 dark:text-gray-400 mt-4 text-sm">
-      Note: Using hints counts as a "Hard" answer, so the card will appear again sooner.
-      Try to answer without hints when possible!
-    </p>
-  </section>
+    </section>
 
-  <!-- How Spaced Repetition Works -->
-  <section class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6">
-    <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-4">
-      How Spaced Repetition Works
-    </h2>
-    <p class="text-gray-700 dark:text-gray-300 mb-4">
-      This app uses the <strong>FSRS algorithm</strong>, a modern spaced repetition system that's
-      20-30% more efficient than older methods. The idea is simple: review cards just before you forget them.
-    </p>
-    <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 mb-4">
-      <p class="text-gray-700 dark:text-gray-300">
-        <strong>New cards</strong> appear frequently at first. As you learn them,
-        the intervals between reviews grow longer:
+    <!-- Answer Quality -->
+    <section id="scoring" class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6 scroll-mt-16">
+      <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-4">
+        How Answers Are Scored
+      </h2>
+      <p class="text-gray-700 dark:text-gray-300 mb-4">
+        Your answers are automatically scored based on accuracy:
       </p>
-      <div class="mt-3 text-sm text-gray-600 dark:text-gray-400 font-mono">
-        1 min &rarr; 10 min &rarr; 1 day &rarr; 3 days &rarr; 1 week &rarr; 1 month...
-      </div>
-    </div>
-    <p class="text-gray-700 dark:text-gray-300">
-      If you get a card wrong, it resets to a shorter interval so you see it more often
-      until you learn it properly.
-    </p>
-  </section>
-
-  <!-- Answer Quality -->
-  <section class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6">
-    <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-4">
-      How Answers Are Scored
-    </h2>
-    <p class="text-gray-700 dark:text-gray-300 mb-4">
-      Your answers are automatically scored based on accuracy:
-    </p>
-    <div class="space-y-3">
-      <div class="flex flex-col sm:flex-row sm:items-start gap-2 sm:gap-0">
-        <span class="inline-block w-24 shrink-0 bg-green-500 text-white text-center py-1 px-2 rounded text-sm font-semibold sm:mr-3">
-          Correct
-        </span>
-        <div class="text-gray-700 dark:text-gray-300 text-sm sm:text-base">
-          <strong>Got it right!</strong> Interval increases. Card becomes easier.
+      <div class="space-y-3">
+        <div class="flex flex-col sm:flex-row sm:items-start gap-2 sm:gap-0">
+          <span class="inline-block w-24 shrink-0 bg-green-500 text-white text-center py-1 px-2 rounded text-sm font-semibold sm:mr-3">
+            Correct
+          </span>
+          <div class="text-gray-700 dark:text-gray-300 text-sm sm:text-base">
+            <strong>Got it right!</strong> Interval increases. Card becomes easier.
+          </div>
+        </div>
+        <div class="flex flex-col sm:flex-row sm:items-start gap-2 sm:gap-0">
+          <span class="inline-block w-24 shrink-0 bg-orange-500 text-white text-center py-1 px-2 rounded text-sm font-semibold sm:mr-3">
+            With Hint
+          </span>
+          <div class="text-gray-700 dark:text-gray-300 text-sm sm:text-base">
+            <strong>Used hints.</strong> Counts as "Hard" - card will appear again soon.
+          </div>
+        </div>
+        <div class="flex flex-col sm:flex-row sm:items-start gap-2 sm:gap-0">
+          <span class="inline-block w-24 shrink-0 bg-red-500 text-white text-center py-1 px-2 rounded text-sm font-semibold sm:mr-3">
+            Incorrect
+          </span>
+          <div class="text-gray-700 dark:text-gray-300 text-sm sm:text-base">
+            <strong>Wrong answer.</strong> Card resets and will appear again shortly.
+          </div>
         </div>
       </div>
-      <div class="flex flex-col sm:flex-row sm:items-start gap-2 sm:gap-0">
-        <span class="inline-block w-24 shrink-0 bg-orange-500 text-white text-center py-1 px-2 rounded text-sm font-semibold sm:mr-3">
-          With Hint
-        </span>
-        <div class="text-gray-700 dark:text-gray-300 text-sm sm:text-base">
-          <strong>Used hints.</strong> Counts as "Hard" - card will appear again soon.
-        </div>
-      </div>
-      <div class="flex flex-col sm:flex-row sm:items-start gap-2 sm:gap-0">
-        <span class="inline-block w-24 shrink-0 bg-red-500 text-white text-center py-1 px-2 rounded text-sm font-semibold sm:mr-3">
-          Incorrect
-        </span>
-        <div class="text-gray-700 dark:text-gray-300 text-sm sm:text-base">
-          <strong>Wrong answer.</strong> Card resets and will appear again shortly.
-        </div>
-      </div>
-    </div>
-    <p class="text-gray-600 dark:text-gray-400 mt-4 text-sm">
-      Tip: Small typos (1-2 characters off) are accepted as correct, but try to be accurate!
-    </p>
-  </section>
-
-  <!-- Learning Tiers -->
-  <section class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6">
-    <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-4">
-      Learning Tiers
-    </h2>
-    <p class="text-gray-700 dark:text-gray-300 mb-4">
-      Hangul is organized into 4 tiers, from basic to advanced. You start with Tier 1
-      and unlock new tiers as you progress.
-    </p>
-    <div class="space-y-3">
-      <div class="border-l-4 border-green-500 pl-4">
-        <div class="font-semibold text-gray-900 dark:text-white">Tier 1: Basic Consonants & Vowels</div>
-        <div class="text-sm text-gray-600 dark:text-gray-400">
-          The 9 basic consonants (ㄱ, ㄴ, ㄷ...) and 6 basic vowels (ㅏ, ㅓ, ㅗ...)
-        </div>
-      </div>
-      <div class="border-l-4 border-blue-500 pl-4">
-        <div class="font-semibold text-gray-900 dark:text-white">Tier 2: Y-Vowels & Special Ieung</div>
-        <div class="text-sm text-gray-600 dark:text-gray-400">
-          Y-vowels (ㅑ, ㅕ, ㅛ, ㅠ), ae/e vowels (ㅐ, ㅔ), and ㅇ rules
-        </div>
-      </div>
-      <div class="border-l-4 border-purple-500 pl-4">
-        <div class="font-semibold text-gray-900 dark:text-white">Tier 3: Aspirated & Tense Consonants</div>
-        <div class="text-sm text-gray-600 dark:text-gray-400">
-          Aspirated (ㅋ, ㅍ, ㅌ, ㅊ) and double/tense consonants (ㄲ, ㅃ, ㄸ, ㅆ, ㅉ)
-        </div>
-      </div>
-      <div class="border-l-4 border-orange-500 pl-4">
-        <div class="font-semibold text-gray-900 dark:text-white">Tier 4: Compound Vowels</div>
-        <div class="text-sm text-gray-600 dark:text-gray-400">
-          Combined vowels like ㅘ, ㅝ, ㅟ, ㅚ, ㅢ, and more
-        </div>
-      </div>
-    </div>
-    <div class="bg-indigo-50 dark:bg-indigo-900/30 rounded-lg p-4 mt-4">
-      <p class="text-indigo-800 dark:text-indigo-200 text-sm">
-        <strong>How to unlock:</strong> Learn 80% of the cards in your current tier,
-        then visit the <a href="/progress" class="underline">Progress</a> page to unlock the next tier.
+      <p class="text-gray-600 dark:text-gray-400 mt-4 text-sm">
+        Tip: Small typos (1-2 characters off) are accepted as correct, but try to be accurate!
       </p>
-    </div>
-  </section>
+    </section>
 
-  <!-- Accelerated Mode -->
-  <section class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6">
-    <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-4">
-      Accelerated Mode
-    </h2>
-    <p class="text-gray-700 dark:text-gray-300 mb-4">
-      Want to skip the progressive unlock system? Enable <strong>Accelerated Mode</strong> in
-      <a href="/settings" class="text-indigo-600 dark:text-indigo-400 hover:underline">Settings</a>.
-    </p>
-    <div class="bg-purple-50 dark:bg-purple-900/30 rounded-lg p-4">
-      <p class="text-purple-800 dark:text-purple-200 text-sm">
-        When enabled, all tiers become available immediately. You can then use the tier
-        checkboxes in Settings to choose exactly which tiers you want to study.
-        This is useful if you already know some Hangul and want to focus on specific areas.
+    <!-- Learning Tiers -->
+    <section id="tiers" class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6 scroll-mt-16">
+      <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-4">
+        Learning Tiers
+      </h2>
+      <p class="text-gray-700 dark:text-gray-300 mb-4">
+        Hangul is organized into 4 tiers, from basic to advanced. You start with Tier 1
+        and unlock new tiers as you progress.
       </p>
+      <div class="space-y-3">
+        <div class="border-l-4 border-green-500 pl-4">
+          <div class="font-semibold text-gray-900 dark:text-white">Tier 1: Basic Consonants & Vowels</div>
+          <div class="text-sm text-gray-600 dark:text-gray-400">
+            The 9 basic consonants (ㄱ, ㄴ, ㄷ...) and 6 basic vowels (ㅏ, ㅓ, ㅗ...)
+          </div>
+        </div>
+        <div class="border-l-4 border-blue-500 pl-4">
+          <div class="font-semibold text-gray-900 dark:text-white">Tier 2: Y-Vowels & Special Ieung</div>
+          <div class="text-sm text-gray-600 dark:text-gray-400">
+            Y-vowels (ㅑ, ㅕ, ㅛ, ㅠ), ae/e vowels (ㅐ, ㅔ), and ㅇ rules
+          </div>
+        </div>
+        <div class="border-l-4 border-purple-500 pl-4">
+          <div class="font-semibold text-gray-900 dark:text-white">Tier 3: Aspirated & Tense Consonants</div>
+          <div class="text-sm text-gray-600 dark:text-gray-400">
+            Aspirated (ㅋ, ㅍ, ㅌ, ㅊ) and double/tense consonants (ㄲ, ㅃ, ㄸ, ㅆ, ㅉ)
+          </div>
+        </div>
+        <div class="border-l-4 border-orange-500 pl-4">
+          <div class="font-semibold text-gray-900 dark:text-white">Tier 4: Compound Vowels</div>
+          <div class="text-sm text-gray-600 dark:text-gray-400">
+            Combined vowels like ㅘ, ㅝ, ㅟ, ㅚ, ㅢ, and more
+          </div>
+        </div>
+      </div>
+      <div class="bg-indigo-50 dark:bg-indigo-900/30 rounded-lg p-4 mt-4">
+        <p class="text-indigo-800 dark:text-indigo-200 text-sm">
+          <strong>How to unlock:</strong> Learn 80% of the cards in your current tier,
+          then visit the <a href="/progress" class="underline">Progress</a> page to unlock the next tier.
+          Focus Mode will automatically activate to help you learn the new characters.
+        </p>
+      </div>
+    </section>
+
+    <!-- Accelerated Mode -->
+    <section id="accelerated" class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6 scroll-mt-16">
+      <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-4">
+        Accelerated Mode
+      </h2>
+      <p class="text-gray-700 dark:text-gray-300 mb-4">
+        Want to skip the progressive unlock system? Enable <strong>Accelerated Mode</strong> in
+        <a href="/settings" class="text-indigo-600 dark:text-indigo-400 hover:underline">Settings</a>.
+      </p>
+      <div class="bg-purple-50 dark:bg-purple-900/30 rounded-lg p-4">
+        <p class="text-purple-800 dark:text-purple-200 text-sm">
+          When enabled, all tiers become available immediately. You can then use the tier
+          checkboxes in Settings to choose exactly which tiers you want to study.
+          This is useful if you already know some Hangul and want to focus on specific areas.
+        </p>
+      </div>
+    </section>
+
+    <!-- Focus Mode -->
+    <section id="focus" class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6 scroll-mt-16">
+      <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-4">
+        Focus Mode
+      </h2>
+      <p class="text-gray-700 dark:text-gray-300 mb-4">
+        Focus Mode lets you concentrate on a single tier without mixing in cards from other tiers.
+        This is especially useful when you've just unlocked a new tier and want to learn its cards
+        before reviewing older material.
+      </p>
+      <div class="space-y-3">
+        <div class="bg-blue-50 dark:bg-blue-900/30 rounded-lg p-4">
+          <p class="text-blue-800 dark:text-blue-200 text-sm">
+            <strong>Auto-activates on tier unlock:</strong> When you unlock a new tier, Focus Mode
+            automatically activates for that tier. This helps you learn new characters without
+            the fatigue of reviewing ones you already know.
+          </p>
+        </div>
+        <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+          <p class="text-gray-700 dark:text-gray-300 text-sm">
+            <strong>How to use:</strong> Go to <a href="/settings" class="text-indigo-600 dark:text-indigo-400 hover:underline">Settings</a>
+            and use the "Focus Mode" dropdown to select a specific tier, or choose "All unlocked tiers"
+            to study everything together.
+          </p>
+        </div>
+      </div>
+      <p class="text-gray-600 dark:text-gray-400 mt-4 text-sm">
+        Even in Focus Mode, the spaced repetition system still works normally - your progress
+        is tracked and cards graduate through the learning phases just like usual.
+      </p>
+    </section>
+
+    <!-- Retention Target -->
+    <section id="retention" class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6 scroll-mt-16">
+      <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-4">
+        Retention Target
+      </h2>
+      <p class="text-gray-700 dark:text-gray-300 mb-4">
+        The retention target tells FSRS how well you want to remember graduated cards.
+        It controls the trade-off between review frequency and memory strength.
+      </p>
+      <p class="text-gray-600 dark:text-gray-400 text-sm mb-4">
+        <strong>Note:</strong> This only affects cards in the FSRS review phase (after graduation).
+        Learning phase intervals (1m &rarr; 10m &rarr; 1h &rarr; 4h) are fixed.
+      </p>
+      <div class="space-y-2 text-sm">
+        <div class="flex items-start gap-3 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+          <span class="font-mono font-semibold text-gray-900 dark:text-white w-12">80%</span>
+          <span class="text-gray-700 dark:text-gray-300">Longer intervals, fewer reviews. Accept ~20% forgetting for faster progression.</span>
+        </div>
+        <div class="flex items-start gap-3 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+          <span class="font-mono font-semibold text-gray-900 dark:text-white w-12">85%</span>
+          <span class="text-gray-700 dark:text-gray-300">Balanced trade-off. Good for most learners who want steady progress.</span>
+        </div>
+        <div class="flex items-start gap-3 p-3 bg-green-50 dark:bg-green-900/30 rounded-lg border border-green-200 dark:border-green-800">
+          <span class="font-mono font-semibold text-green-700 dark:text-green-300 w-12">90%</span>
+          <span class="text-green-700 dark:text-green-300">Default. Strong retention with reasonable review load.</span>
+        </div>
+        <div class="flex items-start gap-3 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+          <span class="font-mono font-semibold text-gray-900 dark:text-white w-12">95%</span>
+          <span class="text-gray-700 dark:text-gray-300">Shorter intervals, more reviews. Best for exams or when accuracy is critical.</span>
+        </div>
+      </div>
+      <p class="text-gray-600 dark:text-gray-400 mt-4 text-sm">
+        Change this in <a href="/settings" class="text-indigo-600 dark:text-indigo-400 hover:underline">Settings</a>.
+        If you're progressing too slowly, try lowering the target to 85%.
+      </p>
+    </section>
+
+    <!-- Problem Areas -->
+    <section id="problem-areas" class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6 scroll-mt-16">
+      <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-4">
+        Problem Areas
+      </h2>
+      <p class="text-gray-700 dark:text-gray-300 mb-4">
+        The app tracks which characters you frequently get wrong. Visit the
+        <a href="/progress" class="text-indigo-600 dark:text-indigo-400 hover:underline">Progress</a>
+        page to see your "Problem Areas" section.
+      </p>
+      <ul class="list-disc list-inside text-gray-700 dark:text-gray-300 space-y-1">
+        <li>Shows characters with the most mistakes</li>
+        <li>Displays your common wrong answers (confusions)</li>
+        <li>Helps you identify patterns like mixing up similar letters</li>
+      </ul>
+    </section>
+
+    <!-- Tips for Success -->
+    <section id="tips" class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6 scroll-mt-16">
+      <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-4">
+        Tips for Success
+      </h2>
+      <ul class="space-y-3 text-gray-700 dark:text-gray-300">
+        <li class="flex items-start">
+          <span class="text-green-500 mr-2">&#10003;</span>
+          <span><strong>Study daily.</strong> Even 5 minutes a day is better than long irregular sessions.</span>
+        </li>
+        <li class="flex items-start">
+          <span class="text-green-500 mr-2">&#10003;</span>
+          <span><strong>Review all due cards.</strong> The system works best when you don't skip reviews.</span>
+        </li>
+        <li class="flex items-start">
+          <span class="text-green-500 mr-2">&#10003;</span>
+          <span><strong>Say the sounds aloud.</strong> This reinforces memory better than silent reading.</span>
+        </li>
+        <li class="flex items-start">
+          <span class="text-green-500 mr-2">&#10003;</span>
+          <span><strong>Try before using hints.</strong> Struggling to recall strengthens memory more than easy recall.</span>
+        </li>
+        <li class="flex items-start">
+          <span class="text-green-500 mr-2">&#10003;</span>
+          <span><strong>Be patient.</strong> It typically takes 2-3 weeks of daily practice to learn all of Hangul.</span>
+        </li>
+      </ul>
+    </section>
+
+    <!-- What "Learned" Means -->
+    <section id="learned" class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6 scroll-mt-16">
+      <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-4">
+        What "Learned" Means
+      </h2>
+      <p class="text-gray-700 dark:text-gray-300 mb-3">
+        A card is considered "learned" when you've answered it correctly through all
+        learning steps and graduated to longer intervals. This means:
+      </p>
+      <ul class="list-disc list-inside text-gray-700 dark:text-gray-300 space-y-1">
+        <li>Card has passed all learning steps (1 min &rarr; 10 min &rarr; 1 hr &rarr; 4 hrs)</li>
+        <li>Review intervals are now measured in days, calculated by the FSRS algorithm</li>
+        <li>The card will continue appearing for review to maintain long-term memory</li>
+      </ul>
+      <p class="text-gray-600 dark:text-gray-400 mt-3 text-sm">
+        Cards will still appear for review even after they're "learned" - that's how
+        spaced repetition keeps them in your long-term memory.
+      </p>
+    </section>
+
+    <!-- Practice Mode -->
+    <section id="practice" class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6 scroll-mt-16">
+      <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-4">
+        Practice Mode
+      </h2>
+      <p class="text-gray-700 dark:text-gray-300 mb-3">
+        When you've reviewed all due cards, you can keep practicing with <strong>Practice Mode</strong>.
+      </p>
+      <ul class="list-disc list-inside text-gray-700 dark:text-gray-300 space-y-1">
+        <li>Shows random cards from your enabled tiers</li>
+        <li>Doesn't affect your spaced repetition schedule</li>
+        <li>Great for extra drilling when you want more practice</li>
+        <li>Toggle between <strong>Flip</strong> (reveal answer) and <strong>Interactive</strong> (type/select answer) modes</li>
+      </ul>
+      <p class="text-gray-600 dark:text-gray-400 mt-3 text-sm">
+        Access practice mode from the home page when no cards are due, or after completing
+        your daily reviews.
+      </p>
+    </section>
+
+    <!-- Keyboard Shortcuts -->
+    <section id="shortcuts" class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6 scroll-mt-16">
+      <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-4">
+        Keyboard Shortcuts
+      </h2>
+      <p class="text-gray-700 dark:text-gray-300 mb-4">
+        Use keyboard shortcuts for faster navigation through cards:
+      </p>
+
+      <div class="space-y-4">
+        <!-- Study Mode -->
+        <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+          <div class="font-semibold text-gray-900 dark:text-white mb-3">Study Mode (Interactive)</div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
+            <div class="flex items-center gap-2">
+              <kbd class="px-2 py-1 bg-gray-200 dark:bg-gray-600 rounded text-xs font-mono">Enter</kbd>
+              <span class="text-gray-700 dark:text-gray-300">Submit answer / Next card</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <kbd class="px-2 py-1 bg-gray-200 dark:bg-gray-600 rounded text-xs font-mono">1-4</kbd>
+              <span class="text-gray-700 dark:text-gray-300">Select multiple choice</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <kbd class="px-2 py-1 bg-gray-200 dark:bg-gray-600 rounded text-xs font-mono">H</kbd>
+              <span class="text-gray-700 dark:text-gray-300">Show hint</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Study Mode Classic -->
+        <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+          <div class="font-semibold text-gray-900 dark:text-white mb-3">Study Mode (Classic)</div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
+            <div class="flex items-center gap-2">
+              <kbd class="px-2 py-1 bg-gray-200 dark:bg-gray-600 rounded text-xs font-mono">Space</kbd>
+              <span class="text-gray-700 dark:text-gray-300">Flip card</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <kbd class="px-2 py-1 bg-gray-200 dark:bg-gray-600 rounded text-xs font-mono">1</kbd>
+              <span class="text-gray-700 dark:text-gray-300">Again (forgot)</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <kbd class="px-2 py-1 bg-gray-200 dark:bg-gray-600 rounded text-xs font-mono">2</kbd>
+              <span class="text-gray-700 dark:text-gray-300">Hard</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <kbd class="px-2 py-1 bg-gray-200 dark:bg-gray-600 rounded text-xs font-mono">3</kbd>
+              <span class="text-gray-700 dark:text-gray-300">Good</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <kbd class="px-2 py-1 bg-gray-200 dark:bg-gray-600 rounded text-xs font-mono">4</kbd>
+              <span class="text-gray-700 dark:text-gray-300">Easy</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Practice Mode -->
+        <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+          <div class="font-semibold text-gray-900 dark:text-white mb-3">Practice Mode</div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
+            <div class="flex items-center gap-2">
+              <kbd class="px-2 py-1 bg-gray-200 dark:bg-gray-600 rounded text-xs font-mono">Space</kbd>
+              <span class="text-gray-700 dark:text-gray-300">Flip card (flip mode)</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <kbd class="px-2 py-1 bg-gray-200 dark:bg-gray-600 rounded text-xs font-mono">Enter</kbd>
+              <span class="text-gray-700 dark:text-gray-300">Next card</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Listen Mode -->
+        <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+          <div class="font-semibold text-gray-900 dark:text-white mb-3">Listen Mode</div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
+            <div class="flex items-center gap-2">
+              <kbd class="px-2 py-1 bg-gray-200 dark:bg-gray-600 rounded text-xs font-mono">1-4</kbd>
+              <span class="text-gray-700 dark:text-gray-300">Select answer</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <kbd class="px-2 py-1 bg-gray-200 dark:bg-gray-600 rounded text-xs font-mono">Enter</kbd>
+              <span class="text-gray-700 dark:text-gray-300">Confirm / Continue</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <kbd class="px-2 py-1 bg-gray-200 dark:bg-gray-600 rounded text-xs font-mono">Space</kbd>
+              <span class="text-gray-700 dark:text-gray-300">Replay audio</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="text-center">
+      <a href="/study" class="inline-block bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-8 rounded-lg transition-colors">
+        Start Learning
+      </a>
     </div>
-  </section>
-
-  <!-- Problem Areas -->
-  <section class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6">
-    <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-4">
-      Problem Areas
-    </h2>
-    <p class="text-gray-700 dark:text-gray-300 mb-4">
-      The app tracks which characters you frequently get wrong. Visit the
-      <a href="/progress" class="text-indigo-600 dark:text-indigo-400 hover:underline">Progress</a>
-      page to see your "Problem Areas" section.
-    </p>
-    <ul class="list-disc list-inside text-gray-700 dark:text-gray-300 space-y-1">
-      <li>Shows characters with the most mistakes</li>
-      <li>Displays your common wrong answers (confusions)</li>
-      <li>Helps you identify patterns like mixing up similar letters</li>
-    </ul>
-  </section>
-
-  <!-- Tips for Success -->
-  <section class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6">
-    <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-4">
-      Tips for Success
-    </h2>
-    <ul class="space-y-3 text-gray-700 dark:text-gray-300">
-      <li class="flex items-start">
-        <span class="text-green-500 mr-2">&#10003;</span>
-        <span><strong>Study daily.</strong> Even 5 minutes a day is better than long irregular sessions.</span>
-      </li>
-      <li class="flex items-start">
-        <span class="text-green-500 mr-2">&#10003;</span>
-        <span><strong>Review all due cards.</strong> The system works best when you don't skip reviews.</span>
-      </li>
-      <li class="flex items-start">
-        <span class="text-green-500 mr-2">&#10003;</span>
-        <span><strong>Say the sounds aloud.</strong> This reinforces memory better than silent reading.</span>
-      </li>
-      <li class="flex items-start">
-        <span class="text-green-500 mr-2">&#10003;</span>
-        <span><strong>Try before using hints.</strong> Struggling to recall strengthens memory more than easy recall.</span>
-      </li>
-      <li class="flex items-start">
-        <span class="text-green-500 mr-2">&#10003;</span>
-        <span><strong>Be patient.</strong> It typically takes 2-3 weeks of daily practice to learn all of Hangul.</span>
-      </li>
-    </ul>
-  </section>
-
-  <!-- What "Learned" Means -->
-  <section class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6">
-    <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-4">
-      What "Learned" Means
-    </h2>
-    <p class="text-gray-700 dark:text-gray-300 mb-3">
-      A card is considered "learned" when you've answered it correctly multiple times
-      and it has graduated from the learning phase. This means:
-    </p>
-    <ul class="list-disc list-inside text-gray-700 dark:text-gray-300 space-y-1">
-      <li>Card has passed initial learning steps (1 min, 10 min, 1 hour intervals)</li>
-      <li>Review intervals are now measured in days, not minutes</li>
-      <li>The card will continue appearing for review to maintain long-term memory</li>
-    </ul>
-    <p class="text-gray-600 dark:text-gray-400 mt-3 text-sm">
-      Cards will still appear for review even after they're "learned" - that's how
-      spaced repetition keeps them in your long-term memory.
-    </p>
-  </section>
-
-  <!-- Practice Mode -->
-  <section class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6">
-    <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-4">
-      Practice Mode
-    </h2>
-    <p class="text-gray-700 dark:text-gray-300 mb-3">
-      When you've reviewed all due cards, you can keep practicing with <strong>Practice Mode</strong>.
-    </p>
-    <ul class="list-disc list-inside text-gray-700 dark:text-gray-300 space-y-1">
-      <li>Shows random cards from your enabled tiers</li>
-      <li>Doesn't affect your spaced repetition schedule</li>
-      <li>Great for extra drilling when you want more practice</li>
-      <li>Toggle between <strong>Flip</strong> (reveal answer) and <strong>Interactive</strong> (type/select answer) modes</li>
-    </ul>
-    <p class="text-gray-600 dark:text-gray-400 mt-3 text-sm">
-      Access practice mode from the home page when no cards are due, or after completing
-      your daily reviews.
-    </p>
-  </section>
-
-  <!-- Keyboard Shortcuts -->
-  <section class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6">
-    <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-4">
-      Keyboard Shortcuts
-    </h2>
-    <p class="text-gray-700 dark:text-gray-300 mb-4">
-      Use keyboard shortcuts for faster navigation through cards:
-    </p>
-
-    <div class="space-y-4">
-      <!-- Study Mode -->
-      <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
-        <div class="font-semibold text-gray-900 dark:text-white mb-3">Study Mode (Interactive)</div>
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
-          <div class="flex items-center gap-2">
-            <kbd class="px-2 py-1 bg-gray-200 dark:bg-gray-600 rounded text-xs font-mono">Enter</kbd>
-            <span class="text-gray-700 dark:text-gray-300">Submit answer / Next card</span>
-          </div>
-          <div class="flex items-center gap-2">
-            <kbd class="px-2 py-1 bg-gray-200 dark:bg-gray-600 rounded text-xs font-mono">1-4</kbd>
-            <span class="text-gray-700 dark:text-gray-300">Select multiple choice</span>
-          </div>
-          <div class="flex items-center gap-2">
-            <kbd class="px-2 py-1 bg-gray-200 dark:bg-gray-600 rounded text-xs font-mono">H</kbd>
-            <span class="text-gray-700 dark:text-gray-300">Show hint</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- Study Mode Classic -->
-      <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
-        <div class="font-semibold text-gray-900 dark:text-white mb-3">Study Mode (Classic)</div>
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
-          <div class="flex items-center gap-2">
-            <kbd class="px-2 py-1 bg-gray-200 dark:bg-gray-600 rounded text-xs font-mono">Space</kbd>
-            <span class="text-gray-700 dark:text-gray-300">Flip card</span>
-          </div>
-          <div class="flex items-center gap-2">
-            <kbd class="px-2 py-1 bg-gray-200 dark:bg-gray-600 rounded text-xs font-mono">1</kbd>
-            <span class="text-gray-700 dark:text-gray-300">Again (forgot)</span>
-          </div>
-          <div class="flex items-center gap-2">
-            <kbd class="px-2 py-1 bg-gray-200 dark:bg-gray-600 rounded text-xs font-mono">2</kbd>
-            <span class="text-gray-700 dark:text-gray-300">Hard</span>
-          </div>
-          <div class="flex items-center gap-2">
-            <kbd class="px-2 py-1 bg-gray-200 dark:bg-gray-600 rounded text-xs font-mono">3</kbd>
-            <span class="text-gray-700 dark:text-gray-300">Good</span>
-          </div>
-          <div class="flex items-center gap-2">
-            <kbd class="px-2 py-1 bg-gray-200 dark:bg-gray-600 rounded text-xs font-mono">4</kbd>
-            <span class="text-gray-700 dark:text-gray-300">Easy</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- Practice Mode -->
-      <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
-        <div class="font-semibold text-gray-900 dark:text-white mb-3">Practice Mode</div>
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
-          <div class="flex items-center gap-2">
-            <kbd class="px-2 py-1 bg-gray-200 dark:bg-gray-600 rounded text-xs font-mono">Space</kbd>
-            <span class="text-gray-700 dark:text-gray-300">Flip card (flip mode)</span>
-          </div>
-          <div class="flex items-center gap-2">
-            <kbd class="px-2 py-1 bg-gray-200 dark:bg-gray-600 rounded text-xs font-mono">Enter</kbd>
-            <span class="text-gray-700 dark:text-gray-300">Next card</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- Listen Mode -->
-      <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
-        <div class="font-semibold text-gray-900 dark:text-white mb-3">Listen Mode</div>
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
-          <div class="flex items-center gap-2">
-            <kbd class="px-2 py-1 bg-gray-200 dark:bg-gray-600 rounded text-xs font-mono">1-4</kbd>
-            <span class="text-gray-700 dark:text-gray-300">Select answer</span>
-          </div>
-          <div class="flex items-center gap-2">
-            <kbd class="px-2 py-1 bg-gray-200 dark:bg-gray-600 rounded text-xs font-mono">Enter</kbd>
-            <span class="text-gray-700 dark:text-gray-300">Confirm / Continue</span>
-          </div>
-          <div class="flex items-center gap-2">
-            <kbd class="px-2 py-1 bg-gray-200 dark:bg-gray-600 rounded text-xs font-mono">Space</kbd>
-            <span class="text-gray-700 dark:text-gray-300">Replay audio</span>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <div class="text-center">
-    <a href="/study" class="inline-block bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-8 rounded-lg transition-colors">
-      Start Learning
-    </a>
   </div>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  const sections = document.querySelectorAll('section[id]');
+  const tocLinks = document.querySelectorAll('.toc-link');
+
+  // Smooth scroll with ease-out curve
+  function smoothScrollTo(targetY, duration = 400) {
+    const startY = window.scrollY;
+    const distance = targetY - startY;
+    const startTime = performance.now();
+
+    function easeOutCubic(t) {
+      return 1 - Math.pow(1 - t, 3);
+    }
+
+    function step(currentTime) {
+      const elapsed = currentTime - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      const eased = easeOutCubic(progress);
+
+      window.scrollTo(0, startY + distance * eased);
+
+      if (progress < 1) {
+        requestAnimationFrame(step);
+      }
+    }
+
+    requestAnimationFrame(step);
+  }
+
+  // Handle TOC link clicks
+  tocLinks.forEach(link => {
+    link.addEventListener('click', function(e) {
+      e.preventDefault();
+      const targetId = this.getAttribute('href').slice(1);
+      const target = document.getElementById(targetId);
+      if (target) {
+        const offset = 64; // scroll-mt-16 = 4rem = 64px
+        const targetY = target.offsetTop - offset;
+        smoothScrollTo(targetY);
+        history.pushState(null, '', '#' + targetId);
+      }
+    });
+  });
+
+  // Mobile TOC container for auto-scrolling
+  const mobileTocContainer = document.querySelector('nav.lg\\:hidden > div');
+
+  // Highlight active TOC link based on scroll position
+  let lastActiveSection = '';
+  function updateActiveLink() {
+    const scrollPos = window.scrollY + 100;
+
+    let currentSection = '';
+    sections.forEach(section => {
+      if (section.offsetTop <= scrollPos) {
+        currentSection = section.id;
+      }
+    });
+
+    // Auto-scroll mobile TOC when active section changes
+    if (currentSection !== lastActiveSection && mobileTocContainer) {
+      const activeLink = mobileTocContainer.querySelector(`a[href="#${currentSection}"]`);
+      if (activeLink) {
+        const container = mobileTocContainer;
+        const linkLeft = activeLink.offsetLeft;
+        const linkWidth = activeLink.offsetWidth;
+        const containerWidth = container.offsetWidth;
+        const scrollLeft = container.scrollLeft;
+
+        // Check if link is out of view
+        const linkRight = linkLeft + linkWidth;
+        const viewLeft = scrollLeft;
+        const viewRight = scrollLeft + containerWidth;
+
+        if (linkLeft < viewLeft || linkRight > viewRight) {
+          // Scroll to center the active link
+          const targetScroll = linkLeft - (containerWidth / 2) + (linkWidth / 2);
+          container.scrollTo({ left: targetScroll, behavior: 'smooth' });
+        }
+      }
+      lastActiveSection = currentSection;
+    }
+
+    tocLinks.forEach(link => {
+      const href = link.getAttribute('href').slice(1);
+      if (href === currentSection) {
+        link.classList.add('bg-indigo-100', 'dark:bg-indigo-900/50', 'text-indigo-700', 'dark:text-indigo-300');
+        link.classList.remove('text-gray-600', 'dark:text-gray-400', 'bg-gray-100', 'dark:bg-gray-800');
+      } else {
+        link.classList.remove('bg-indigo-100', 'dark:bg-indigo-900/50', 'text-indigo-700', 'dark:text-indigo-300');
+        if (link.closest('nav.lg\\:hidden')) {
+          link.classList.add('bg-gray-100', 'dark:bg-gray-800', 'text-gray-700', 'dark:text-gray-300');
+        } else {
+          link.classList.add('text-gray-600', 'dark:text-gray-400');
+        }
+      }
+    });
+  }
+
+  window.addEventListener('scroll', updateActiveLink);
+  updateActiveLink();
+});
+</script>
 {% endblock %}

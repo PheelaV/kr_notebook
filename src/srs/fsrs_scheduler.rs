@@ -5,15 +5,22 @@ use crate::domain::{Card, FsrsState};
 #[cfg(feature = "profiling")]
 use crate::profiling::EventType;
 
+// Learning steps in minutes (Anki-style: short intervals before graduating to FSRS)
+const LEARNING_STEPS_MINUTES: [i64; 4] = [1, 10, 60, 240]; // 1min, 10min, 1hr, 4hr
+const GRADUATING_STEP: i64 = 4; // Step at which card graduates to FSRS
+
 /// Result from FSRS scheduling calculation
 pub struct FsrsResult {
   pub next_review: DateTime<Utc>,
   pub stability: f64,
   pub difficulty: f64,
   pub state: FsrsState,
+  pub learning_step: i64,
+  pub repetitions: i64,
 }
 
-/// Determine FSRS state based on card history
+/// Determine FSRS state based on card history (used for state transition testing)
+#[allow(dead_code)]
 fn determine_fsrs_state(card: &Card, is_correct: bool) -> FsrsState {
   match (card.fsrs_state.as_ref(), is_correct) {
     // New card getting first review
@@ -36,20 +43,129 @@ fn determine_fsrs_state(card: &Card, is_correct: bool) -> FsrsState {
   }
 }
 
-/// Calculate next review using FSRS algorithm
+/// Calculate next review using hybrid learning steps + FSRS algorithm
 /// Quality: 0=Again, 2=Hard, 4=Good, 5=Easy
+///
+/// For cards in learning phase (learning_step < 4):
+///   - Uses Anki-style learning steps: 1min, 10min, 1hr, 4hr
+///   - Failure resets to step 0
+///   - Success advances to next step
+///   - After step 3, graduates to FSRS (step 4)
+///
+/// For graduated cards (learning_step >= 4):
+///   - Uses FSRS algorithm for optimal long-term spacing
+///   - Failure returns card to learning phase (step 0)
 pub fn calculate_fsrs_review(card: &Card, quality: u8, desired_retention: f64) -> FsrsResult {
   #[cfg(feature = "profiling")]
   crate::profile_log!(EventType::SrsCalculation {
-    algorithm: "fsrs".into(),
+    algorithm: "fsrs_hybrid".into(),
     card_id: card.id,
     rating: quality,
   });
 
-  let fsrs = FSRS::new(Some(&DEFAULT_PARAMETERS)).expect("Failed to initialize FSRS");
   let now = Utc::now();
+  let is_correct = quality >= 2;
 
-  // Get current memory state from card (if exists)
+  // In learning phase (step 0-3): use learning steps
+  if card.learning_step < GRADUATING_STEP {
+    return calculate_learning_phase(card, quality, is_correct, now);
+  }
+
+  // Graduated: use FSRS for long-term scheduling
+  // But if failed, return to learning phase
+  if !is_correct {
+    return return_to_learning(card, now);
+  }
+
+  // Correct answer on graduated card: use FSRS
+  calculate_fsrs_graduated(card, quality, desired_retention, now)
+}
+
+/// Handle learning phase with short intra-day intervals
+fn calculate_learning_phase(
+  card: &Card,
+  quality: u8,
+  is_correct: bool,
+  now: DateTime<Utc>,
+) -> FsrsResult {
+  if !is_correct {
+    // Failed: reset to step 0, review in 1 minute
+    let next_review = now + Duration::minutes(LEARNING_STEPS_MINUTES[0]);
+    return FsrsResult {
+      next_review,
+      stability: card.fsrs_stability.unwrap_or(0.0),
+      difficulty: card.fsrs_difficulty.unwrap_or(5.0),
+      state: FsrsState::Learning,
+      learning_step: 0,
+      repetitions: 0,
+    };
+  }
+
+  // Passed: advance to next step
+  let next_step = card.learning_step + 1;
+
+  if next_step >= GRADUATING_STEP {
+    // Graduating! Move to FSRS with initial 1-day interval
+    // Initialize FSRS state for the card
+    let fsrs = FSRS::new(Some(&DEFAULT_PARAMETERS)).expect("Failed to initialize FSRS");
+    let next_states = fsrs
+      .next_states(None, 0.9, 0)
+      .expect("Failed to calculate initial FSRS state");
+
+    // Use "Good" rating for graduation
+    let scheduled = match quality {
+      5 => &next_states.easy,
+      _ => &next_states.good,
+    };
+
+    FsrsResult {
+      next_review: now + Duration::days(1),
+      stability: scheduled.memory.stability as f64,
+      difficulty: scheduled.memory.difficulty as f64,
+      state: FsrsState::Review,
+      learning_step: GRADUATING_STEP,
+      repetitions: 1, // First "real" repetition
+    }
+  } else {
+    // Still in learning phase: schedule next step
+    let minutes = LEARNING_STEPS_MINUTES[next_step as usize];
+    let next_review = now + Duration::minutes(minutes);
+
+    FsrsResult {
+      next_review,
+      stability: card.fsrs_stability.unwrap_or(0.0),
+      difficulty: card.fsrs_difficulty.unwrap_or(5.0),
+      state: FsrsState::Learning,
+      learning_step: next_step,
+      repetitions: 0, // Still learning, not counted as repetition
+    }
+  }
+}
+
+/// Return a graduated card to learning phase after failure
+fn return_to_learning(card: &Card, now: DateTime<Utc>) -> FsrsResult {
+  let next_review = now + Duration::minutes(LEARNING_STEPS_MINUTES[0]);
+  FsrsResult {
+    next_review,
+    // Preserve existing FSRS state (will be updated when re-graduating)
+    stability: card.fsrs_stability.unwrap_or(0.0),
+    difficulty: card.fsrs_difficulty.unwrap_or(5.0),
+    state: FsrsState::Relearning,
+    learning_step: 0, // Back to step 0
+    repetitions: 0,   // Reset repetitions
+  }
+}
+
+/// Calculate FSRS scheduling for graduated cards (correct answers only)
+fn calculate_fsrs_graduated(
+  card: &Card,
+  quality: u8,
+  desired_retention: f64,
+  now: DateTime<Utc>,
+) -> FsrsResult {
+  let fsrs = FSRS::new(Some(&DEFAULT_PARAMETERS)).expect("Failed to initialize FSRS");
+
+  // Get current memory state from card
   let current_memory = match (card.fsrs_stability, card.fsrs_difficulty) {
     (Some(stability), Some(difficulty)) => Some(MemoryState {
       stability: stability as f32,
@@ -58,7 +174,7 @@ pub fn calculate_fsrs_review(card: &Card, quality: u8, desired_retention: f64) -
     _ => None,
   };
 
-  // Calculate elapsed days since last review (as u32)
+  // Calculate elapsed days since last review
   let elapsed_days = (now - card.next_review).num_days().max(0) as u32;
 
   // Get next states for all possible ratings
@@ -66,29 +182,25 @@ pub fn calculate_fsrs_review(card: &Card, quality: u8, desired_retention: f64) -
     .next_states(current_memory, desired_retention as f32, elapsed_days)
     .expect("Failed to calculate FSRS next states");
 
-  // Select the state based on our quality rating
-  // FSRS uses: 1=Again, 2=Hard, 3=Good, 4=Easy
+  // Select the state based on quality rating
   let scheduled = match quality {
-    0 => &next_states.again, // Again (failed)
     2 => &next_states.hard,  // Hard
     4 => &next_states.good,  // Good
     5 => &next_states.easy,  // Easy
     _ => &next_states.good,  // Default to Good
   };
 
-  // Calculate next review time
+  // Calculate next review time (FSRS intervals for graduated cards)
   let interval_days = scheduled.interval.round() as i64;
   let next_review = now + Duration::days(interval_days.max(1));
-
-  // Determine state transition
-  let is_correct = quality >= 2;
-  let new_state = determine_fsrs_state(card, is_correct);
 
   FsrsResult {
     next_review,
     stability: scheduled.memory.stability as f64,
     difficulty: scheduled.memory.difficulty as f64,
-    state: new_state,
+    state: FsrsState::Review,
+    learning_step: card.learning_step, // Stays graduated
+    repetitions: card.repetitions + 1,
   }
 }
 
@@ -152,25 +264,102 @@ mod tests {
   }
 
   #[test]
-  fn test_new_card_fsrs_review() {
+  fn test_new_card_learning_step() {
     let card = make_test_card();
     let result = calculate_fsrs_review(&card, 4, 0.9);
 
-    // New card should get some stability and difficulty
-    assert!(result.stability > 0.0);
-    assert!(result.difficulty > 0.0);
-    assert!(result.next_review > Utc::now());
+    // New card (step 0) should advance to step 1, not graduate
+    assert_eq!(result.learning_step, 1);
+    assert_eq!(result.repetitions, 0); // Still learning
+    assert_eq!(result.state, FsrsState::Learning);
+    // Should be scheduled for ~10 minutes (step 1)
+    let minutes_until = (result.next_review - Utc::now()).num_minutes();
+    assert!(minutes_until >= 9 && minutes_until <= 11);
   }
 
   #[test]
-  fn test_failed_review_shorter_interval() {
-    let card = make_test_card();
+  fn test_learning_step_progression() {
+    let mut card = make_test_card();
 
-    let good_result = calculate_fsrs_review(&card, 4, 0.9);
-    let fail_result = calculate_fsrs_review(&card, 0, 0.9);
+    // Step 0 -> 1 (10 min)
+    card.learning_step = 0;
+    let result = calculate_fsrs_review(&card, 4, 0.9);
+    assert_eq!(result.learning_step, 1);
 
-    // Failed review should have shorter interval than good review
-    assert!(fail_result.next_review <= good_result.next_review);
+    // Step 1 -> 2 (1 hr)
+    card.learning_step = 1;
+    let result = calculate_fsrs_review(&card, 4, 0.9);
+    assert_eq!(result.learning_step, 2);
+
+    // Step 2 -> 3 (4 hr)
+    card.learning_step = 2;
+    let result = calculate_fsrs_review(&card, 4, 0.9);
+    assert_eq!(result.learning_step, 3);
+
+    // Step 3 -> 4 (graduated!)
+    card.learning_step = 3;
+    let result = calculate_fsrs_review(&card, 4, 0.9);
+    assert_eq!(result.learning_step, 4);
+    assert_eq!(result.repetitions, 1); // First real repetition
+    assert_eq!(result.state, FsrsState::Review);
+    // Should be scheduled for 1 day
+    let days_until = (result.next_review - Utc::now()).num_hours();
+    assert!(days_until >= 23 && days_until <= 25);
+  }
+
+  #[test]
+  fn test_failed_learning_resets_to_step_0() {
+    let mut card = make_test_card();
+    card.learning_step = 2; // In learning at step 2
+
+    let result = calculate_fsrs_review(&card, 0, 0.9); // Fail
+
+    // Should reset to step 0
+    assert_eq!(result.learning_step, 0);
+    assert_eq!(result.state, FsrsState::Learning);
+    // Should be scheduled for 1 minute
+    let minutes_until = (result.next_review - Utc::now()).num_seconds();
+    assert!(minutes_until >= 55 && minutes_until <= 65);
+  }
+
+  #[test]
+  fn test_graduated_card_uses_fsrs() {
+    let mut card = make_test_card();
+    card.learning_step = 4; // Graduated
+    card.repetitions = 1;
+    card.fsrs_stability = Some(5.0); // Higher stability for meaningful interval
+    card.fsrs_difficulty = Some(5.0);
+    card.fsrs_state = Some(FsrsState::Review);
+
+    let result = calculate_fsrs_review(&card, 4, 0.9);
+
+    // Should stay graduated and increment repetitions
+    assert_eq!(result.learning_step, 4);
+    assert_eq!(result.repetitions, 2);
+    assert_eq!(result.state, FsrsState::Review);
+    // FSRS should schedule for >= 1 day (we enforce .max(1) in the code)
+    let hours_until = (result.next_review - Utc::now()).num_hours();
+    assert!(hours_until >= 23, "Expected at least 23 hours, got {}", hours_until);
+  }
+
+  #[test]
+  fn test_graduated_fail_returns_to_learning() {
+    let mut card = make_test_card();
+    card.learning_step = 4; // Graduated
+    card.repetitions = 5;
+    card.fsrs_stability = Some(10.0);
+    card.fsrs_difficulty = Some(5.0);
+    card.fsrs_state = Some(FsrsState::Review);
+
+    let result = calculate_fsrs_review(&card, 0, 0.9); // Fail
+
+    // Should return to learning phase
+    assert_eq!(result.learning_step, 0);
+    assert_eq!(result.repetitions, 0);
+    assert_eq!(result.state, FsrsState::Relearning);
+    // Should be scheduled for 1 minute
+    let minutes_until = (result.next_review - Utc::now()).num_seconds();
+    assert!(minutes_until >= 55 && minutes_until <= 65);
   }
 
   #[test]

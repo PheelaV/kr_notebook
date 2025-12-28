@@ -177,6 +177,11 @@ pub struct StudyInteractiveTemplate {
   pub track_progress: bool,
   // Testing mode flag
   pub testing_mode: bool,
+  // Focus mode recommendation
+  pub focus_mode_active: bool,
+  pub focus_tier: u8,
+  pub focus_tier_progress: i64,
+  pub show_exit_focus_recommendation: bool,
 }
 
 #[derive(Template)]
@@ -332,6 +337,23 @@ pub async fn study_start_interactive(State(pool): State<DbPool>) -> impl IntoRes
     Err(_) => return Html("<h1>Database Error</h1><p>Please refresh the page.</p>".to_string()),
   };
 
+  // Check focus mode status for exit recommendation
+  let focus_tier = db::get_focus_tier(&conn).log_warn_default("Failed to get focus tier");
+  let (focus_mode_active, focus_tier_num, focus_tier_progress, show_exit_focus_recommendation) =
+    if let Some(tier) = focus_tier {
+      let tiers = db::get_progress_by_tier(&conn).log_warn_default("Failed to get tier progress");
+      let progress = tiers
+        .iter()
+        .find(|t| t.tier == tier)
+        .map(|t| t.percentage())
+        .unwrap_or(0);
+      // Recommend exiting focus mode when tier reaches 50% learned
+      let show_recommendation = progress >= 50;
+      (true, tier, progress, show_recommendation)
+    } else {
+      (false, 0, 0, false)
+    };
+
   // Generate a new session ID for this study session
   let session_id = session::generate_session_id();
   let mut study_session = session::get_session(&session_id);
@@ -388,6 +410,10 @@ pub async fn study_start_interactive(State(pool): State<DbPool>) -> impl IntoRes
         testing_mode: true,
         #[cfg(not(feature = "testing"))]
         testing_mode: false,
+        focus_mode_active,
+        focus_tier: focus_tier_num,
+        focus_tier_progress,
+        show_exit_focus_recommendation,
       };
       return Html(template.render().unwrap_or_default());
     }
@@ -414,6 +440,10 @@ pub async fn study_start_interactive(State(pool): State<DbPool>) -> impl IntoRes
     session_id,
     is_tracked: true,
     track_progress: false,
+    focus_mode_active,
+    focus_tier: focus_tier_num,
+    focus_tier_progress,
+    show_exit_focus_recommendation,
     #[cfg(feature = "testing")]
     testing_mode: true,
     #[cfg(not(feature = "testing"))]
@@ -578,13 +608,13 @@ pub async fn submit_review_interactive(
     let use_fsrs = db::get_use_fsrs(&conn).log_warn_default("Failed to get FSRS setting");
 
     if use_fsrs {
-      // Use FSRS scheduling
+      // Use hybrid FSRS scheduling (learning steps + FSRS)
       let desired_retention = db::get_desired_retention(&conn).log_warn_default("Failed to get desired retention");
       let result = srs::calculate_fsrs_review(&card, form.quality, desired_retention);
 
       #[cfg(feature = "profiling")]
       crate::profile_log!(EventType::SrsCalculation {
-        algorithm: "fsrs".into(),
+        algorithm: "fsrs_hybrid".into(),
         card_id: card.id,
         rating: form.quality,
       });
@@ -596,6 +626,8 @@ pub async fn submit_review_interactive(
         result.stability,
         result.difficulty,
         result.state,
+        result.learning_step,
+        result.repetitions,
         correct,
       );
     } else {

@@ -16,6 +16,14 @@ pub struct TierProgress {
     pub total_reviews: i64,
     pub is_unlocked: bool,
     pub is_enabled: bool,
+    /// Average stability in days for graduated cards (fsrs_stability > 0)
+    pub avg_stability_days: f64,
+    /// Count of cards with strong memories (stability >= 14 days)
+    pub strong_memories: i64,
+    /// Count of cards with medium memories (stability 7-14 days)
+    pub medium_memories: i64,
+    /// Count of cards with weak memories (stability < 7 days, but > 0)
+    pub weak_memories: i64,
 }
 
 impl TierProgress {
@@ -25,6 +33,23 @@ impl TierProgress {
         } else {
             0
         }
+    }
+
+    /// Memory strength as a 0-100 score based on stability distribution
+    /// Strong = 100 points, Medium = 60 points, Weak = 30 points, New/Learning = 0
+    pub fn memory_strength(&self) -> i64 {
+        let graduated = self.strong_memories + self.medium_memories + self.weak_memories;
+        if graduated == 0 {
+            return 0;
+        }
+        let score = (self.strong_memories * 100 + self.medium_memories * 60 + self.weak_memories * 30)
+            / graduated;
+        score
+    }
+
+    /// Returns true if there are any graduated cards with stability data
+    pub fn has_stability_data(&self) -> bool {
+        self.strong_memories + self.medium_memories + self.weak_memories > 0
     }
 }
 
@@ -140,8 +165,38 @@ pub fn get_max_unlocked_tier(conn: &Connection) -> Result<u8> {
         .map(|v| v.and_then(|s| s.parse().ok()).unwrap_or(1))
 }
 
+// ==================== Focus Mode ====================
+
+/// Get the currently focused tier (None = no focus, study all unlocked tiers)
+pub fn get_focus_tier(conn: &Connection) -> Result<Option<u8>> {
+    get_setting(conn, "focus_tier").map(|v| v.and_then(|s| s.parse().ok()))
+}
+
+/// Set the focus tier (None to disable focus mode)
+pub fn set_focus_tier(conn: &Connection, tier: Option<u8>) -> Result<()> {
+    match tier {
+        Some(t) => set_setting(conn, "focus_tier", &t.to_string()),
+        None => {
+            // Remove the setting to indicate no focus
+            conn.execute("DELETE FROM settings WHERE key = 'focus_tier'", [])?;
+            Ok(())
+        }
+    }
+}
+
+/// Check if focus mode is active
+pub fn is_focus_mode_active(conn: &Connection) -> Result<bool> {
+    get_focus_tier(conn).map(|t| t.is_some())
+}
+
 /// Get the effective tiers to use for card selection
+/// Respects focus mode: if a focus tier is set, only that tier is returned
 pub fn get_effective_tiers(conn: &Connection) -> Result<Vec<u8>> {
+    // Check for focus mode first
+    if let Some(focus_tier) = get_focus_tier(conn)? {
+        return Ok(vec![focus_tier]);
+    }
+
     let all_unlocked = get_all_tiers_unlocked(conn)?;
     if all_unlocked {
         // When all tiers unlocked, use enabled_tiers setting
@@ -164,6 +219,9 @@ pub fn unlock_next_tier(conn: &Connection) -> Result<u8> {
     let current = get_max_unlocked_tier(conn)?;
     let next = (current + 1).min(4);
     set_max_unlocked_tier(conn, next)?;
+
+    // Auto-enable focus mode on the newly unlocked tier
+    set_focus_tier(conn, Some(next))?;
 
     #[cfg(feature = "profiling")]
     crate::profile_log!(EventType::TierUnlock { tier: next });
@@ -258,6 +316,33 @@ pub fn get_progress_by_tier(conn: &Connection) -> Result<Vec<TierProgress>> {
             |row| row.get(0),
         )?;
 
+        // Stability metrics for graduated cards only (learning_step >= 4)
+        let avg_stability_days: f64 = conn
+            .query_row(
+                "SELECT COALESCE(AVG(fsrs_stability), 0) FROM cards WHERE tier = ?1 AND learning_step >= 4 AND fsrs_stability > 0",
+                params![tier],
+                |row| row.get(0),
+            )
+            .unwrap_or(0.0);
+
+        let strong_memories: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM cards WHERE tier = ?1 AND learning_step >= 4 AND fsrs_stability >= 14",
+            params![tier],
+            |row| row.get(0),
+        )?;
+
+        let medium_memories: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM cards WHERE tier = ?1 AND learning_step >= 4 AND fsrs_stability >= 7 AND fsrs_stability < 14",
+            params![tier],
+            |row| row.get(0),
+        )?;
+
+        let weak_memories: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM cards WHERE tier = ?1 AND learning_step >= 4 AND fsrs_stability > 0 AND fsrs_stability < 7",
+            params![tier],
+            |row| row.get(0),
+        )?;
+
         let is_unlocked = if all_unlocked {
             enabled_tiers.contains(&tier)
         } else {
@@ -273,6 +358,10 @@ pub fn get_progress_by_tier(conn: &Connection) -> Result<Vec<TierProgress>> {
             total_reviews,
             is_unlocked,
             is_enabled: enabled_tiers.contains(&tier),
+            avg_stability_days,
+            strong_memories,
+            medium_memories,
+            weak_memories,
         });
     }
 

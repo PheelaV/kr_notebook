@@ -4,6 +4,39 @@
 
 {% block content %}
 <div class="max-w-lg mx-auto" id="study-container">
+  {% if show_exit_focus_recommendation %}
+  <!-- Focus mode exit recommendation -->
+  <div id="focus-recommendation" class="mb-4 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+    <div class="flex items-start gap-3">
+      <span class="text-blue-500 dark:text-blue-400 text-xl shrink-0">&#128161;</span>
+      <div class="flex-1 min-w-0">
+        <p class="text-sm font-medium text-blue-900 dark:text-blue-100">
+          Tier {{ focus_tier }} is {{ focus_tier_progress }}% learned!
+        </p>
+        <p class="text-xs text-blue-700 dark:text-blue-300 mt-1">
+          Consider switching to <strong>All Tiers</strong> mode to interleave reviews and strengthen discrimination between similar characters.
+        </p>
+        <div class="flex flex-wrap gap-2 mt-3">
+          <a href="/settings" class="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-md bg-blue-600 text-white hover:bg-blue-700 transition-colors">
+            Switch to All Tiers
+          </a>
+          <button onclick="document.getElementById('focus-recommendation').remove()" class="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-md bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+            Keep Focus Mode
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% else if focus_mode_active %}
+  <!-- Focus mode indicator (when not showing recommendation) -->
+  <div class="mb-4 flex items-center justify-between bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-lg px-3 py-2">
+    <span class="text-sm text-indigo-700 dark:text-indigo-300">
+      <span class="font-medium">Focus:</span> Tier {{ focus_tier }} ({{ focus_tier_progress }}% learned)
+    </span>
+    <a href="/settings" class="text-xs text-indigo-600 dark:text-indigo-400 hover:underline">Change</a>
+  </div>
+  {% endif %}
+
   {% if has_card %}
   {% include "interactive_card.html" %}
   {% else %}

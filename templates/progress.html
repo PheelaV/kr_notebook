@@ -131,10 +131,49 @@
             <div class="text-xs text-gray-500 dark:text-gray-400">Reviews</div>
           </div>
         </div>
+
+        {% if tier.has_stability_data() %}
+        <!-- Memory Strength (FSRS stability) -->
+        <div class="mt-4 pt-3 border-t border-gray-100 dark:border-gray-700">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Memory Strength</span>
+            <span class="text-sm font-semibold {% if tier.memory_strength() >= 80 %}text-green-600 dark:text-green-400{% else if tier.memory_strength() >= 50 %}text-yellow-600 dark:text-yellow-400{% else %}text-orange-600 dark:text-orange-400{% endif %}">
+              {{ tier.memory_strength() }}%
+            </span>
+          </div>
+          <!-- Stacked bar showing strong/medium/weak distribution -->
+          <div class="flex h-2 rounded-full overflow-hidden bg-gray-200 dark:bg-gray-700">
+            {% let total_graduated = tier.strong_memories + tier.medium_memories + tier.weak_memories %}
+            {% if total_graduated > 0 %}
+            <div class="bg-green-500" style="width: {{ (tier.strong_memories * 100) / total_graduated }}%"></div>
+            <div class="bg-yellow-500" style="width: {{ (tier.medium_memories * 100) / total_graduated }}%"></div>
+            <div class="bg-orange-500" style="width: {{ (tier.weak_memories * 100) / total_graduated }}%"></div>
+            {% endif %}
+          </div>
+          <div class="flex justify-between mt-2 text-xs text-gray-500 dark:text-gray-400">
+            <span class="flex items-center gap-1">
+              <span class="w-2 h-2 rounded-full bg-green-500"></span>
+              Strong ({{ tier.strong_memories }})
+            </span>
+            <span class="flex items-center gap-1">
+              <span class="w-2 h-2 rounded-full bg-yellow-500"></span>
+              Medium ({{ tier.medium_memories }})
+            </span>
+            <span class="flex items-center gap-1">
+              <span class="w-2 h-2 rounded-full bg-orange-500"></span>
+              Weak ({{ tier.weak_memories }})
+            </span>
+          </div>
+          <p class="text-xs text-gray-400 dark:text-gray-500 mt-2">
+            Based on FSRS stability: Strong &ge;14d, Medium 7-14d, Weak &lt;7d
+          </p>
+        </div>
+        {% endif %}
+
         <p class="text-xs text-gray-500 dark:text-gray-400 mt-3">
           <span class="font-medium">New:</span> Never reviewed &bull;
-          <span class="font-medium">Learning:</span> 1 correct review &bull;
-          <span class="font-medium">Learned:</span> 2+ correct reviews
+          <span class="font-medium">Learning:</span> In learning phase &bull;
+          <span class="font-medium">Learned:</span> Graduated to FSRS
         </p>
       </div>
       {% endif %}

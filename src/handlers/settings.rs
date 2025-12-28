@@ -186,6 +186,9 @@ fn get_lesson_audio(lesson_id: &str, lesson_name: &str) -> Option<LessonAudio> {
 pub struct SettingsTemplate {
   pub all_tiers_unlocked: bool,
   pub enabled_tiers: Vec<u8>,
+  pub desired_retention: u8, // 80, 85, 90, or 95
+  pub focus_tier: Option<u8>, // Currently focused tier (None = no focus)
+  pub max_unlocked_tier: u8,
   pub has_scraped_content: bool,
   pub has_pronunciation: bool,
   // Per-lesson status
@@ -213,6 +216,10 @@ pub async fn settings_page(State(pool): State<DbPool>) -> Html<String> {
   };
   let all_tiers_unlocked = db::get_all_tiers_unlocked(&conn).log_warn_default("Failed to get all_tiers_unlocked");
   let enabled_tiers = db::get_enabled_tiers(&conn).log_warn_default("Failed to get enabled tiers");
+  let desired_retention_f64 = db::get_desired_retention(&conn).log_warn_default("Failed to get desired retention");
+  let desired_retention = (desired_retention_f64 * 100.0).round() as u8;
+  let focus_tier = db::get_focus_tier(&conn).log_warn_default("Failed to get focus tier");
+  let max_unlocked_tier = db::get_max_unlocked_tier(&conn).log_warn_default("Failed to get max unlocked tier");
 
   let has_l1 = has_lesson1();
   let has_l2 = has_lesson2();
@@ -234,6 +241,9 @@ pub async fn settings_page(State(pool): State<DbPool>) -> Html<String> {
   let template = SettingsTemplate {
     all_tiers_unlocked,
     enabled_tiers,
+    desired_retention,
+    focus_tier,
+    max_unlocked_tier,
     has_scraped_content: scraped_content_available,
     has_pronunciation: scraped_content_available,
     has_lesson1: has_l1,
@@ -257,6 +267,10 @@ pub struct SettingsForm {
   pub tier_3: Option<String>,
   #[serde(default)]
   pub tier_4: Option<String>,
+  #[serde(default)]
+  pub desired_retention: Option<u8>,
+  #[serde(default)]
+  pub focus_tier: Option<String>, // "none" or "1", "2", "3", "4"
 }
 
 pub async fn update_settings(
@@ -311,6 +325,36 @@ pub async fn update_settings(
     setting: "enabled_tiers".into(),
     value: format!("{:?}", enabled_tiers),
   });
+
+  // Update desired retention if provided
+  if let Some(retention) = form.desired_retention {
+    // Validate and clamp to valid range
+    let retention_pct = retention.clamp(80, 95);
+    let retention_f64 = f64::from(retention_pct) / 100.0;
+    let _ = db::set_setting(&conn, "desired_retention", &retention_f64.to_string());
+
+    #[cfg(feature = "profiling")]
+    crate::profile_log!(EventType::SettingsUpdate {
+      setting: "desired_retention".into(),
+      value: retention_f64.to_string(),
+    });
+  }
+
+  // Update focus tier if provided
+  if let Some(focus_str) = form.focus_tier {
+    let focus_tier = if focus_str == "none" || focus_str.is_empty() {
+      None
+    } else {
+      focus_str.parse::<u8>().ok()
+    };
+    let _ = db::set_focus_tier(&conn, focus_tier);
+
+    #[cfg(feature = "profiling")]
+    crate::profile_log!(EventType::SettingsUpdate {
+      setting: "focus_tier".into(),
+      value: focus_tier.map(|t| t.to_string()).unwrap_or_else(|| "none".to_string()),
+    });
+  }
 
   Redirect::to("/settings")
 }

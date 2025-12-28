@@ -93,6 +93,66 @@
       </p>
     </div>
 
+    <!-- Focus Mode -->
+    <div class="mb-6">
+      <label class="block text-gray-900 dark:text-gray-100 font-medium mb-2">
+        Focus Mode
+      </label>
+      <select name="focus_tier"
+              class="w-full sm:w-auto px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-600">
+        <option value="none" {% if focus_tier.is_none() %}selected{% endif %}>
+          All tiers (normal mode)
+        </option>
+        {% for t in 1..=max_unlocked_tier %}
+        <option value="{{ t }}" {% match focus_tier %}{% when Some with (ft) %}{% if *ft == t %}selected{% endif %}{% when None %}{% endmatch %}>
+          Focus on Tier {{ t }}
+        </option>
+        {% endfor %}
+      </select>
+      <p class="text-sm text-gray-500 dark:text-gray-400 mt-2">
+        {% if focus_tier.is_some() %}
+        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 mr-2">
+          Focus active
+        </span>
+        Only Tier {{ focus_tier.unwrap() }} cards will appear in /study.
+        {% else %}
+        Focus on a specific tier to master it before mixing with others.
+        Automatically enabled when you unlock a new tier.
+        {% endif %}
+      </p>
+    </div>
+
+    <!-- Retention Target -->
+    <div class="mb-6">
+      <label class="block text-gray-900 dark:text-gray-100 font-medium mb-2">
+        Retention Target
+      </label>
+      <select name="desired_retention"
+              class="w-full sm:w-auto px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-600">
+        <option value="80" {% if desired_retention == 80 %}selected{% endif %}>
+          80% - Fastest progress, more forgetting
+        </option>
+        <option value="85" {% if desired_retention == 85 %}selected{% endif %}>
+          85% - Faster progress, some forgetting
+        </option>
+        <option value="90" {% if desired_retention == 90 %}selected{% endif %}>
+          90% - Balanced (recommended)
+        </option>
+        <option value="95" {% if desired_retention == 95 %}selected{% endif %}>
+          95% - Best retention, slower progress
+        </option>
+      </select>
+      <div class="mt-2 text-sm text-gray-500 dark:text-gray-400">
+        <p>Controls how often you'll review cards:</p>
+        <ul class="mt-1 ml-4 list-disc space-y-0.5">
+          <li><strong>80%:</strong> ~0.6x intervals, fastest progression, ~20% forgotten per interval</li>
+          <li><strong>85%:</strong> ~0.8x intervals, faster progression, ~15% forgotten per interval</li>
+          <li><strong>90%:</strong> Standard intervals, balanced, ~10% forgotten per interval</li>
+          <li><strong>95%:</strong> ~1.5x intervals, slower progression, ~5% forgotten per interval</li>
+        </ul>
+      </div>
+    </div>
+
     <button type="submit"
             class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800">
       Save Settings

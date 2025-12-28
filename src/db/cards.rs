@@ -527,6 +527,8 @@ pub fn update_card_after_fsrs_review(
     stability: f64,
     difficulty: f64,
     state: FsrsState,
+    learning_step: i64,
+    repetitions: i64,
     correct: bool,
 ) -> Result<()> {
     #[cfg(feature = "profiling")]
@@ -539,15 +541,17 @@ pub fn update_card_after_fsrs_review(
         r#"
     UPDATE cards
     SET next_review = ?1, fsrs_stability = ?2, fsrs_difficulty = ?3, fsrs_state = ?4,
-        total_reviews = total_reviews + 1, correct_reviews = correct_reviews + ?5,
-        repetitions = repetitions + ?5
-    WHERE id = ?6
+        learning_step = ?5, repetitions = ?6,
+        total_reviews = total_reviews + 1, correct_reviews = correct_reviews + ?7
+    WHERE id = ?8
     "#,
         params![
             next_review.to_rfc3339(),
             stability,
             difficulty,
             state.as_str(),
+            learning_step,
+            repetitions,
             if correct { 1 } else { 0 },
             card_id,
         ],

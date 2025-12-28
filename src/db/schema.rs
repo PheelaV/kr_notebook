@@ -128,6 +128,14 @@ pub fn run_migrations(conn: &Connection) -> Result<()> {
     [],
   )?;
 
+  // Migration: Graduate existing FSRS cards to step 4 (learning steps integration)
+  // Cards with fsrs_state set have already been reviewed using FSRS, so they should
+  // be treated as graduated (step 4) rather than restarting the learning steps.
+  conn.execute(
+    "UPDATE cards SET learning_step = 4 WHERE fsrs_state IS NOT NULL AND fsrs_state != 'New' AND learning_step < 4",
+    [],
+  )?;
+
   Ok(())
 }
 
