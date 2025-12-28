@@ -239,14 +239,106 @@ def status(path: Path | None) -> None:
         click.echo("  Run 'kr-scraper lesson2' to download")
         click.echo()
 
+    # Check for lesson3
+    lesson3_dir = check_path / "lesson3"
+    if lesson3_dir.exists():
+        manifest_path = lesson3_dir / "manifest.json"
+        if manifest_path.exists():
+            with open(manifest_path, encoding="utf-8") as f:
+                manifest = json.load(f)
+
+            scraped_at = manifest.get("scraped_at", "unknown")
+            rows = manifest.get("rows", {})
+            syllable_table = manifest.get("syllable_table", {})
+            vowels_order = manifest.get("vowels_order", [])
+
+            click.echo(click.style("Lesson 3 (Diphthongs & Combined Vowels):", bold=True))
+            click.echo(f"  Scraped: {scraped_at}")
+
+            # Row audio (vowels)
+            click.echo(f"  Row audio (vowels): {len(rows)} files")
+            if rows:
+                vowels = " ".join(vowels_order)
+                click.echo(f"    {vowels}")
+
+            # Syllable segments
+            syllables_dir = lesson3_dir / "syllables"
+            segment_count = len(list(syllables_dir.glob("*.mp3"))) if syllables_dir.exists() else 0
+            total_syllables = len(syllable_table)
+            click.echo(f"  Individual syllables: {segment_count}/{total_syllables} segmented")
+            if segment_count == 0 and len(rows) > 0:
+                click.echo("    Run 'kr-scraper segment -l 3' to extract individual syllables")
+            click.echo()
+
+        else:
+            row_count = len(list((lesson3_dir / "rows").glob("*.mp3"))) if (lesson3_dir / "rows").exists() else 0
+            click.echo(f"Lesson 3: {row_count} row files (no manifest)")
+            click.echo()
+    else:
+        click.echo(click.style("Lesson 3:", bold=True) + " Not scraped")
+        click.echo("  Run 'kr-scraper lesson3' to download")
+        click.echo()
+
+
+@cli.command()
+@click.option(
+    "--output",
+    "-o",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Output directory for audio files.",
+)
+@click.option(
+    "--force",
+    "-f",
+    is_flag=True,
+    help="Re-download files even if they exist.",
+)
+def lesson3(output: Path | None, force: bool) -> None:
+    """Scrape Lesson 3 diphthong and combined vowel audio.
+
+    Downloads audio for new vowels from Unit 0 Lesson 3:
+    - Combined vowels: ㅐ ㅔ ㅒ ㅖ
+    - Diphthongs: ㅘ ㅙ ㅚ ㅝ ㅞ ㅟ ㅢ
+
+    Each audio file demonstrates a vowel with various consonants.
+    """
+    from .lesson3 import scrape_lesson3
+
+    output_dir = output or (DEFAULT_OUTPUT / "lesson3")
+
+    click.echo("Scraping Lesson 3 vowel audio...")
+    click.echo(f"Output: {output_dir}")
+    click.echo()
+
+    def progress(current: int, total: int, vowel: str, success: bool) -> None:
+        status = click.style("OK", fg="green") if success else click.style("FAIL", fg="red")
+        click.echo(f"  [{current}/{total}] {vowel} ... {status}")
+
+    try:
+        manifest = scrape_lesson3(
+            output_dir=output_dir,
+            progress_callback=progress,
+            skip_existing=not force,
+        )
+
+        rows = len(manifest.get("rows", {}))
+        syllables = len(manifest.get("syllable_table", {}))
+        click.echo()
+        click.echo(f"Downloaded {rows} vowel row audio files ({syllables} syllables).")
+        click.echo(f"Manifest saved to {output_dir / 'manifest.json'}")
+
+    except Exception as e:
+        raise click.ClickException(str(e)) from e
+
 
 @cli.command()
 @click.option(
     "--lesson",
     "-l",
-    type=click.Choice(["1", "2", "all"]),
+    type=click.Choice(["1", "2", "3", "all"]),
     default="all",
-    help="Which lesson to segment (1, 2, or all).",
+    help="Which lesson to segment (1, 2, 3, or all).",
 )
 @click.option(
     "--path",
@@ -300,10 +392,12 @@ def segment(lesson: str, path: Path | None, min_silence: int, threshold: int, pa
             lesson_dirs.append((DEFAULT_OUTPUT / "lesson1", "lesson1"))
         if (DEFAULT_OUTPUT / "lesson2").exists():
             lesson_dirs.append((DEFAULT_OUTPUT / "lesson2", "lesson2"))
+        if (DEFAULT_OUTPUT / "lesson3").exists():
+            lesson_dirs.append((DEFAULT_OUTPUT / "lesson3", "lesson3"))
         if not lesson_dirs:
             raise click.ClickException(
                 "No lesson directories found.\n"
-                "Run 'kr-scraper lesson1' and/or 'kr-scraper lesson2' first."
+                "Run 'kr-scraper lesson1', 'kr-scraper lesson2', or 'kr-scraper lesson3' first."
             )
     else:
         lesson_dir = DEFAULT_OUTPUT / f"lesson{lesson}"

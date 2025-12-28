@@ -106,12 +106,14 @@ def get_lesson2_audio_files() -> list[RowAudio]:
 def create_manifest(
     audio_files: list[RowAudio],
     downloaded: dict[str, bool],
+    existing_manifest: dict | None = None,
 ) -> dict:
-    """Create a manifest JSON structure for Lesson 2.
+    """Create a manifest JSON structure for Lesson 2, preserving existing segment_params.
 
     Args:
         audio_files: List of RowAudio objects.
         downloaded: Dict mapping character to download success status.
+        existing_manifest: Optional existing manifest to preserve segment_params from.
 
     Returns:
         Manifest dictionary ready for JSON serialization.
@@ -128,6 +130,12 @@ def create_manifest(
             "source_url": af.url,
             "syllables": af.syllables,
         }
+
+    # Preserve segment_params from existing manifest
+    if existing_manifest:
+        for char, info in existing_manifest.get("rows", {}).items():
+            if char in rows and "segment_params" in info:
+                rows[char]["segment_params"] = info["segment_params"]
 
     # Build syllable table for lesson 2 consonants
     syllable_table = {}
@@ -149,6 +157,12 @@ def create_manifest(
                 "romanization": rom,
                 "segment_file": None,  # Will be set by segmentation
             }
+
+    # Preserve segment_file from existing manifest
+    if existing_manifest:
+        for syllable, info in existing_manifest.get("syllable_table", {}).items():
+            if syllable in syllable_table and info.get("segment_file"):
+                syllable_table[syllable]["segment_file"] = info["segment_file"]
 
     return {
         "source": "howtostudykorean.com",
@@ -218,9 +232,15 @@ def scrape_lesson2(
         if progress_callback:
             progress_callback(i, total, af.character, success)
 
-    # Create and save manifest
-    manifest = create_manifest(audio_files, downloaded)
+    # Load existing manifest if present (to preserve segment_params)
     manifest_path = output_dir / "manifest.json"
+    existing_manifest = None
+    if manifest_path.exists():
+        with open(manifest_path, encoding="utf-8") as f:
+            existing_manifest = json.load(f)
+
+    # Create and save manifest, preserving segment_params from existing
+    manifest = create_manifest(audio_files, downloaded, existing_manifest)
     with open(manifest_path, "w", encoding="utf-8") as f:
         json.dump(manifest, f, ensure_ascii=False, indent=2)
 
