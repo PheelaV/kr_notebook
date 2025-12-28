@@ -14,7 +14,10 @@ A Rust web application for learning Korean Hangul using spaced repetition with t
   - Tier 3: Aspirated (ㅋ, ㅍ...) and tense consonants (ㄲ, ㅃ...)
   - Tier 4: Compound vowels (ㅘ, ㅝ...)
 - **Accelerated Mode**: Unlock all tiers immediately for experienced learners
-- **Mobile-Responsive**: Hamburger menu, touch-friendly buttons, adaptive layouts
+- **Focus Mode**: Study specific tiers only
+- **Listening Practice**: Audio recognition with syllable playback
+- **Practice Mode**: Untracked learning without affecting SRS
+- **Mobile-Responsive**: Hamburger menu, touch-friendly buttons, double-tap submit
 - **Haetae Mascot**: Animated Korean guardian companion
 
 ## Tech Stack
@@ -79,17 +82,31 @@ cargo test
 cargo clippy
 ```
 
+## Configuration
+
+Database path is configurable (priority order):
+1. `config.toml` → `[database] path = "..."`
+2. `DATABASE_PATH` environment variable
+3. Default: `data/hangul.db`
+
+```bash
+cp config.toml.example config.toml  # Optional local config
+```
+
 ## Usage
 
 | Route | Description |
 |-------|-------------|
-| `/` | Home - cards due, quick stats |
-| `/study` | Interactive study session |
-| `/progress` | Detailed progress by tier, problem areas |
-| `/settings` | Algorithm settings, tier selection, audio management |
-| `/library` | Browse all unlocked characters |
+| `/` | Home - cards due, stats, countdown |
+| `/study` | Interactive study (type/select) |
+| `/study-classic` | Classic reveal-and-rate mode |
+| `/practice` | Untracked practice |
+| `/listen` | Listening practice (audio) |
+| `/progress` | Progress by tier, problem areas |
+| `/settings` | Algorithm, tiers, audio config |
+| `/library` | Browse unlocked characters |
 | `/reference` | Hangul reference charts |
-| `/pronunciation` | Interactive syllable audio matrix (if audio available) |
+| `/pronunciation` | Syllable audio matrix |
 | `/guide` | How to use the app |
 
 ### Study Flow
@@ -105,41 +122,47 @@ cargo clippy
 ```
 kr_notebook/
 ├── Cargo.toml
+├── build.rs                # Compile-time asset hashing
+├── askama.toml             # Askama configuration
 ├── Dockerfile              # Multi-stage Rust build
 ├── docker-compose.yml      # LAN deployment
 ├── src/                    # Rust backend
 │   ├── main.rs             # Server entry point
 │   ├── lib.rs              # Module exports
 │   ├── paths.rs            # Centralized path constants
+│   ├── config.rs           # Configuration loading
+│   ├── audio.rs            # Audio file handling
+│   ├── session.rs          # Session management
+│   ├── filters.rs          # Template filters
+│   ├── validation.rs       # Answer validation
 │   ├── db/                 # Database layer
-│   │   ├── mod.rs          # Card seed data
+│   │   ├── mod.rs          # Pool management, seed data
 │   │   ├── schema.rs       # Table definitions
-│   │   └── repository.rs   # CRUD operations
+│   │   ├── cards.rs        # Card queries
+│   │   ├── reviews.rs      # Review operations
+│   │   ├── stats.rs        # Statistics
+│   │   └── tiers.rs        # Tier progress
 │   ├── domain/             # Data models
-│   │   └── card.rs         # Card struct
 │   ├── handlers/           # HTTP handlers
-│   │   ├── mod.rs          # Index handler
-│   │   ├── study.rs        # Study session logic
-│   │   ├── progress.rs     # Progress & analytics
-│   │   ├── settings.rs     # Settings + audio management
-│   │   ├── pronunciation.rs # Pronunciation matrix
-│   │   └── library.rs      # Character library
-│   ├── profiling/          # Optional profiling (--features profiling)
-│   ├── srs/                # Spaced repetition (FSRS + SM-2)
-│   └── validation.rs       # Answer validation
-├── py_scripts/             # Python scraper tools
-│   ├── pyproject.toml      # uv/pip project config
-│   ├── uv.lock             # Locked dependencies
-│   └── src/kr_scraper/     # Scraper package
-│       ├── cli.py          # CLI commands (lesson1, lesson2, segment)
-│       ├── paths.py        # Centralized path constants
-│       ├── segment.py      # Audio segmentation logic
-│       ├── lesson1.py      # Lesson 1 scraper
-│       ├── lesson2.py      # Lesson 2 scraper
-│       └── utils.py        # HTTP/parsing utilities
+│   │   ├── mod.rs          # Index, exports
+│   │   ├── study.rs        # Study session
+│   │   ├── listen.rs       # Listening practice
+│   │   ├── progress.rs     # Progress analytics
+│   │   ├── settings.rs     # Settings + audio
+│   │   ├── pronunciation.rs # Audio matrix
+│   │   ├── library.rs      # Character browser
+│   │   ├── reference.rs    # Reference pages
+│   │   └── guide.rs        # Usage guide
+│   ├── profiling/          # Optional (--features profiling)
+│   └── srs/                # Spaced repetition (FSRS + SM-2)
+├── py_scripts/             # Python tools
+│   ├── pyproject.toml
+│   └── src/
+│       ├── kr_scraper/     # Audio scraper
+│       └── db_manager/     # Database scenarios CLI
 ├── templates/              # Askama HTML templates
 ├── doc/                    # Documentation
-└── data/                   # Runtime data (gitignored, except manifests)
+└── data/                   # Runtime data (gitignored)
     └── scraped/htsk/       # Scraped audio + manifests
 ```
 
@@ -202,6 +225,18 @@ Settings → Pronunciation Audio → Preview allows adjusting parameters per row
 - **t**: Threshold (dBFS) - silence detection sensitivity
 - **P**: Padding (ms) - buffer before/after segments
 - **skip**: Skip first N segments (for noisy audio)
+
+### Database Management
+
+Manage database scenarios for testing:
+
+```bash
+uv run db-manager status      # Show current database
+uv run db-manager list        # List scenarios
+uv run db-manager use <name>  # Switch scenario
+uv run db-manager create <name>  # Create from current
+uv run db-manager reset       # Reset to golden
+```
 
 ## Profiling
 
