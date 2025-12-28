@@ -17,6 +17,9 @@ Thumbs.db
 .env.local
 .env.*.local
 
+# Local config overrides
+config.toml
+
 # SQLite database files (personal data)
 *.db
 *.db-shm

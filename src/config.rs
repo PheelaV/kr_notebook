@@ -3,6 +3,51 @@
 //! This module centralizes all configurable values that were previously
 //! hardcoded throughout the codebase.
 
+use serde::Deserialize;
+use std::path::PathBuf;
+
+// ==================== Database Configuration ====================
+
+/// Configuration file structure for config.toml
+#[derive(Debug, Deserialize)]
+struct AppConfig {
+    database: Option<DatabaseConfig>,
+}
+
+#[derive(Debug, Deserialize)]
+struct DatabaseConfig {
+    path: Option<String>,
+}
+
+/// Load database path with priority: config.toml > .env > default
+pub fn load_database_path() -> PathBuf {
+    // Load .env file if present
+    let _ = dotenvy::dotenv();
+
+    // Priority 1: config.toml
+    if let Ok(contents) = std::fs::read_to_string("config.toml") {
+        if let Ok(config) = toml::from_str::<AppConfig>(&contents) {
+            if let Some(db) = config.database {
+                if let Some(path) = db.path {
+                    tracing::info!("Using database from config.toml: {}", path);
+                    return PathBuf::from(path);
+                }
+            }
+        }
+    }
+
+    // Priority 2: .env DATABASE_PATH
+    if let Ok(path) = std::env::var("DATABASE_PATH") {
+        tracing::info!("Using database from DATABASE_PATH env: {}", path);
+        return PathBuf::from(path);
+    }
+
+    // Default
+    let default = PathBuf::from("data/hangul.db");
+    tracing::info!("Using default database path: {}", default.display());
+    default
+}
+
 // ==================== Server Configuration ====================
 
 /// Server address to bind to

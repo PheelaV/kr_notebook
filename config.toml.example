@@ -1,0 +1,12 @@
+# Application configuration overrides
+# Copy to config.toml and uncomment to customize
+
+[database]
+# Override database path (takes priority over .env and default)
+# path = "data/hangul.db"
+
+# Use a test scenario database:
+# path = "data/scenarios/tier3_reset.db"
+
+# Use a backup:
+# path = "data/backups/2024-01-15_hangul.db"
