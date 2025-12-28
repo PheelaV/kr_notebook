@@ -1,5 +1,6 @@
 services:
   py-tools:
+    profiles: ["tools"]
     build:
       context: .
       dockerfile: py_scripts/Dockerfile
