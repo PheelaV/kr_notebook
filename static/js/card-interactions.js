@@ -11,6 +11,8 @@
 
   // State - reset on each card load
   var selectedAnswer = null;
+  var lastTapTime = 0;
+  var lastTapButton = null;
 
   // CSS classes for selection state
   var SELECTED_CLASSES = ['border-indigo-500', 'bg-indigo-100', 'dark:bg-indigo-900', 'selected'];
@@ -93,6 +95,8 @@
    */
   function resetState() {
     selectedAnswer = null;
+    lastTapTime = 0;
+    lastTapButton = null;
     currentHint = 0;
     hintsUsed = 0;
     hints = [];
@@ -110,11 +114,26 @@
   // Set up event listeners when DOM is ready
   function setupEventListeners() {
     // Event delegation: Click on choice buttons
+    // Double-tap/double-click on same button submits the form
     document.body.addEventListener('click', function(e) {
       var btn = e.target.closest('.choice-btn');
       if (btn && btn.dataset.choice) {
         e.preventDefault();
+        var now = Date.now();
+        var isDoubleTap = (btn === lastTapButton) && (now - lastTapTime < 400);
+
         selectAnswer(btn, btn.dataset.choice);
+
+        if (isDoubleTap) {
+          // Double-tap: submit the form
+          var answerForm = document.getElementById('answer-form');
+          if (answerForm && selectedAnswer) {
+            answerForm.requestSubmit();
+          }
+        }
+
+        lastTapTime = now;
+        lastTapButton = btn;
       }
     });
 

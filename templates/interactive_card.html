@@ -111,11 +111,10 @@
       {% include "partials/card_result.html" %}
 
       {% if is_tracked %}
-      <!-- Study mode: Submit review and get next card -->
-      <form id="next-card-form" hx-post="/review" hx-target="#card-container" hx-swap="outerHTML">
+      <!-- Study mode: Get next card (review was already recorded on validation) -->
+      <form id="next-card-form" hx-post="/next-card" hx-target="#card-container" hx-swap="outerHTML">
         <input type="hidden" name="card_id" value="{{ card_id }}">
         <input type="hidden" name="session_id" value="{{ session_id }}">
-        <input type="hidden" name="quality" value="{{ quality }}">
         <button type="submit"
                 class="w-full bg-indigo-500 hover:bg-indigo-600 text-white font-semibold py-3 px-6 rounded-lg transition-colors text-lg">
           Next Card <span class="text-sm opacity-75">(Enter)</span>

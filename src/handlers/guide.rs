@@ -1,6 +1,8 @@
 use askama::Template;
 use axum::response::Html;
 
+use crate::filters;
+
 #[derive(Template)]
 #[template(path = "guide.html")]
 pub struct GuideTemplate {}

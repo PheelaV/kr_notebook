@@ -2,6 +2,7 @@ pub mod audio;
 pub mod config;
 pub mod db;
 pub mod domain;
+pub mod filters;
 pub mod handlers;
 pub mod paths;
 pub mod profiling;

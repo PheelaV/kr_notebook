@@ -5,6 +5,7 @@ use axum::{
 };
 
 use crate::db::{self, try_lock, CharacterStats, DbPool, LogOnError, TierProgress};
+use crate::filters;
 #[cfg(feature = "profiling")]
 use crate::profiling::EventType;
 

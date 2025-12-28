@@ -3,6 +3,7 @@ use axum::response::{Html, Redirect};
 use std::path::Path;
 
 use super::settings::{has_lesson1, has_lesson2};
+use crate::filters;
 use crate::audio::{
     get_available_syllables, get_row_romanization, get_row_syllables, load_manifest,
     row_has_audio, vowel_romanization,

@@ -1,6 +1,8 @@
 use askama::Template;
 use axum::response::Html;
 
+use crate::filters;
+
 #[derive(Template)]
 #[template(path = "reference/index.html")]
 pub struct ReferenceIndexTemplate {}

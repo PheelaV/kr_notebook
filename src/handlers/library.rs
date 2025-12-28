@@ -2,6 +2,7 @@ use askama::Template;
 use axum::{extract::State, response::Html};
 
 use crate::config;
+use crate::filters;
 use crate::db::{self, try_lock, DbPool, LogOnError};
 #[cfg(feature = "profiling")]
 use crate::profiling::EventType;

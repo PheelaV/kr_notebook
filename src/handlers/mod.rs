@@ -13,6 +13,7 @@ use axum::{extract::State, response::Html};
 use chrono::{DateTime, Utc};
 
 use crate::db::{self, try_lock, DbPool, LogOnError};
+use crate::filters;
 #[cfg(feature = "profiling")]
 use crate::profiling::EventType;
 
@@ -78,19 +79,11 @@ pub async fn index(State(pool): State<DbPool>) -> Html<String> {
   };
   let (total_cards, _, cards_learned) = db::get_total_stats(&conn).log_warn_default("Failed to get total stats");
 
-  // In accelerated mode, show next review only if both due and unreviewed are 0
-  // In normal mode, show next review only if due is 0
-  let cards_available = if accelerated_mode {
-    due_count + unreviewed_count
-  } else {
-    due_count
-  };
-
-  let next_review_time = if cards_available == 0 {
-    db::get_next_review_time(&conn).log_warn("Failed to get next review time").flatten()
-  } else {
-    None
-  };
+  // Always fetch next upcoming review time (for cards not yet due)
+  // This allows the UI to show a countdown even when there are cards currently due
+  let next_review_time = db::get_next_upcoming_review_time(&conn)
+    .log_warn("Failed to get next review time")
+    .flatten();
 
   let next_review = next_review_time.map(format_relative_time);
   let next_review_timestamp = next_review_time.map(|dt| dt.timestamp());
@@ -128,6 +121,6 @@ pub use settings::{
   trigger_scrape_lesson, trigger_segment, trigger_row_segment, update_settings,
 };
 pub use study::{
-  practice_next, practice_start, practice_validate, study_start, submit_review,
-  study_start_interactive, submit_review_interactive, validate_answer_handler,
+  next_card_interactive, practice_next, practice_start, practice_validate, study_start,
+  submit_review, study_start_interactive, submit_review_interactive, validate_answer_handler,
 };

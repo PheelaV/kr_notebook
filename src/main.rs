@@ -1,5 +1,4 @@
 use axum::{routing::get, routing::post, Router};
-use std::path::Path;
 use tower_http::services::ServeDir;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -18,8 +17,9 @@ async fn main() {
   // Initialize profiling (no-op if feature disabled)
   profiling::init();
 
-  let db_path = Path::new(paths::DB_PATH);
-  let pool = db::init_db(db_path).expect("Failed to initialize database");
+  // Load database path from config (config.toml > .env > default)
+  let db_path = config::load_database_path();
+  let pool = db::init_db(&db_path).expect("Failed to initialize database");
 
   {
     let conn = pool.lock().expect("Database lock failed during startup");
@@ -35,9 +35,10 @@ async fn main() {
     .route("/", get(handlers::index))
     .route("/study", get(handlers::study_start_interactive)) // Use interactive mode by default
     .route("/study-classic", get(handlers::study_start))     // Classic reveal-and-rate mode
-    .route("/review", post(handlers::submit_review_interactive))
+    .route("/review", post(handlers::submit_review_interactive))  // Deprecated: kept for compatibility
     .route("/review-classic", post(handlers::submit_review))
     .route("/validate-answer", post(handlers::validate_answer_handler))
+    .route("/next-card", post(handlers::next_card_interactive))
     .route("/practice", get(handlers::practice_start))
     .route("/practice-next", post(handlers::practice_next))
     .route("/practice-validate", post(handlers::practice_validate))

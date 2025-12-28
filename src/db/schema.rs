@@ -122,19 +122,21 @@ pub fn run_migrations(conn: &Connection) -> Result<()> {
     }
   }
 
-  // Migration: Fix repetitions for FSRS users (bug: FSRS wasn't updating repetitions)
-  conn.execute(
-    "UPDATE cards SET repetitions = correct_reviews WHERE correct_reviews > repetitions",
-    [],
-  )?;
-
-  // Migration: Graduate existing FSRS cards to step 4 (learning steps integration)
-  // Cards with fsrs_state set have already been reviewed using FSRS, so they should
-  // be treated as graduated (step 4) rather than restarting the learning steps.
-  conn.execute(
-    "UPDATE cards SET learning_step = 4 WHERE fsrs_state IS NOT NULL AND fsrs_state != 'New' AND learning_step < 4",
-    [],
-  )?;
+  // OBSOLETE MIGRATIONS - These were one-time fixes applied to production.
+  // Keeping them active interferes with test scenarios where we intentionally
+  // reset card states. Commented out 2024-12-28.
+  //
+  // // Migration: Fix repetitions for FSRS users (bug: FSRS wasn't updating repetitions)
+  // conn.execute(
+  //   "UPDATE cards SET repetitions = correct_reviews WHERE correct_reviews > repetitions",
+  //   [],
+  // )?;
+  //
+  // // Migration: Graduate existing FSRS cards to step 4 (learning steps integration)
+  // conn.execute(
+  //   "UPDATE cards SET learning_step = 4 WHERE fsrs_state IS NOT NULL AND fsrs_state != 'New' AND learning_step < 4",
+  //   [],
+  // )?;
 
   Ok(())
 }

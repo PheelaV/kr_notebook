@@ -8,6 +8,7 @@ use rand::seq::SliceRandom;
 use serde::Deserialize;
 
 use crate::db::{self, try_lock, DbPool, LogOnError};
+use crate::filters;
 use crate::domain::{Card, InputMethod, ReviewDirection, ReviewQuality, StudyMode};
 use crate::session;
 use crate::srs::{self, select_next_card};
@@ -492,7 +493,7 @@ pub struct ValidateAnswerForm {
   pub input_method: InputMethod,
 }
 
-/// Validate user's typed answer
+/// Validate user's typed answer and record the review result
 pub async fn validate_answer_handler(
   State(pool): State<DbPool>,
   Form(form): Form<ValidateAnswerForm>,
@@ -537,6 +538,88 @@ pub async fn validate_answer_handler(
       let _ = db::record_confusion(&conn, card.id, &form.answer);
     }
 
+    // --- Record the review result immediately ---
+    // Update session reinforcement queue
+    let session_id = if form.session_id.is_empty() {
+      session::generate_session_id()
+    } else {
+      form.session_id.clone()
+    };
+    let mut study_session = session::get_session(&session_id);
+
+    if is_correct {
+      study_session.remove_from_reinforcement(card.id);
+    } else {
+      study_session.add_failed_card(card.id);
+    }
+
+    // Update SRS based on FSRS or SM-2
+    let use_fsrs = db::get_use_fsrs(&conn).log_warn_default("Failed to get FSRS setting");
+
+    if use_fsrs {
+      let desired_retention = db::get_desired_retention(&conn).log_warn_default("Failed to get desired retention");
+      let result = srs::calculate_fsrs_review(&card, quality, desired_retention);
+
+      #[cfg(feature = "profiling")]
+      crate::profile_log!(EventType::SrsCalculation {
+        algorithm: "fsrs_hybrid".into(),
+        card_id: card.id,
+        rating: quality,
+      });
+
+      let _ = db::update_card_after_fsrs_review(
+        &conn,
+        card.id,
+        result.next_review,
+        result.stability,
+        result.difficulty,
+        result.state,
+        result.learning_step,
+        result.repetitions,
+        is_correct,
+      );
+    } else {
+      let result = srs::calculate_review(
+        quality,
+        card.ease_factor,
+        card.interval_days,
+        card.repetitions,
+        card.learning_step,
+      );
+
+      let _ = db::update_card_after_review(
+        &conn,
+        card.id,
+        result.ease_factor,
+        result.interval_days,
+        result.repetitions,
+        result.next_review,
+        result.learning_step,
+        is_correct,
+      );
+    }
+
+    // Log review with enhanced tracking
+    let direction = get_review_direction(&card);
+    let _ = db::insert_review_log_enhanced(
+      &conn,
+      card.id,
+      quality,
+      is_correct,
+      StudyMode::Interactive,
+      direction,
+      None,
+      form.hints_used.into(),
+    );
+
+    // Update character stats
+    let tracked_char = get_tracked_character(&card);
+    let char_type = get_character_type(&card);
+    let _ = db::update_character_stats(&conn, tracked_char, char_type, is_correct);
+
+    // Save session state
+    session::update_session(&session_id, study_session);
+
     let hint_gen = HintGenerator::new(&card.main_answer, card.description.as_deref());
 
     // Check if answer is Korean (for template display purposes)
@@ -558,7 +641,7 @@ pub async fn validate_answer_handler(
       hint_final: hint_gen.hint_final(),
       is_multiple_choice,
       choices: vec![], // Not needed after validation
-      session_id: form.session_id,
+      session_id,
       is_tracked: true,
       track_progress: false,
     };
@@ -569,7 +652,95 @@ pub async fn validate_answer_handler(
   }
 }
 
+#[derive(Deserialize)]
+pub struct NextCardForm {
+  pub card_id: i64,
+  #[serde(default)]
+  pub session_id: String,
+}
+
+/// Get next interactive card (review was already recorded during validation)
+pub async fn next_card_interactive(
+  State(pool): State<DbPool>,
+  Form(form): Form<NextCardForm>,
+) -> impl IntoResponse {
+  #[cfg(feature = "profiling")]
+  crate::profile_log!(EventType::HandlerStart {
+    route: "/next-card".into(),
+    method: "POST".into(),
+  });
+
+  let conn = match try_lock(&pool) {
+    Ok(conn) => conn,
+    Err(_) => return Html("<h1>Database Error</h1><p>Please refresh the page.</p>".to_string()),
+  };
+
+  // Get or create session
+  let session_id = if form.session_id.is_empty() {
+    session::generate_session_id()
+  } else {
+    form.session_id.clone()
+  };
+  let mut study_session = session::get_session(&session_id);
+
+  // Get available cards and select next using weighted selection
+  let available_cards = get_available_study_cards(&conn);
+
+  let selected_card_id = if !available_cards.is_empty() {
+    select_next_card(&conn, &mut study_session, &available_cards)
+      .ok()
+      .flatten()
+  } else {
+    None
+  };
+
+  // Save session state
+  session::update_session(&session_id, study_session);
+
+  if let Some(card_id) = selected_card_id {
+    if let Ok(Some(next_card)) = db::get_card_by_id(&conn, card_id) {
+      let hint_gen = HintGenerator::new(&next_card.main_answer, next_card.description.as_deref());
+
+      // Check if answer is Korean (needs multiple choice)
+      let is_multiple_choice = is_korean(&next_card.main_answer);
+      let choices = if is_multiple_choice {
+        let all_cards = db::get_cards_by_tier(&conn, next_card.tier).log_warn_default("Failed to get tier cards for choices");
+        generate_choices(&next_card, &all_cards)
+      } else {
+        vec![]
+      };
+
+      let template = InteractiveCardTemplate {
+        card_id: next_card.id,
+        front: next_card.front.clone(),
+        main_answer: next_card.main_answer.clone(),
+        description: next_card.description.clone(),
+        tier: next_card.tier,
+        validated: false,
+        is_correct: false,
+        user_answer: String::new(),
+        quality: 0,
+        hints_used: 0,
+        hint_1: hint_gen.hint_level_1(),
+        hint_2: hint_gen.hint_level_2(),
+        hint_final: hint_gen.hint_final(),
+        is_multiple_choice,
+        choices,
+        session_id,
+        is_tracked: true,
+        track_progress: false,
+      };
+      return Html(template.render().unwrap_or_default());
+    }
+  }
+
+  let template = NoCardsTemplate {};
+  Html(template.render().unwrap_or_default())
+}
+
 /// Get next interactive card after submitting review
+/// DEPRECATED: Review recording now happens in validate_answer_handler.
+/// Use next_card_interactive instead. Kept for backwards compatibility.
 pub async fn submit_review_interactive(
   State(pool): State<DbPool>,
   Form(form): Form<ReviewForm>,
@@ -593,83 +764,8 @@ pub async fn submit_review_interactive(
   };
   let mut study_session = session::get_session(&session_id);
 
-  // Process the review
-  let correct = form.quality >= 2;
-
-  if let Ok(Some(card)) = db::get_card_by_id(&conn, form.card_id) {
-    // Update reinforcement queue based on result
-    if correct {
-      study_session.remove_from_reinforcement(card.id);
-    } else {
-      study_session.add_failed_card(card.id);
-    }
-
-    // Check if FSRS is enabled
-    let use_fsrs = db::get_use_fsrs(&conn).log_warn_default("Failed to get FSRS setting");
-
-    if use_fsrs {
-      // Use hybrid FSRS scheduling (learning steps + FSRS)
-      let desired_retention = db::get_desired_retention(&conn).log_warn_default("Failed to get desired retention");
-      let result = srs::calculate_fsrs_review(&card, form.quality, desired_retention);
-
-      #[cfg(feature = "profiling")]
-      crate::profile_log!(EventType::SrsCalculation {
-        algorithm: "fsrs_hybrid".into(),
-        card_id: card.id,
-        rating: form.quality,
-      });
-
-      let _ = db::update_card_after_fsrs_review(
-        &conn,
-        card.id,
-        result.next_review,
-        result.stability,
-        result.difficulty,
-        result.state,
-        result.learning_step,
-        result.repetitions,
-        correct,
-      );
-    } else {
-      // Use SM-2 scheduling (fallback)
-      let result = srs::calculate_review(
-        form.quality,
-        card.ease_factor,
-        card.interval_days,
-        card.repetitions,
-        card.learning_step,
-      );
-
-      let _ = db::update_card_after_review(
-        &conn,
-        card.id,
-        result.ease_factor,
-        result.interval_days,
-        result.repetitions,
-        result.next_review,
-        result.learning_step,
-        correct,
-      );
-    }
-
-    // Log review with enhanced tracking
-    let direction = get_review_direction(&card);
-    let _ = db::insert_review_log_enhanced(
-      &conn,
-      card.id,
-      form.quality,
-      correct,
-      StudyMode::Interactive,
-      direction,
-      None,
-      0,
-    );
-
-    // Update character stats
-    let tracked_char = get_tracked_character(&card);
-    let char_type = get_character_type(&card);
-    let _ = db::update_character_stats(&conn, tracked_char, char_type, correct);
-  }
+  // NOTE: Review is now recorded during validation, so we skip the SRS update here.
+  // This handler is kept for backwards compatibility but only fetches next card.
 
   // Get available cards and select next using weighted selection
   let available_cards = get_available_study_cards(&conn);

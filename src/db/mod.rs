@@ -218,6 +218,13 @@ fn get_hangul_seed_data() -> Vec<Card> {
 
   for (front, main, desc) in tier3_aspirated {
     cards.push(card(front, main, Some(desc), CardType::AspiratedConsonant, 3));
+    cards.push(card(
+      &format!("Which letter sounds like '{}'?", main),
+      front,
+      None,
+      CardType::AspiratedConsonant,
+      3,
+    ));
   }
 
   // Tier 3: Tense Consonants
@@ -231,6 +238,13 @@ fn get_hangul_seed_data() -> Vec<Card> {
 
   for (front, main, desc) in tier3_tense {
     cards.push(card(front, main, Some(desc), CardType::TenseConsonant, 3));
+    cards.push(card(
+      &format!("Which letter sounds like '{}'?", main),
+      front,
+      None,
+      CardType::TenseConsonant,
+      3,
+    ));
   }
 
   // Tier 4: Compound Vowels
@@ -248,6 +262,13 @@ fn get_hangul_seed_data() -> Vec<Card> {
 
   for (front, main, desc) in tier4_compound {
     cards.push(card(front, main, Some(desc), CardType::CompoundVowel, 4));
+    cards.push(card(
+      &format!("Which letter sounds like '{}'?", main),
+      front,
+      None,
+      CardType::CompoundVowel,
+      4,
+    ));
   }
 
   cards

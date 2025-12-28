@@ -184,6 +184,34 @@ pub fn get_next_review_time(conn: &Connection) -> Result<Option<DateTime<Utc>>> 
     }))
 }
 
+/// Get the next upcoming review time (only cards not yet due)
+pub fn get_next_upcoming_review_time(conn: &Connection) -> Result<Option<DateTime<Utc>>> {
+    let effective_tiers = get_effective_tiers(conn)?;
+
+    if effective_tiers.is_empty() {
+        return Ok(None);
+    }
+
+    let tier_list = effective_tiers
+        .iter()
+        .map(|t| t.to_string())
+        .collect::<Vec<_>>()
+        .join(",");
+
+    let now = Utc::now().to_rfc3339();
+    let query = format!(
+        "SELECT MIN(next_review) FROM cards WHERE tier IN ({}) AND next_review > ?1",
+        tier_list
+    );
+    let result: Option<String> = conn.query_row(&query, params![now], |row| row.get(0))?;
+
+    Ok(result.and_then(|s| {
+        DateTime::parse_from_rfc3339(&s)
+            .ok()
+            .map(|dt| dt.with_timezone(&Utc))
+    }))
+}
+
 pub fn get_due_cards_interleaved(
     conn: &Connection,
     limit: usize,

@@ -80,6 +80,11 @@
         <a href="/study" class="block w-full bg-indigo-600 hover:bg-indigo-700 text-white text-center font-semibold py-3 px-4 rounded-lg transition-colors">
           Start Studying
         </a>
+        {% if let Some(timestamp) = next_review_timestamp %}
+        <div class="text-center text-gray-500 dark:text-gray-400 text-sm mt-2">
+          Next card in <span id="countdown-timer" class="font-mono font-semibold text-indigo-600 dark:text-indigo-400" data-target="{{ timestamp }}">--:--</span>
+        </div>
+        {% endif %}
         {% else %}
         <div class="text-center text-gray-500 dark:text-gray-400 py-2">
           {% if let Some(timestamp) = next_review_timestamp %}
