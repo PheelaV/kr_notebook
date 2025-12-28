@@ -26,11 +26,13 @@ config.toml
 *.db-wal
 *.db.backup
 
-# Data directory - ignore most, but allow scraped manifests
+# Data directory - ignore most, but allow scraped manifests and reference
 data/*
 !data/scraped/
 data/scraped/**/*.mp3
 !data/scraped/**/manifest.json
+!data/reference/
+!data/reference/*
 
 # Local/personal directories
 MY_LOCAL_*/
