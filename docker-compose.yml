@@ -1,4 +1,13 @@
 services:
+  py-tools:
+    build:
+      context: .
+      dockerfile: py_scripts/Dockerfile
+    volumes:
+      - ./data:/app/data
+    user: "${UID:-1000}:${GID:-1000}"
+    working_dir: /app/py_scripts
+
   kr_notebook:
     build: .
     ports:
