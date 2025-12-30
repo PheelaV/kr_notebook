@@ -65,6 +65,8 @@ async fn main() {
     .route("/settings/delete-scraped/{lesson}", post(handlers::delete_scraped_lesson))
     .route("/settings/segment", post(handlers::trigger_segment))
     .route("/settings/segment-row", post(handlers::trigger_row_segment))
+    .route("/settings/segment-manual", post(handlers::trigger_manual_segment))
+    .route("/settings/segment-reset", post(handlers::trigger_reset_segment))
     .route("/settings/make-all-due", post(handlers::make_all_due))
     .route("/settings/graduate-tier/{tier}", post(handlers::graduate_tier))
     .route("/settings/restore-tier/{tier}", post(handlers::restore_tier))

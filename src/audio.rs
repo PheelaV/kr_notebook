@@ -61,12 +61,26 @@ pub fn load_manifest(lesson_id: &str) -> Option<ManifestData> {
 /// Get the fallback romanization for a vowel character
 pub fn vowel_romanization(vowel: &str) -> &'static str {
     match vowel {
+        // Lesson 1 basic vowels
         "ㅣ" => "i",
         "ㅏ" => "a",
         "ㅓ" => "eo",
         "ㅡ" => "eu",
         "ㅜ" => "u",
         "ㅗ" => "o",
+        // Lesson 3 combined vowels
+        "ㅐ" => "ae",
+        "ㅔ" => "e",
+        "ㅒ" => "yae",
+        "ㅖ" => "ye",
+        // Lesson 3 diphthongs
+        "ㅘ" => "wa",
+        "ㅙ" => "wae",
+        "ㅚ" => "oe",
+        "ㅝ" => "wo",
+        "ㅞ" => "we",
+        "ㅟ" => "wi",
+        "ㅢ" => "ui",
         _ => "",
     }
 }
@@ -172,13 +186,28 @@ mod tests {
 
     #[test]
     fn test_vowel_romanization() {
+        // Lesson 1 basic vowels
         assert_eq!(vowel_romanization("ㅣ"), "i");
         assert_eq!(vowel_romanization("ㅏ"), "a");
         assert_eq!(vowel_romanization("ㅓ"), "eo");
         assert_eq!(vowel_romanization("ㅡ"), "eu");
         assert_eq!(vowel_romanization("ㅜ"), "u");
         assert_eq!(vowel_romanization("ㅗ"), "o");
-        assert_eq!(vowel_romanization("ㅑ"), ""); // Unknown vowel
+        // Lesson 3 combined vowels
+        assert_eq!(vowel_romanization("ㅐ"), "ae");
+        assert_eq!(vowel_romanization("ㅔ"), "e");
+        assert_eq!(vowel_romanization("ㅒ"), "yae");
+        assert_eq!(vowel_romanization("ㅖ"), "ye");
+        // Lesson 3 diphthongs
+        assert_eq!(vowel_romanization("ㅘ"), "wa");
+        assert_eq!(vowel_romanization("ㅙ"), "wae");
+        assert_eq!(vowel_romanization("ㅚ"), "oe");
+        assert_eq!(vowel_romanization("ㅝ"), "wo");
+        assert_eq!(vowel_romanization("ㅞ"), "we");
+        assert_eq!(vowel_romanization("ㅟ"), "wi");
+        assert_eq!(vowel_romanization("ㅢ"), "ui");
+        // Unknown vowel
+        assert_eq!(vowel_romanization("ㅑ"), "");
     }
 
     #[test]

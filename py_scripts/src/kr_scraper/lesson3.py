@@ -98,13 +98,14 @@ LESSON3_VOWELS = {
     },
 }
 
-# Order of vowels for display (combined vowels first, then diphthongs)
-LESSON3_VOWELS_ORDER = ["ㅐ", "ㅔ", "ㅒ", "ㅖ", "ㅘ", "ㅙ", "ㅚ", "ㅝ", "ㅞ", "ㅟ", "ㅢ"]
+# Order of vowels for display (matches howtostudykorean.com page order)
+LESSON3_VOWELS_ORDER = ["ㅐ", "ㅔ", "ㅟ", "ㅝ", "ㅚ", "ㅘ", "ㅢ", "ㅖ", "ㅙ", "ㅒ", "ㅞ"]
 
 # Vowels without audio (Y-vowels mentioned but no dedicated audio)
 LESSON3_VOWELS_NO_AUDIO = ["ㅑ", "ㅕ", "ㅠ", "ㅛ"]
 
 # Romanization for syllables - maps consonant to romanization prefix
+# Uses Revised Romanization of Korean, consistent with segment.py
 CONSONANT_ROMANIZATION = {
     "ㅇ": "",  # Silent initial
     "ㅂ": "b",
@@ -125,24 +126,6 @@ CONSONANT_ROMANIZATION = {
     "ㅍ": "p",
     "ㅊ": "ch",
     "ㅌ": "t",
-    "ㄱ": "g",
-    "ㄴ": "n",
-    "ㅃ": "pp",
-    "ㅉ": "jj",
-    "ㅊ": "ch",
-    "ㅋ": "k",
-    "ㅌ": "t",
-    "ㅍ": "p",
-    "ㄲ": "kk",
-    "ㄸ": "tt",
-    "ㅆ": "ss",
-    "ㅎ": "h",
-    "ㄹ": "l",
-    "ㅁ": "m",
-    "ㅅ": "s",
-    "ㅈ": "j",
-    "ㄷ": "d",
-    "ㅂ": "b",
 }
 
 

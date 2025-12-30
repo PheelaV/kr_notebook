@@ -300,325 +300,811 @@
       "consonant": "ㅂ",
       "vowel": "ㅣ",
       "romanization": "bi",
-      "segment_file": null
+      "segment_file": null,
+      "segment": {
+        "file": "syllables/bi.mp3",
+        "baseline": {
+          "start_ms": 500,
+          "end_ms": 880,
+          "padded_start_ms": 350,
+          "padded_end_ms": 1030
+        }
+      }
     },
     "바": {
       "consonant": "ㅂ",
       "vowel": "ㅏ",
       "romanization": "ba",
-      "segment_file": null
+      "segment_file": null,
+      "segment": {
+        "file": "syllables/ba.mp3",
+        "baseline": {
+          "start_ms": 1540,
+          "end_ms": 1940,
+          "padded_start_ms": 1390,
+          "padded_end_ms": 2090
+        }
+      }
     },
     "버": {
       "consonant": "ㅂ",
       "vowel": "ㅓ",
       "romanization": "beo",
-      "segment_file": null
+      "segment_file": null,
+      "segment": {
+        "file": "syllables/beo.mp3",
+        "baseline": {
+          "start_ms": 2660,
+          "end_ms": 3050,
+          "padded_start_ms": 2510,
+          "padded_end_ms": 3200
+        }
+      }
     },
     "브": {
       "consonant": "ㅂ",
       "vowel": "ㅡ",
       "romanization": "beu",
-      "segment_file": null
+      "segment_file": null,
+      "segment": {
+        "file": "syllables/beu.mp3",
+        "baseline": {
+          "start_ms": 3720,
+          "end_ms": 4080,
+          "padded_start_ms": 3570,
+          "padded_end_ms": 4230
+        }
+      }
     },
     "부": {
       "consonant": "ㅂ",
       "vowel": "ㅜ",
       "romanization": "bu",
-      "segment_file": null
+      "segment_file": null,
+      "segment": {
+        "file": "syllables/bu.mp3",
+        "baseline": {
+          "start_ms": 4770,
+          "end_ms": 5150,
+          "padded_start_ms": 4620,
+          "padded_end_ms": 5300
+        }
+      }
     },
     "보": {
       "consonant": "ㅂ",
       "vowel": "ㅗ",
       "romanization": "bo",
-      "segment_file": null
+      "segment_file": null,
+      "segment": {
+        "file": "syllables/bo.mp3",
+        "baseline": {
+          "start_ms": 5740,
+          "end_ms": 5950,
+          "padded_start_ms": 5590,
+          "padded_end_ms": 6100
+        }
+      }
     },
     "지": {
       "consonant": "ㅈ",
       "vowel": "ㅣ",
       "romanization": "ji",
-      "segment_file": null
+      "segment_file": null,
+      "segment": {
+        "file": "syllables/ji.mp3",
+        "baseline": {
+          "start_ms": 1800,
+          "end_ms": 2290,
+          "padded_start_ms": 1650,
+          "padded_end_ms": 2440
+        }
+      }
     },
     "자": {
       "consonant": "ㅈ",
       "vowel": "ㅏ",
       "romanization": "ja",
-      "segment_file": null
+      "segment_file": null,
+      "segment": {
+        "file": "syllables/ja.mp3",
+        "baseline": {
+          "start_ms": 2960,
+          "end_ms": 3510,
+          "padded_start_ms": 2810,
+          "padded_end_ms": 3660
+        }
+      }
     },
     "저": {
       "consonant": "ㅈ",
       "vowel": "ㅓ",
       "romanization": "jeo",
-      "segment_file": null
+      "segment_file": null,
+      "segment": {
+        "file": "syllables/jeo.mp3",
+        "baseline": {
+          "start_ms": 4100,
+          "end_ms": 4570,
+          "padded_start_ms": 3950,
+          "padded_end_ms": 4720
+        }
+      }
     },
     "즈": {
       "consonant": "ㅈ",
       "vowel": "ㅡ",
       "romanization": "jeu",
-      "segment_file": null
+      "segment_file": null,
+      "segment": {
+        "file": "syllables/jeu.mp3",
+        "baseline": {
+          "start_ms": 5130,
+          "end_ms": 5650,
+          "padded_start_ms": 4980,
+          "padded_end_ms": 5800
+        }
+      }
     },
     "주": {
       "consonant": "ㅈ",
       "vowel": "ㅜ",
       "romanization": "ju",
-      "segment_file": null
+      "segment_file": null,
+      "segment": {
+        "file": "syllables/ju.mp3",
+        "baseline": {
+          "start_ms": 6170,
+          "end_ms": 6660,
+          "padded_start_ms": 6020,
+          "padded_end_ms": 6810
+        }
+      }
     },
     "조": {
       "consonant": "ㅈ",
       "vowel": "ㅗ",
       "romanization": "jo",
-      "segment_file": null
+      "segment_file": null,
+      "segment": {
+        "file": "syllables/jo.mp3",
+        "baseline": {
+          "start_ms": 7160,
+          "end_ms": 7370,
+          "padded_start_ms": 7010,
+          "padded_end_ms": 7520
+        }
+      }
     },
     "디": {
       "consonant": "ㄷ",
       "vowel": "ㅣ",
       "romanization": "di",
-      "segment_file": null
+      "segment_file": null,
+      "segment": {
+        "file": "syllables/di.mp3",
+        "baseline": {
+          "start_ms": 1460,
+          "end_ms": 2000,
+          "padded_start_ms": 1310,
+          "padded_end_ms": 2150
+        }
+      }
     },
     "다": {
       "consonant": "ㄷ",
       "vowel": "ㅏ",
       "romanization": "da",
-      "segment_file": null
+      "segment_file": null,
+      "segment": {
+        "file": "syllables/da.mp3",
+        "baseline": {
+          "start_ms": 2580,
+          "end_ms": 3070,
+          "padded_start_ms": 2430,
+          "padded_end_ms": 3220
+        }
+      }
     },
     "더": {
       "consonant": "ㄷ",
       "vowel": "ㅓ",
       "romanization": "deo",
-      "segment_file": null
+      "segment_file": null,
+      "segment": {
+        "file": "syllables/deo.mp3",
+        "baseline": {
+          "start_ms": 3680,
+          "end_ms": 4120,
+          "padded_start_ms": 3530,
+          "padded_end_ms": 4270
+        }
+      }
     },
     "드": {
       "consonant": "ㄷ",
       "vowel": "ㅡ",
       "romanization": "deu",
-      "segment_file": null
+      "segment_file": null,
+      "segment": {
+        "file": "syllables/deu.mp3",
+        "baseline": {
+          "start_ms": 4730,
+          "end_ms": 5160,
+          "padded_start_ms": 4580,
+          "padded_end_ms": 5310
+        }
+      }
     },
     "두": {
       "consonant": "ㄷ",
       "vowel": "ㅜ",
       "romanization": "du",
-      "segment_file": null
+      "segment_file": null,
+      "segment": {
+        "file": "syllables/du.mp3",
+        "baseline": {
+          "start_ms": 5800,
+          "end_ms": 6230,
+          "padded_start_ms": 5650,
+          "padded_end_ms": 6380
+        }
+      }
     },
     "도": {
       "consonant": "ㄷ",
       "vowel": "ㅗ",
       "romanization": "do",
-      "segment_file": null
+      "segment_file": null,
+      "segment": {
+        "file": "syllables/do.mp3",
+        "baseline": {
+          "start_ms": 6870,
+          "end_ms": 7100,
+          "padded_start_ms": 6720,
+          "padded_end_ms": 7250
+        }
+      }
     },
     "기": {
       "consonant": "ㄱ",
       "vowel": "ㅣ",
       "romanization": "gi",
-      "segment_file": null
+      "segment_file": null,
+      "segment": {
+        "file": "syllables/gi.mp3",
+        "baseline": {
+          "start_ms": 1310,
+          "end_ms": 1830,
+          "padded_start_ms": 1160,
+          "padded_end_ms": 1980
+        }
+      }
     },
     "가": {
       "consonant": "ㄱ",
       "vowel": "ㅏ",
       "romanization": "ga",
-      "segment_file": null
+      "segment_file": null,
+      "segment": {
+        "file": "syllables/ga.mp3",
+        "baseline": {
+          "start_ms": 2280,
+          "end_ms": 2740,
+          "padded_start_ms": 2130,
+          "padded_end_ms": 2890
+        }
+      }
     },
     "거": {
       "consonant": "ㄱ",
       "vowel": "ㅓ",
       "romanization": "geo",
-      "segment_file": null
+      "segment_file": null,
+      "segment": {
+        "file": "syllables/geo.mp3",
+        "baseline": {
+          "start_ms": 3300,
+          "end_ms": 3730,
+          "padded_start_ms": 3150,
+          "padded_end_ms": 3880
+        }
+      }
     },
     "그": {
       "consonant": "ㄱ",
       "vowel": "ㅡ",
       "romanization": "geu",
-      "segment_file": null
+      "segment_file": null,
+      "segment": {
+        "file": "syllables/geu.mp3",
+        "baseline": {
+          "start_ms": 4280,
+          "end_ms": 4760,
+          "padded_start_ms": 4130,
+          "padded_end_ms": 4910
+        }
+      }
     },
     "구": {
       "consonant": "ㄱ",
       "vowel": "ㅜ",
       "romanization": "gu",
-      "segment_file": null
+      "segment_file": null,
+      "segment": {
+        "file": "syllables/gu.mp3",
+        "baseline": {
+          "start_ms": 5420,
+          "end_ms": 5800,
+          "padded_start_ms": 5270,
+          "padded_end_ms": 5950
+        }
+      }
     },
     "고": {
       "consonant": "ㄱ",
       "vowel": "ㅗ",
       "romanization": "go",
-      "segment_file": null
+      "segment_file": null,
+      "segment": {
+        "file": "syllables/go.mp3",
+        "baseline": {
+          "start_ms": 6610,
+          "end_ms": 6890,
+          "padded_start_ms": 6460,
+          "padded_end_ms": 7040
+        }
+      }
     },
     "시": {
       "consonant": "ㅅ",
       "vowel": "ㅣ",
       "romanization": "si",
-      "segment_file": null
+      "segment_file": null,
+      "segment": {
+        "file": "syllables/si.mp3",
+        "baseline": {
+          "start_ms": 660,
+          "end_ms": 1170,
+          "padded_start_ms": 510,
+          "padded_end_ms": 1320
+        }
+      }
     },
     "사": {
       "consonant": "ㅅ",
       "vowel": "ㅏ",
       "romanization": "sa",
-      "segment_file": null
+      "segment_file": null,
+      "segment": {
+        "file": "syllables/sa.mp3",
+        "baseline": {
+          "start_ms": 1710,
+          "end_ms": 2220,
+          "padded_start_ms": 1560,
+          "padded_end_ms": 2370
+        }
+      }
     },
     "서": {
       "consonant": "ㅅ",
       "vowel": "ㅓ",
       "romanization": "seo",
-      "segment_file": null
+      "segment_file": null,
+      "segment": {
+        "file": "syllables/seo.mp3",
+        "baseline": {
+          "start_ms": 2760,
+          "end_ms": 3240,
+          "padded_start_ms": 2610,
+          "padded_end_ms": 3390
+        }
+      }
     },
     "스": {
       "consonant": "ㅅ",
       "vowel": "ㅡ",
       "romanization": "seu",
-      "segment_file": null
+      "segment_file": null,
+      "segment": {
+        "file": "syllables/seu.mp3",
+        "baseline": {
+          "start_ms": 3710,
+          "end_ms": 4170,
+          "padded_start_ms": 3560,
+          "padded_end_ms": 4320
+        }
+      }
     },
     "수": {
       "consonant": "ㅅ",
       "vowel": "ㅜ",
       "romanization": "su",
-      "segment_file": null
+      "segment_file": null,
+      "segment": {
+        "file": "syllables/su.mp3",
+        "baseline": {
+          "start_ms": 4670,
+          "end_ms": 5100,
+          "padded_start_ms": 4520,
+          "padded_end_ms": 5250
+        }
+      }
     },
     "소": {
       "consonant": "ㅅ",
       "vowel": "ㅗ",
       "romanization": "so",
-      "segment_file": null
+      "segment_file": null,
+      "segment": {
+        "file": "syllables/so.mp3",
+        "baseline": {
+          "start_ms": 5630,
+          "end_ms": 5940,
+          "padded_start_ms": 5480,
+          "padded_end_ms": 6090
+        }
+      }
     },
     "미": {
       "consonant": "ㅁ",
       "vowel": "ㅣ",
       "romanization": "mi",
-      "segment_file": null
+      "segment_file": null,
+      "segment": {
+        "file": "syllables/mi.mp3",
+        "baseline": {
+          "start_ms": 1030,
+          "end_ms": 1600,
+          "padded_start_ms": 880,
+          "padded_end_ms": 1750
+        }
+      }
     },
     "마": {
       "consonant": "ㅁ",
       "vowel": "ㅏ",
       "romanization": "ma",
-      "segment_file": null
+      "segment_file": null,
+      "segment": {
+        "file": "syllables/ma.mp3",
+        "baseline": {
+          "start_ms": 2110,
+          "end_ms": 2580,
+          "padded_start_ms": 1960,
+          "padded_end_ms": 2730
+        }
+      }
     },
     "머": {
       "consonant": "ㅁ",
       "vowel": "ㅓ",
       "romanization": "meo",
-      "segment_file": null
+      "segment_file": null,
+      "segment": {
+        "file": "syllables/meo.mp3",
+        "baseline": {
+          "start_ms": 3130,
+          "end_ms": 3600,
+          "padded_start_ms": 2980,
+          "padded_end_ms": 3750
+        }
+      }
     },
     "므": {
       "consonant": "ㅁ",
       "vowel": "ㅡ",
       "romanization": "meu",
-      "segment_file": null
+      "segment_file": null,
+      "segment": {
+        "file": "syllables/meu.mp3",
+        "baseline": {
+          "start_ms": 4080,
+          "end_ms": 4490,
+          "padded_start_ms": 3930,
+          "padded_end_ms": 4640
+        }
+      }
     },
     "무": {
       "consonant": "ㅁ",
       "vowel": "ㅜ",
       "romanization": "mu",
-      "segment_file": null
+      "segment_file": null,
+      "segment": {
+        "file": "syllables/mu.mp3",
+        "baseline": {
+          "start_ms": 5000,
+          "end_ms": 5440,
+          "padded_start_ms": 4850,
+          "padded_end_ms": 5590
+        }
+      }
     },
     "모": {
       "consonant": "ㅁ",
       "vowel": "ㅗ",
       "romanization": "mo",
-      "segment_file": null
+      "segment_file": null,
+      "segment": {
+        "file": "syllables/mo.mp3",
+        "baseline": {
+          "start_ms": 6010,
+          "end_ms": 6290,
+          "padded_start_ms": 5860,
+          "padded_end_ms": 6440
+        }
+      }
     },
     "니": {
       "consonant": "ㄴ",
       "vowel": "ㅣ",
       "romanization": "ni",
-      "segment_file": null
+      "segment_file": null,
+      "segment": {
+        "file": "syllables/ni.mp3",
+        "baseline": {
+          "start_ms": 1210,
+          "end_ms": 1780,
+          "padded_start_ms": 1060,
+          "padded_end_ms": 1930
+        }
+      }
     },
     "나": {
       "consonant": "ㄴ",
       "vowel": "ㅏ",
       "romanization": "na",
-      "segment_file": null
+      "segment_file": null,
+      "segment": {
+        "file": "syllables/na.mp3",
+        "baseline": {
+          "start_ms": 2200,
+          "end_ms": 2700,
+          "padded_start_ms": 2050,
+          "padded_end_ms": 2850
+        }
+      }
     },
     "너": {
       "consonant": "ㄴ",
       "vowel": "ㅓ",
       "romanization": "neo",
-      "segment_file": null
+      "segment_file": null,
+      "segment": {
+        "file": "syllables/neo.mp3",
+        "baseline": {
+          "start_ms": 3150,
+          "end_ms": 3610,
+          "padded_start_ms": 3000,
+          "padded_end_ms": 3760
+        }
+      }
     },
     "느": {
       "consonant": "ㄴ",
       "vowel": "ㅡ",
       "romanization": "neu",
-      "segment_file": null
+      "segment_file": null,
+      "segment": {
+        "file": "syllables/neu.mp3",
+        "baseline": {
+          "start_ms": 4140,
+          "end_ms": 4640,
+          "padded_start_ms": 3990,
+          "padded_end_ms": 4790
+        }
+      }
     },
     "누": {
       "consonant": "ㄴ",
       "vowel": "ㅜ",
       "romanization": "nu",
-      "segment_file": null
+      "segment_file": null,
+      "segment": {
+        "file": "syllables/nu.mp3",
+        "baseline": {
+          "start_ms": 5090,
+          "end_ms": 5530,
+          "padded_start_ms": 4940,
+          "padded_end_ms": 5680
+        }
+      }
     },
     "노": {
       "consonant": "ㄴ",
       "vowel": "ㅗ",
       "romanization": "no",
-      "segment_file": null
+      "segment_file": null,
+      "segment": {
+        "file": "syllables/no.mp3",
+        "baseline": {
+          "start_ms": 6120,
+          "end_ms": 6410,
+          "padded_start_ms": 5970,
+          "padded_end_ms": 6560
+        }
+      }
     },
     "히": {
       "consonant": "ㅎ",
       "vowel": "ㅣ",
       "romanization": "hi",
-      "segment_file": null
+      "segment_file": null,
+      "segment": {
+        "file": "syllables/hi.mp3",
+        "baseline": {
+          "start_ms": 340,
+          "end_ms": 760,
+          "padded_start_ms": 190,
+          "padded_end_ms": 910
+        }
+      }
     },
     "하": {
       "consonant": "ㅎ",
       "vowel": "ㅏ",
       "romanization": "ha",
-      "segment_file": null
+      "segment_file": null,
+      "segment": {
+        "file": "syllables/ha.mp3",
+        "baseline": {
+          "start_ms": 1300,
+          "end_ms": 1670,
+          "padded_start_ms": 1150,
+          "padded_end_ms": 1820
+        }
+      }
     },
     "허": {
       "consonant": "ㅎ",
       "vowel": "ㅓ",
       "romanization": "heo",
-      "segment_file": null
+      "segment_file": null,
+      "segment": {
+        "file": "syllables/heo.mp3",
+        "baseline": {
+          "start_ms": 2280,
+          "end_ms": 2620,
+          "padded_start_ms": 2130,
+          "padded_end_ms": 2770
+        }
+      }
     },
     "흐": {
       "consonant": "ㅎ",
       "vowel": "ㅡ",
       "romanization": "heu",
-      "segment_file": null
+      "segment_file": null,
+      "segment": {
+        "file": "syllables/heu.mp3",
+        "baseline": {
+          "start_ms": 3230,
+          "end_ms": 3570,
+          "padded_start_ms": 3080,
+          "padded_end_ms": 3720
+        }
+      }
     },
     "후": {
       "consonant": "ㅎ",
       "vowel": "ㅜ",
       "romanization": "hu",
-      "segment_file": null
+      "segment_file": null,
+      "segment": {
+        "file": "syllables/hu.mp3",
+        "baseline": {
+          "start_ms": 4220,
+          "end_ms": 4550,
+          "padded_start_ms": 4070,
+          "padded_end_ms": 4700
+        }
+      }
     },
     "호": {
       "consonant": "ㅎ",
       "vowel": "ㅗ",
       "romanization": "ho",
-      "segment_file": null
+      "segment_file": null,
+      "segment": {
+        "file": "syllables/ho.mp3",
+        "baseline": {
+          "start_ms": 5190,
+          "end_ms": 5440,
+          "padded_start_ms": 5040,
+          "padded_end_ms": 5590
+        }
+      }
     },
     "리": {
       "consonant": "ㄹ",
       "vowel": "ㅣ",
       "romanization": "ri",
-      "segment_file": null
+      "segment_file": null,
+      "segment": {
+        "file": "syllables/ri.mp3",
+        "baseline": {
+          "start_ms": 1380,
+          "end_ms": 1870,
+          "padded_start_ms": 1230,
+          "padded_end_ms": 2020
+        }
+      }
     },
     "라": {
       "consonant": "ㄹ",
       "vowel": "ㅏ",
       "romanization": "ra",
-      "segment_file": null
+      "segment_file": null,
+      "segment": {
+        "file": "syllables/ra.mp3",
+        "baseline": {
+          "start_ms": 2280,
+          "end_ms": 2800,
+          "padded_start_ms": 2130,
+          "padded_end_ms": 2950
+        }
+      }
     },
     "러": {
       "consonant": "ㄹ",
       "vowel": "ㅓ",
       "romanization": "reo",
-      "segment_file": null
+      "segment_file": null,
+      "segment": {
+        "file": "syllables/reo.mp3",
+        "baseline": {
+          "start_ms": 3230,
+          "end_ms": 3710,
+          "padded_start_ms": 3080,
+          "padded_end_ms": 3860
+        }
+      }
     },
     "르": {
       "consonant": "ㄹ",
       "vowel": "ㅡ",
       "romanization": "reu",
-      "segment_file": null
+      "segment_file": null,
+      "segment": {
+        "file": "syllables/reu.mp3",
+        "baseline": {
+          "start_ms": 4110,
+          "end_ms": 4540,
+          "padded_start_ms": 3960,
+          "padded_end_ms": 4690
+        }
+      }
     },
     "루": {
       "consonant": "ㄹ",
       "vowel": "ㅜ",
       "romanization": "ru",
-      "segment_file": null
+      "segment_file": null,
+      "segment": {
+        "file": "syllables/ru.mp3",
+        "baseline": {
+          "start_ms": 4990,
+          "end_ms": 5400,
+          "padded_start_ms": 4840,
+          "padded_end_ms": 5550
+        }
+      }
     },
     "로": {
       "consonant": "ㄹ",
       "vowel": "ㅗ",
       "romanization": "ro",
-      "segment_file": null
+      "segment_file": null,
+      "segment": {
+        "file": "syllables/ro.mp3",
+        "baseline": {
+          "start_ms": 5800,
+          "end_ms": 6110,
+          "padded_start_ms": 5650,
+          "padded_end_ms": 6260
+        }
+      }
     }
   },
   "vowels_order": [

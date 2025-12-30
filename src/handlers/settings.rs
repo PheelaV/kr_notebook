@@ -27,6 +27,11 @@ pub fn has_lesson2() -> bool {
   StdPath::new(&paths::manifest_path("lesson2")).exists()
 }
 
+/// Check if lesson3 content exists
+pub fn has_lesson3() -> bool {
+  StdPath::new(&paths::manifest_path("lesson3")).exists()
+}
+
 /// Count segmented syllables for a lesson
 fn count_syllables(lesson: &str) -> usize {
   let path = paths::syllables_dir(lesson);
@@ -61,13 +66,26 @@ impl Default for SegmentParams {
   }
 }
 
+/// Syllable info for preview (Korean char + romanization + has audio + timestamps)
+pub struct SyllablePreview {
+  pub korean: String,
+  pub romanization: String,
+  pub has_audio: bool,
+  // Baseline timestamps from automatic segmentation
+  pub baseline_start_ms: Option<i32>,
+  pub baseline_end_ms: Option<i32>,
+  // Manual override timestamps (if user adjusted)
+  pub manual_start_ms: Option<i32>,
+  pub manual_end_ms: Option<i32>,
+}
+
 /// Audio row info for preview
 pub struct AudioRow {
   pub character: String,
   pub romanization: String,
-  pub syllables: Vec<String>,            // Syllable romanizations
-  pub available_segments: Vec<String>,   // Which segments have audio files
-  pub segments_json: String,             // JSON array for JS
+  pub syllables: Vec<SyllablePreview>,   // All syllables with Korean + romanization
+  pub available_count: usize,            // Count of syllables with audio
+  pub segments_json: String,             // JSON array for JS (available segments only)
   pub params: SegmentParams,             // Current segmentation parameters
 }
 
@@ -112,34 +130,71 @@ fn get_lesson_audio(lesson_id: &str, lesson_name: &str) -> Option<LessonAudio> {
 
   let rows_data = manifest.get("rows")?;
   let syllable_table = manifest.get("syllable_table")?;
-  let consonants_order: Vec<String> = manifest["consonants_order"]
+
+  // Try consonants_order first (lesson1, lesson2), then vowels_order (lesson3)
+  let row_keys: Vec<String> = manifest["consonants_order"]
     .as_array()
+    .or_else(|| manifest["vowels_order"].as_array())
     .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
     .unwrap_or_default();
 
   let mut rows = Vec::new();
-  for consonant in consonants_order {
-    if let Some(row) = rows_data.get(&consonant) {
+  for row_key in row_keys {
+    if let Some(row) = rows_data.get(&row_key) {
       let romanization = row["romanization"].as_str().unwrap_or("").to_string();
-      let syllables: Vec<String> = row["syllables"]
+
+      // Build syllables with Korean char, romanization, audio availability, and timestamps
+      let syllables: Vec<SyllablePreview> = row["syllables"]
         .as_array()
         .map(|arr| {
           arr.iter()
             .filter_map(|s| {
-              let syllable_char = s.as_str()?;
-              syllable_table
-                .get(syllable_char)
-                .and_then(|st| st["romanization"].as_str())
-                .map(String::from)
+              let korean = s.as_str()?.to_string();
+              let syllable_info = syllable_table.get(&korean)?;
+              let rom = syllable_info["romanization"].as_str().unwrap_or("").to_string();
+              let has_audio = available_segments.contains(&rom);
+
+              // Extract timestamps from segment field
+              let segment = syllable_info.get("segment");
+              let baseline = segment.and_then(|s| s.get("baseline"));
+              let manual = segment.and_then(|s| s.get("manual"));
+
+              let baseline_start_ms = baseline
+                .and_then(|b| b.get("start_ms"))
+                .and_then(|v| v.as_i64())
+                .map(|v| v as i32);
+              let baseline_end_ms = baseline
+                .and_then(|b| b.get("end_ms"))
+                .and_then(|v| v.as_i64())
+                .map(|v| v as i32);
+              let manual_start_ms = manual
+                .and_then(|m| m.get("start_ms"))
+                .and_then(|v| v.as_i64())
+                .map(|v| v as i32);
+              let manual_end_ms = manual
+                .and_then(|m| m.get("end_ms"))
+                .and_then(|v| v.as_i64())
+                .map(|v| v as i32);
+
+              Some(SyllablePreview {
+                korean,
+                romanization: rom,
+                has_audio,
+                baseline_start_ms,
+                baseline_end_ms,
+                manual_start_ms,
+                manual_end_ms,
+              })
             })
             .collect()
         })
         .unwrap_or_default();
 
+      // Build available segments list for JS playback
       let available: Vec<String> = syllables
         .iter()
-        .filter(|s| available_segments.contains(*s))
-        .cloned()
+        .filter(|s| s.has_audio)
+        .map(|s| s.romanization.clone())
         .collect();
 
       let segments_json = serde_json::to_string(&available).unwrap_or_else(|_| "[]".to_string());
@@ -169,11 +224,13 @@ fn get_lesson_audio(lesson_id: &str, lesson_name: &str) -> Option<LessonAudio> {
           .unwrap_or(0) as i32,
       };
 
+      let available_count = syllables.iter().filter(|s| s.has_audio).count();
+
       rows.push(AudioRow {
-        character: consonant,
+        character: row_key,
         romanization,
         syllables,
-        available_segments: available,
+        available_count,
         segments_json,
         params,
       });
@@ -203,8 +260,10 @@ pub struct SettingsTemplate {
   // Per-lesson status
   pub has_lesson1: bool,
   pub has_lesson2: bool,
+  pub has_lesson3: bool,
   pub lesson1_syllables: usize,
   pub lesson2_syllables: usize,
+  pub lesson3_syllables: usize,
   // Audio preview data
   pub lesson_audio: Vec<LessonAudio>,
   // Tier graduation status
@@ -234,7 +293,8 @@ pub async fn settings_page(State(pool): State<DbPool>) -> Html<String> {
 
   let has_l1 = has_lesson1();
   let has_l2 = has_lesson2();
-  let scraped_content_available = has_l1 || has_l2;
+  let has_l3 = has_lesson3();
+  let scraped_content_available = has_l1 || has_l2 || has_l3;
 
   // Get audio preview data
   let mut lesson_audio = Vec::new();
@@ -245,6 +305,11 @@ pub async fn settings_page(State(pool): State<DbPool>) -> Html<String> {
   }
   if has_l2 {
     if let Some(audio) = get_lesson_audio("lesson2", "Lesson 2: Additional Consonants") {
+      lesson_audio.push(audio);
+    }
+  }
+  if has_l3 {
+    if let Some(audio) = get_lesson_audio("lesson3", "Lesson 3: Diphthongs & Combined Vowels") {
       lesson_audio.push(audio);
     }
   }
@@ -268,8 +333,10 @@ pub async fn settings_page(State(pool): State<DbPool>) -> Html<String> {
     has_pronunciation: scraped_content_available,
     has_lesson1: has_l1,
     has_lesson2: has_l2,
+    has_lesson3: has_l3,
     lesson1_syllables: if has_l1 { count_syllables("lesson1") } else { 0 },
     lesson2_syllables: if has_l2 { count_syllables("lesson2") } else { 0 },
+    lesson3_syllables: if has_l3 { count_syllables("lesson3") } else { 0 },
     lesson_audio,
     tier_graduation,
   };
@@ -390,7 +457,7 @@ pub async fn trigger_scrape() -> Redirect {
 
   // Run the scraper commands for all lessons
   let cmd = format!(
-    "cd {} && uv run kr-scraper lesson1 && uv run kr-scraper lesson2 && uv run kr-scraper segment --padding 75",
+    "cd {} && uv run kr-scraper lesson1 && uv run kr-scraper lesson2 && uv run kr-scraper lesson3 && uv run kr-scraper segment --padding 75",
     paths::PY_SCRIPTS_DIR
   );
   let _ = Command::new("sh").args(["-c", &cmd]).output();
@@ -413,6 +480,10 @@ pub async fn trigger_scrape_lesson(Path(lesson): Path<String>) -> Redirect {
     ),
     "2" => format!(
       "cd {} && uv run kr-scraper lesson2 && uv run kr-scraper segment -l 2 --padding 75",
+      paths::PY_SCRIPTS_DIR
+    ),
+    "3" => format!(
+      "cd {} && uv run kr-scraper lesson3 && uv run kr-scraper segment -l 3 --padding 75",
       paths::PY_SCRIPTS_DIR
     ),
     _ => return Redirect::to("/settings"),
@@ -449,6 +520,7 @@ pub async fn delete_scraped_lesson(Path(lesson): Path<String>) -> Redirect {
   let path = match lesson.as_str() {
     "1" => paths::lesson_dir("lesson1"),
     "2" => paths::lesson_dir("lesson2"),
+    "3" => paths::lesson_dir("lesson3"),
     _ => return Redirect::to("/settings"),
   };
 
@@ -498,8 +570,8 @@ pub async fn trigger_segment(Form(form): Form<SegmentForm>) -> Html<String> {
         ok_count, form.padding
       );
 
-      // Add out-of-band swaps for all rows in both lessons
-      for lesson_id in ["lesson1", "lesson2"] {
+      // Add out-of-band swaps for all rows in all lessons
+      for lesson_id in ["lesson1", "lesson2", "lesson3"] {
         if let Some(lesson_audio) = get_lesson_audio(lesson_id, "") {
           for row in lesson_audio.rows {
             let row_template = AudioRowTemplate {
@@ -638,7 +710,7 @@ pub async fn trigger_row_segment(Form(form): Form<RowSegmentForm>) -> Html<Strin
       character: form.row.clone(),
       romanization: form.row,
       syllables: vec![],
-      available_segments: vec![],
+      available_count: 0,
       segments_json: "[]".to_string(),
       params: SegmentParams::default(),
     }),
@@ -684,17 +756,49 @@ fn get_audio_row(lesson_id: &str, row_romanization: &str) -> Option<AudioRow> {
       continue;
     }
 
-    let syllables: Vec<String> = info["syllables"]
+    // Build syllables with Korean char, romanization, audio availability, and timestamps
+    let syllables: Vec<SyllablePreview> = info["syllables"]
       .as_array()
       .map(|arr| {
         arr
           .iter()
           .filter_map(|s| {
-            let syllable_char = s.as_str()?;
-            syllable_table
-              .get(syllable_char)
-              .and_then(|st| st["romanization"].as_str())
-              .map(String::from)
+            let korean = s.as_str()?.to_string();
+            let syllable_info = syllable_table.get(&korean)?;
+            let rom = syllable_info["romanization"].as_str().unwrap_or("").to_string();
+            let has_audio = available_segments.contains(&rom);
+
+            // Extract timestamps from segment field
+            let segment = syllable_info.get("segment");
+            let baseline = segment.and_then(|s| s.get("baseline"));
+            let manual = segment.and_then(|s| s.get("manual"));
+
+            let baseline_start_ms = baseline
+              .and_then(|b| b.get("start_ms"))
+              .and_then(|v| v.as_i64())
+              .map(|v| v as i32);
+            let baseline_end_ms = baseline
+              .and_then(|b| b.get("end_ms"))
+              .and_then(|v| v.as_i64())
+              .map(|v| v as i32);
+            let manual_start_ms = manual
+              .and_then(|m| m.get("start_ms"))
+              .and_then(|v| v.as_i64())
+              .map(|v| v as i32);
+            let manual_end_ms = manual
+              .and_then(|m| m.get("end_ms"))
+              .and_then(|v| v.as_i64())
+              .map(|v| v as i32);
+
+            Some(SyllablePreview {
+              korean,
+              romanization: rom,
+              has_audio,
+              baseline_start_ms,
+              baseline_end_ms,
+              manual_start_ms,
+              manual_end_ms,
+            })
           })
           .collect()
       })
@@ -702,8 +806,8 @@ fn get_audio_row(lesson_id: &str, row_romanization: &str) -> Option<AudioRow> {
 
     let available: Vec<String> = syllables
       .iter()
-      .filter(|s| available_segments.contains(*s))
-      .cloned()
+      .filter(|s| s.has_audio)
+      .map(|s| s.romanization.clone())
       .collect();
 
     let segments_json = serde_json::to_string(&available).unwrap_or_else(|_| "[]".to_string());
@@ -732,11 +836,13 @@ fn get_audio_row(lesson_id: &str, row_romanization: &str) -> Option<AudioRow> {
         .unwrap_or(0) as i32,
     };
 
+    let available_count = syllables.iter().filter(|s| s.has_audio).count();
+
     return Some(AudioRow {
       character: char.clone(),
       romanization: romanization.to_string(),
       syllables,
-      available_segments: available,
+      available_count,
       segments_json,
       params,
     });
@@ -817,4 +923,138 @@ pub async fn restore_tier(State(pool): State<DbPool>, Path(tier): Path<u8>) -> R
   });
 
   Redirect::to("/settings")
+}
+
+/// Apply manual segment timestamps
+#[derive(Deserialize)]
+pub struct ManualSegmentForm {
+  pub lesson: String,
+  pub syllable: String,      // Korean character
+  pub romanization: String,  // Romanized name for audio file
+  pub row: String,           // Row romanization for refreshing UI
+  pub start_ms: i32,
+  pub end_ms: i32,
+}
+
+pub async fn trigger_manual_segment(Form(form): Form<ManualSegmentForm>) -> Html<String> {
+  #[cfg(feature = "profiling")]
+  crate::profile_log!(
+    EventType::Custom {
+      name: "segment_manual".into(),
+      data: serde_json::json!({
+        "lesson": form.lesson,
+        "syllable": form.syllable,
+        "start_ms": form.start_ms,
+        "end_ms": form.end_ms,
+      }),
+    }
+  );
+
+  // Call Python apply-manual command
+  let cmd = format!(
+    "cd {} && uv run kr-scraper apply-manual {} {} --start {} --end {}",
+    paths::PY_SCRIPTS_DIR,
+    form.lesson,
+    form.syllable,
+    form.start_ms,
+    form.end_ms
+  );
+
+  let (status_message, status_success) = match Command::new("sh").args(["-c", &cmd]).output() {
+    Ok(output) if output.status.success() => {
+      ("Manual applied".to_string(), true)
+    }
+    Ok(output) => {
+      let stderr = String::from_utf8_lossy(&output.stderr);
+      (
+        format!("Failed: {}", stderr.lines().next().unwrap_or("unknown error")),
+        false,
+      )
+    }
+    Err(e) => (format!("Failed: {}", e), false),
+  };
+
+  // Re-read the updated row data from manifest
+  let row_data = get_audio_row(&form.lesson, &form.row);
+
+  let template = AudioRowTemplate {
+    lesson_id: form.lesson,
+    row: row_data.unwrap_or_else(|| AudioRow {
+      character: form.row.clone(),
+      romanization: form.row,
+      syllables: vec![],
+      available_count: 0,
+      segments_json: "[]".to_string(),
+      params: SegmentParams::default(),
+    }),
+    show_params: false,
+    status_message,
+    status_success,
+  };
+
+  Html(template.render().unwrap_or_default())
+}
+
+/// Reset manual segment timestamps to baseline
+#[derive(Deserialize)]
+pub struct ResetSegmentForm {
+  pub lesson: String,
+  pub syllable: String,      // Korean character
+  pub romanization: String,  // Romanized name for audio file
+  pub row: String,           // Row romanization for refreshing UI
+}
+
+pub async fn trigger_reset_segment(Form(form): Form<ResetSegmentForm>) -> Html<String> {
+  #[cfg(feature = "profiling")]
+  crate::profile_log!(
+    EventType::Custom {
+      name: "segment_reset".into(),
+      data: serde_json::json!({
+        "lesson": form.lesson,
+        "syllable": form.syllable,
+      }),
+    }
+  );
+
+  // Call Python reset-manual command
+  let cmd = format!(
+    "cd {} && uv run kr-scraper reset-manual {} {}",
+    paths::PY_SCRIPTS_DIR,
+    form.lesson,
+    form.syllable
+  );
+
+  let (status_message, status_success) = match Command::new("sh").args(["-c", &cmd]).output() {
+    Ok(output) if output.status.success() => {
+      ("Reset to baseline".to_string(), true)
+    }
+    Ok(output) => {
+      let stderr = String::from_utf8_lossy(&output.stderr);
+      (
+        format!("Failed: {}", stderr.lines().next().unwrap_or("unknown error")),
+        false,
+      )
+    }
+    Err(e) => (format!("Failed: {}", e), false),
+  };
+
+  // Re-read the updated row data from manifest
+  let row_data = get_audio_row(&form.lesson, &form.row);
+
+  let template = AudioRowTemplate {
+    lesson_id: form.lesson,
+    row: row_data.unwrap_or_else(|| AudioRow {
+      character: form.row.clone(),
+      romanization: form.row,
+      syllables: vec![],
+      available_count: 0,
+      segments_json: "[]".to_string(),
+      params: SegmentParams::default(),
+    }),
+    show_params: false,
+    status_message,
+    status_success,
+  };
+
+  Html(template.render().unwrap_or_default())
 }

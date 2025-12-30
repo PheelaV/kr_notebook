@@ -92,8 +92,8 @@ pub const TIERS: [TierInfo; 4] = [
     },
     TierInfo {
         tier: 3,
-        name: "Tier 3: Aspirated & Tense",
-        short_name: "Aspirated & Tense Consonants",
+        name: "Lesson 3: Diphthongs & Combined Vowels",
+        short_name: "Diphthongs & Combined Vowels",
         lesson_id: "lesson3",
     },
     TierInfo {

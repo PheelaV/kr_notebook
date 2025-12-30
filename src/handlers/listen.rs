@@ -6,7 +6,7 @@ use axum::{
 use rand::prelude::IndexedRandom;
 use serde::Deserialize;
 
-use super::settings::{has_lesson1, has_lesson2};
+use super::settings::{has_lesson1, has_lesson2, has_lesson3};
 use crate::filters;
 use crate::audio::{
     get_available_syllables, get_row_romanization, get_row_syllables, load_manifest,
@@ -68,30 +68,64 @@ fn build_tier_from_manifest(tier: u8, lesson_id: &str, name: &str) -> Option<Lis
     let mut rows = Vec::new();
     let mut total_syllables = 0;
 
-    for c in &manifest.consonants_order {
-        let syllable_infos = get_row_syllables(&manifest, c);
+    // Lesson 3 has vowel rows (no consonants_order), lessons 1/2 have consonant rows
+    let is_matrix = !manifest.consonants_order.is_empty();
 
-        // Filter to only syllables with audio and convert to ListenSyllable
-        let syllables: Vec<ListenSyllable> = syllable_infos
-            .into_iter()
-            .filter(|s| available_syllables.contains(&s.romanization))
-            .map(|s| ListenSyllable {
-                character: s.character,
-                romanization: s.romanization.clone(),
-                audio_path: format!(
-                    "/audio/scraped/htsk/{}/syllables/{}.mp3",
-                    lesson_id, s.romanization
-                ),
-            })
-            .collect();
+    if is_matrix {
+        // Lesson 1/2: Iterate over consonant rows
+        for c in &manifest.consonants_order {
+            let syllable_infos = get_row_syllables(&manifest, c);
 
-        if !syllables.is_empty() {
-            total_syllables += syllables.len();
-            rows.push(ListenRow {
-                consonant: c.clone(),
-                romanization: get_row_romanization(&manifest, c),
-                syllables,
-            });
+            // Filter to only syllables with audio and convert to ListenSyllable
+            let syllables: Vec<ListenSyllable> = syllable_infos
+                .into_iter()
+                .filter(|s| available_syllables.contains(&s.romanization))
+                .map(|s| ListenSyllable {
+                    character: s.character,
+                    romanization: s.romanization.clone(),
+                    audio_path: format!(
+                        "/audio/scraped/htsk/{}/syllables/{}.mp3",
+                        lesson_id, s.romanization
+                    ),
+                })
+                .collect();
+
+            if !syllables.is_empty() {
+                total_syllables += syllables.len();
+                rows.push(ListenRow {
+                    consonant: c.clone(),
+                    romanization: get_row_romanization(&manifest, c),
+                    syllables,
+                });
+            }
+        }
+    } else {
+        // Lesson 3: Iterate over vowel rows (diphthongs/combined vowels)
+        for v in &manifest.vowels_order {
+            let syllable_infos = get_row_syllables(&manifest, v);
+
+            // Filter to only syllables with audio and convert to ListenSyllable
+            let syllables: Vec<ListenSyllable> = syllable_infos
+                .into_iter()
+                .filter(|s| available_syllables.contains(&s.romanization))
+                .map(|s| ListenSyllable {
+                    character: s.character,
+                    romanization: s.romanization.clone(),
+                    audio_path: format!(
+                        "/audio/scraped/htsk/{}/syllables/{}.mp3",
+                        lesson_id, s.romanization
+                    ),
+                })
+                .collect();
+
+            if !syllables.is_empty() {
+                total_syllables += syllables.len();
+                rows.push(ListenRow {
+                    consonant: v.clone(), // Using vowel as the "row" identifier
+                    romanization: vowel_romanization(v).to_string(),
+                    syllables,
+                });
+            }
         }
     }
 
@@ -206,6 +240,8 @@ pub struct ListenIndexTemplate {
     pub tier1_count: usize,
     pub tier2_available: bool,
     pub tier2_count: usize,
+    pub tier3_available: bool,
+    pub tier3_count: usize,
 }
 
 #[derive(Template)]
@@ -289,11 +325,20 @@ pub async fn listen_index() -> impl IntoResponse {
         None
     };
 
+    let tier3 = if has_lesson3() {
+        config::get_listen_tier_info(3)
+            .and_then(|(lesson_id, name)| build_tier_from_manifest(3, lesson_id, name))
+    } else {
+        None
+    };
+
     let template = ListenIndexTemplate {
         tier1_available: tier1.is_some(),
         tier1_count: tier1.as_ref().map(|t| t.total_syllables).unwrap_or(0),
         tier2_available: tier2.is_some(),
         tier2_count: tier2.as_ref().map(|t| t.total_syllables).unwrap_or(0),
+        tier3_available: tier3.is_some(),
+        tier3_count: tier3.as_ref().map(|t| t.total_syllables).unwrap_or(0),
     };
 
     Html(template.render().unwrap_or_default())

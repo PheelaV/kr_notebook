@@ -84,6 +84,16 @@ def romanize_syllable(syllable: str) -> str:
 
 
 @dataclass
+class SegmentTimestamp:
+    """Timestamp info for a single segment."""
+
+    start_ms: int
+    end_ms: int
+    padded_start_ms: int
+    padded_end_ms: int
+
+
+@dataclass
 class SegmentResult:
     """Result of segmenting an audio file."""
 
@@ -98,6 +108,8 @@ class SegmentResult:
     skipped_segments: int = 0
     # Effective parameters used (for storing back to manifest)
     effective_params: dict = field(default_factory=dict)
+    # Timestamps for each saved segment (romanization -> SegmentTimestamp)
+    timestamps: dict[str, SegmentTimestamp] = field(default_factory=dict)
 
 
 def detect_syllable_boundaries(
@@ -219,6 +231,7 @@ def segment_audio_file(
     output_dir.mkdir(parents=True, exist_ok=True)
     output_files = []
     segments_saved = 0
+    timestamps: dict[str, SegmentTimestamp] = {}
 
     # Check for mismatch
     mismatch = len(boundaries) != len(syllables)
@@ -230,6 +243,7 @@ def segment_audio_file(
             break
 
         syllable = syllables[i]
+        romanization = romanize_syllable(syllable)
 
         # Add padding (but don't go out of bounds)
         padded_start = max(0, start_ms - effective_padding)
@@ -238,12 +252,20 @@ def segment_audio_file(
         segment = audio[padded_start:padded_end]
 
         # Create filename from syllable romanization
-        filename = f"{romanize_syllable(syllable)}.mp3"
+        filename = f"{romanization}.mp3"
 
         output_path = output_dir / filename
         segment.export(output_path, format="mp3")
         output_files.append(output_path)
         segments_saved += 1
+
+        # Store timestamp info
+        timestamps[romanization] = SegmentTimestamp(
+            start_ms=start_ms,
+            end_ms=end_ms,
+            padded_start_ms=padded_start,
+            padded_end_ms=padded_end,
+        )
 
     return SegmentResult(
         source_file=audio_path,
@@ -262,6 +284,7 @@ def segment_audio_file(
             **({"skip_first": override["skip_first"]} if "skip_first" in override else {}),
             **({"skip_last": override["skip_last"]} if "skip_last" in override else {}),
         },
+        timestamps=timestamps,
     )
 
 
@@ -300,6 +323,7 @@ def segment_lesson1(
     syllables_dir.mkdir(exist_ok=True)
 
     results = {}
+    all_timestamps: dict[str, SegmentTimestamp] = {}
 
     # Process column audio (vowel columns) - only lesson1 has these
     columns = manifest.get("columns", {})
@@ -323,6 +347,7 @@ def segment_lesson1(
             manifest_params=manifest_params,
         )
         results[str(audio_path)] = result
+        all_timestamps.update(result.timestamps)
 
         # Store effective params back to manifest
         info["segment_params"] = result.effective_params
@@ -352,6 +377,7 @@ def segment_lesson1(
             manifest_params=manifest_params,
         )
         results[str(audio_path)] = result
+        all_timestamps.update(result.timestamps)
 
         # Store effective params back to manifest
         info["segment_params"] = result.effective_params
@@ -363,8 +389,8 @@ def segment_lesson1(
     with open(manifest_path, "w", encoding="utf-8") as f:
         json.dump(manifest, f, ensure_ascii=False, indent=2)
 
-    # Update manifest with segment file info
-    update_manifest_with_segments(manifest_path, syllables_dir)
+    # Update manifest with segment file info and timestamps
+    update_manifest_with_segments(manifest_path, syllables_dir, all_timestamps)
 
     return results
 
@@ -450,27 +476,234 @@ def segment_single_row(
     with open(manifest_path, "w", encoding="utf-8") as f:
         json.dump(manifest, f, ensure_ascii=False, indent=2)
 
-    # Update segment file references
-    update_manifest_with_segments(manifest_path, syllables_dir)
+    # Update segment file references and timestamps
+    update_manifest_with_segments(manifest_path, syllables_dir, result.timestamps)
 
     return result
 
 
-def update_manifest_with_segments(manifest_path: Path, syllables_dir: Path) -> None:
-    """Update the manifest with paths to segmented syllables."""
+def update_manifest_with_segments(
+    manifest_path: Path,
+    syllables_dir: Path,
+    all_timestamps: dict[str, SegmentTimestamp] | None = None,
+) -> None:
+    """Update the manifest with paths to segmented syllables and timestamps.
+
+    IMPORTANT: Only updates syllables that are in all_timestamps.
+    Syllables not in all_timestamps are left completely unchanged to preserve
+    existing baselines and manual overrides from previous segmentation runs.
+
+    Args:
+        manifest_path: Path to the manifest.json file.
+        syllables_dir: Directory containing segmented syllable files.
+        all_timestamps: Dict mapping romanization -> SegmentTimestamp from segmentation.
+                       Only syllables in this dict will have their segment info updated.
+    """
     with open(manifest_path, encoding="utf-8") as f:
         manifest = json.load(f)
 
     syllable_table = manifest.get("syllable_table", {})
+    all_timestamps = all_timestamps or {}
 
-    # Check which syllable files exist
+    # Only update syllables that were actually segmented in this run
+    # Leave all others unchanged to preserve existing baselines and manual overrides
     for syllable, info in syllable_table.items():
-        # Try to find a matching segment file
-        for mp3_file in syllables_dir.glob("*.mp3"):
-            # Check if the syllable is in the filename
-            if syllable in mp3_file.stem or mp3_file.stem.endswith(f"_{syllable}"):
-                info["segment_file"] = f"syllables/{mp3_file.name}"
-                break
+        romanization = info.get("romanization", "")
+
+        # CRITICAL: Only update if this syllable was part of the current segmentation
+        if romanization not in all_timestamps:
+            continue
+
+        segment_file = f"syllables/{romanization}.mp3"
+        full_path = syllables_dir / f"{romanization}.mp3"
+
+        if full_path.exists():
+            ts = all_timestamps[romanization]
+
+            # Build new segment info with baseline timestamps
+            segment_info: dict = {
+                "file": segment_file,
+                "baseline": {
+                    "start_ms": ts.start_ms,
+                    "end_ms": ts.end_ms,
+                    "padded_start_ms": ts.padded_start_ms,
+                    "padded_end_ms": ts.padded_end_ms,
+                },
+            }
+
+            # Preserve existing manual overrides if any
+            existing_segment = info.get("segment")
+            if isinstance(existing_segment, dict) and "manual" in existing_segment:
+                segment_info["manual"] = existing_segment["manual"]
+
+            info["segment"] = segment_info
 
     with open(manifest_path, "w", encoding="utf-8") as f:
         json.dump(manifest, f, ensure_ascii=False, indent=2)
+
+
+def apply_manual_segment(
+    lesson_dir: Path,
+    syllable: str,
+    start_ms: int,
+    end_ms: int,
+    padding_ms: int = 75,
+) -> bool:
+    """Apply manual timestamp adjustment for a single syllable.
+
+    Re-extracts the syllable audio using the specified timestamps and
+    stores the manual override in the manifest.
+
+    Args:
+        lesson_dir: Directory containing the lesson files.
+        syllable: The Korean syllable character to adjust.
+        start_ms: Manual start time in milliseconds (relative to source row audio).
+        end_ms: Manual end time in milliseconds.
+        padding_ms: Padding to add before/after the segment.
+
+    Returns:
+        True if successful, False if syllable not found.
+    """
+    manifest_path = lesson_dir / "manifest.json"
+    if not manifest_path.exists():
+        raise FileNotFoundError(f"No manifest found at {manifest_path}")
+
+    with open(manifest_path, encoding="utf-8") as f:
+        manifest = json.load(f)
+
+    syllable_table = manifest.get("syllable_table", {})
+    syllable_info = syllable_table.get(syllable)
+    if not syllable_info:
+        return False
+
+    romanization = syllable_info.get("romanization", "")
+
+    # Find which row this syllable belongs to (for the source audio)
+    rows = manifest.get("rows", {})
+    source_row = None
+    for char, row_info in rows.items():
+        if syllable in row_info.get("syllables", []):
+            source_row = row_info
+            break
+
+    if not source_row:
+        return False
+
+    # Load the source row audio
+    audio_path = lesson_dir / source_row["file"]
+    if not audio_path.exists():
+        return False
+
+    audio = AudioSegment.from_mp3(audio_path)
+
+    # Apply padding but don't go out of bounds
+    padded_start = max(0, start_ms - padding_ms)
+    padded_end = min(len(audio), end_ms + padding_ms)
+
+    # Extract segment
+    segment = audio[padded_start:padded_end]
+
+    # Save to syllables directory
+    syllables_dir = lesson_dir / "syllables"
+    syllables_dir.mkdir(exist_ok=True)
+    output_path = syllables_dir / f"{romanization}.mp3"
+    segment.export(output_path, format="mp3")
+
+    # Update manifest with manual override (preserve baseline)
+    segment_info = syllable_info.get("segment")
+    if not isinstance(segment_info, dict) or not segment_info:
+        # No existing segment info - create new with file path
+        segment_info = {"file": f"syllables/{romanization}.mp3"}
+    elif "file" not in segment_info:
+        # Ensure file key exists even if segment was partial
+        segment_info["file"] = f"syllables/{romanization}.mp3"
+
+    segment_info["manual"] = {
+        "start_ms": start_ms,
+        "end_ms": end_ms,
+        "padded_start_ms": padded_start,
+        "padded_end_ms": padded_end,
+    }
+    syllable_info["segment"] = segment_info
+
+    with open(manifest_path, "w", encoding="utf-8") as f:
+        json.dump(manifest, f, ensure_ascii=False, indent=2)
+
+    return True
+
+
+def reset_manual_segment(lesson_dir: Path, syllable: str) -> bool:
+    """Reset manual timestamp adjustment, restoring baseline.
+
+    Re-extracts the syllable audio using the baseline timestamps and
+    removes the manual override from the manifest.
+
+    Args:
+        lesson_dir: Directory containing the lesson files.
+        syllable: The Korean syllable character to reset.
+
+    Returns:
+        True if successful, False if syllable not found or no baseline exists.
+    """
+    manifest_path = lesson_dir / "manifest.json"
+    if not manifest_path.exists():
+        raise FileNotFoundError(f"No manifest found at {manifest_path}")
+
+    with open(manifest_path, encoding="utf-8") as f:
+        manifest = json.load(f)
+
+    syllable_table = manifest.get("syllable_table", {})
+    syllable_info = syllable_table.get(syllable)
+    if not syllable_info:
+        return False
+
+    romanization = syllable_info.get("romanization", "")
+    segment_info = syllable_info.get("segment")
+
+    if not isinstance(segment_info, dict):
+        return False
+
+    # Get baseline timestamps
+    baseline = segment_info.get("baseline")
+    if not baseline:
+        # No baseline to restore to
+        return False
+
+    # Find which row this syllable belongs to (for the source audio)
+    rows = manifest.get("rows", {})
+    source_row = None
+    for char, row_info in rows.items():
+        if syllable in row_info.get("syllables", []):
+            source_row = row_info
+            break
+
+    if not source_row:
+        return False
+
+    # Load the source row audio
+    audio_path = lesson_dir / source_row["file"]
+    if not audio_path.exists():
+        return False
+
+    audio = AudioSegment.from_mp3(audio_path)
+
+    # Use baseline padded timestamps
+    padded_start = baseline["padded_start_ms"]
+    padded_end = baseline["padded_end_ms"]
+
+    # Extract segment using baseline
+    segment = audio[padded_start:padded_end]
+
+    # Save to syllables directory
+    syllables_dir = lesson_dir / "syllables"
+    output_path = syllables_dir / f"{romanization}.mp3"
+    segment.export(output_path, format="mp3")
+
+    # Remove manual override from manifest
+    if "manual" in segment_info:
+        del segment_info["manual"]
+
+    with open(manifest_path, "w", encoding="utf-8") as f:
+        json.dump(manifest, f, ensure_ascii=False, indent=2)
+
+    return True

@@ -22,7 +22,7 @@
       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
       </svg>
-      Seg ({{ row.available_segments.len() }}/{{ row.syllables.len() }})
+      Seg ({{ row.available_count }}/{{ row.syllables.len() }})
     </button>
 
     <!-- Toggle params button -->
@@ -82,14 +82,104 @@
     </form>
   </div>
 
-  <!-- Individual segment buttons -->
+  <!-- Individual segment buttons with timestamps -->
   <div class="flex gap-1 flex-wrap mt-2">
-    {% for seg in row.available_segments %}
-    <button onclick="playAudio('{{ lesson_id }}', 'syllables/{{ seg }}.mp3')"
-            class="px-1.5 py-0.5 text-xs bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded hover:bg-gray-200 dark:hover:bg-gray-600"
-            title="Play {{ seg }}">
-      {{ seg }}
-    </button>
+    {% for syl in row.syllables %}
+    <div class="inline-flex items-center gap-0.5">
+      {% if syl.has_audio %}
+      <button onclick="playAudio('{{ lesson_id }}', 'syllables/{{ syl.romanization }}.mp3')"
+              class="px-1.5 py-0.5 text-xs bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-l hover:bg-gray-200 dark:hover:bg-gray-600"
+              title="Play {{ syl.romanization }}">
+        {{ syl.romanization }} ({{ syl.korean }})
+      </button>
+      {% if syl.manual_start_ms.is_some() %}
+      {# Manual timestamps set - show in amber with start-end #}
+      <button onclick="toggleSyllableEdit('{{ lesson_id }}', '{{ syl.romanization }}')"
+              class="px-1 py-0.5 text-xs bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 rounded-r hover:bg-amber-200 dark:hover:bg-amber-800/50"
+              title="Manual: {{ syl.manual_start_ms.unwrap() }}-{{ syl.manual_end_ms.unwrap() }}ms{% if syl.baseline_start_ms.is_some() %} (baseline: {{ syl.baseline_start_ms.unwrap() }}-{{ syl.baseline_end_ms.unwrap() }}){% endif %}">
+        {{ syl.manual_start_ms.unwrap() }}-{{ syl.manual_end_ms.unwrap() }}
+      </button>
+      {% else %}{% if syl.baseline_start_ms.is_some() %}
+      {# Baseline only - show in gray with start-end #}
+      <button onclick="toggleSyllableEdit('{{ lesson_id }}', '{{ syl.romanization }}')"
+              class="px-1 py-0.5 text-xs bg-gray-50 dark:bg-gray-800 text-gray-400 dark:text-gray-500 rounded-r hover:bg-gray-200 dark:hover:bg-gray-600"
+              title="Baseline: {{ syl.baseline_start_ms.unwrap() }}-{{ syl.baseline_end_ms.unwrap() }}ms">
+        {{ syl.baseline_start_ms.unwrap() }}-{{ syl.baseline_end_ms.unwrap() }}
+      </button>
+      {% else %}
+      {# No baseline, no manual - show + to add #}
+      <button onclick="toggleSyllableEdit('{{ lesson_id }}', '{{ syl.romanization }}')"
+              class="px-1 py-0.5 text-xs bg-red-50 dark:bg-red-900/20 text-red-400 dark:text-red-500 rounded-r hover:bg-red-100 dark:hover:bg-red-900/40"
+              title="No timestamps - click to manually set">
+        +
+      </button>
+      {% endif %}{% endif %}
+      {% else %}
+      {# No audio file exists #}
+      <span class="px-1.5 py-0.5 text-xs bg-gray-50 dark:bg-gray-800 text-gray-400 dark:text-gray-600 rounded-l"
+            title="No audio for {{ syl.romanization }}">
+        {{ syl.romanization }} ({{ syl.korean }})
+      </span>
+      <button onclick="toggleSyllableEdit('{{ lesson_id }}', '{{ syl.romanization }}')"
+              class="px-1 py-0.5 text-xs bg-red-50 dark:bg-red-900/20 text-red-400 dark:text-red-500 rounded-r hover:bg-red-100 dark:hover:bg-red-900/40"
+              title="No audio - click to manually create from source">
+        +
+      </button>
+      {% endif %}
+    </div>
     {% endfor %}
   </div>
+
+  <!-- Per-syllable timestamp edit forms (hidden by default) -->
+  {% for syl in row.syllables %}
+  <div id="edit-{{ lesson_id }}-{{ syl.romanization }}" class="hidden mt-2 p-2 {% if syl.baseline_start_ms.is_some() %}bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800{% else %}bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800{% endif %} rounded border">
+    <form hx-post="/settings/segment-manual"
+          hx-target="#audio-row-{{ lesson_id }}-{{ row.romanization }}"
+          hx-swap="outerHTML"
+          class="flex flex-wrap items-center gap-2 text-xs">
+      <input type="hidden" name="lesson" value="{{ lesson_id }}">
+      <input type="hidden" name="syllable" value="{{ syl.korean }}">
+      <input type="hidden" name="romanization" value="{{ syl.romanization }}">
+      <input type="hidden" name="row" value="{{ row.romanization }}">
+
+      <span class="font-medium text-gray-700 dark:text-gray-300">{{ syl.romanization }}:</span>
+
+      <label class="text-gray-600 dark:text-gray-400">
+        Start
+        <input type="number" name="start_ms"
+               value="{% if syl.manual_start_ms.is_some() %}{{ syl.manual_start_ms.unwrap() }}{% else %}{% if syl.baseline_start_ms.is_some() %}{{ syl.baseline_start_ms.unwrap() }}{% else %}0{% endif %}{% endif %}"
+               class="w-16 px-1 py-0.5 border rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+      </label>
+
+      <label class="text-gray-600 dark:text-gray-400">
+        End
+        <input type="number" name="end_ms"
+               value="{% if syl.manual_end_ms.is_some() %}{{ syl.manual_end_ms.unwrap() }}{% else %}{% if syl.baseline_end_ms.is_some() %}{{ syl.baseline_end_ms.unwrap() }}{% else %}500{% endif %}{% endif %}"
+               class="w-16 px-1 py-0.5 border rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+      </label>
+
+      {% if syl.baseline_start_ms.is_some() %}
+      <span class="text-gray-400">(baseline: {{ syl.baseline_start_ms.unwrap() }}-{{ syl.baseline_end_ms.unwrap() }})</span>
+      {% else %}
+      <span class="text-amber-500">(no baseline - enter timestamps from source audio)</span>
+      {% endif %}
+
+      <button type="submit" class="px-2 py-0.5 bg-blue-600 text-white rounded hover:bg-blue-700">
+        Apply
+      </button>
+
+      {% if syl.manual_start_ms.is_some() && syl.baseline_start_ms.is_some() %}
+      <button type="button"
+              hx-post="/settings/segment-reset"
+              hx-target="#audio-row-{{ lesson_id }}-{{ row.romanization }}"
+              hx-swap="outerHTML"
+              hx-vals='{"lesson": "{{ lesson_id }}", "syllable": "{{ syl.korean }}", "romanization": "{{ syl.romanization }}", "row": "{{ row.romanization }}"}'
+              class="px-2 py-0.5 bg-gray-500 text-white rounded hover:bg-gray-600"
+              title="Reset to baseline">
+        ✕
+      </button>
+      {% endif %}
+    </form>
+  </div>
+  {% endfor %}
 </div>

@@ -622,3 +622,83 @@ def segment_row(
         click.echo(f"Segmented {row}: {result.segments_saved}/{result.segments_found} saved")
     else:
         click.echo(f"Row {row} not found in lesson {lesson}")
+
+
+@cli.command("apply-manual")
+@click.argument("lesson")
+@click.argument("syllable")
+@click.option(
+    "--start",
+    type=int,
+    required=True,
+    help="Start time in milliseconds (relative to source row audio).",
+)
+@click.option(
+    "--end",
+    type=int,
+    required=True,
+    help="End time in milliseconds.",
+)
+@click.option(
+    "--padding",
+    "-P",
+    type=int,
+    default=75,
+    help="Padding (ms) before/after the segment.",
+)
+def apply_manual(lesson: str, syllable: str, start: int, end: int, padding: int) -> None:
+    """Apply manual segment timestamps for a syllable.
+
+    LESSON is the lesson identifier (e.g., 'lesson1', 'lesson3').
+    SYLLABLE is the Korean character (e.g., '가', '애').
+
+    Re-extracts the syllable audio using the specified timestamps
+    and stores the manual override in the manifest.
+    """
+    from .segment import apply_manual_segment
+
+    lesson_dir = DEFAULT_OUTPUT / lesson
+    if not lesson_dir.exists():
+        raise click.ClickException(f"Lesson directory not found: {lesson_dir}")
+
+    success = apply_manual_segment(
+        lesson_dir=lesson_dir,
+        syllable=syllable,
+        start_ms=start,
+        end_ms=end,
+        padding_ms=padding,
+    )
+
+    if success:
+        click.echo(f"Applied manual segment for {syllable}: {start}-{end}ms (padding={padding}ms)")
+    else:
+        raise click.ClickException(f"Syllable '{syllable}' not found in lesson {lesson}")
+
+
+@cli.command("reset-manual")
+@click.argument("lesson")
+@click.argument("syllable")
+def reset_manual(lesson: str, syllable: str) -> None:
+    """Reset manual segment timestamps to baseline.
+
+    LESSON is the lesson identifier (e.g., 'lesson1', 'lesson3').
+    SYLLABLE is the Korean character (e.g., '가', '애').
+
+    Re-extracts the syllable audio using the baseline timestamps
+    and removes the manual override from the manifest.
+    """
+    from .segment import reset_manual_segment
+
+    lesson_dir = DEFAULT_OUTPUT / lesson
+    if not lesson_dir.exists():
+        raise click.ClickException(f"Lesson directory not found: {lesson_dir}")
+
+    success = reset_manual_segment(
+        lesson_dir=lesson_dir,
+        syllable=syllable,
+    )
+
+    if success:
+        click.echo(f"Reset {syllable} to baseline timestamps")
+    else:
+        raise click.ClickException(f"Syllable '{syllable}' not found or no baseline available")

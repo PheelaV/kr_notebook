@@ -75,7 +75,7 @@
                  class="w-4 h-4 text-purple-600 rounded focus:ring-purple-500 dark:focus:ring-purple-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600">
           <span class="ml-3">
             <span class="bg-purple-500 text-white text-xs font-bold px-2 py-0.5 rounded-full mr-2">3</span>
-            <span class="text-gray-700 dark:text-gray-300">Aspirated & Tense Consonants</span>
+            <span class="text-gray-700 dark:text-gray-300">Diphthongs & Combined Vowels</span>
           </span>
         </label>
         <label class="flex items-center cursor-pointer">
@@ -244,7 +244,7 @@
           <a href="/pronunciation" class="px-3 py-1.5 text-sm text-indigo-600 dark:text-indigo-400 hover:underline">
             View
           </a>
-          <form method="POST" action="/settings/delete-scraped/{% if lesson.lesson_id == "lesson1" %}1{% else %}2{% endif %}" class="inline">
+          <form method="POST" action="/settings/delete-scraped/{% if lesson.lesson_id == "lesson1" %}1{% else %}{% if lesson.lesson_id == "lesson2" %}2{% else %}3{% endif %}{% endif %}" class="inline">
             <button type="button" onclick="if(confirm('Delete {{ lesson.lesson_name }} audio?')) this.form.submit();"
                     class="px-3 py-1.5 text-sm bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 rounded hover:bg-red-200 dark:hover:bg-red-900/50">
               Delete
@@ -333,9 +333,34 @@
     </div>
     {% endif %}
 
+    <!-- Lesson 3 if not downloaded -->
+    {% if !has_lesson3 %}
+    <div class="mb-4 p-4 rounded-lg border bg-gray-50 dark:bg-gray-700/50 border-gray-200 dark:border-gray-600">
+      <div class="flex items-center justify-between">
+        <div>
+          <div class="flex items-center gap-2">
+            <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
+            </svg>
+            <span class="font-medium text-gray-900 dark:text-white">Lesson 3: Diphthongs & Combined Vowels</span>
+          </div>
+          <p class="text-sm text-gray-500 dark:text-gray-400 mt-1 ml-7">
+            11 vowels: combined + diphthongs
+          </p>
+        </div>
+        <form method="POST" action="/settings/scrape/3" class="inline">
+          <button type="button" onclick="this.disabled=true; this.textContent='Downloading...'; this.form.submit();"
+                  class="px-3 py-1.5 text-sm bg-indigo-600 text-white rounded hover:bg-indigo-700">
+            Download
+          </button>
+        </form>
+      </div>
+    </div>
+    {% endif %}
+
     <!-- Bulk Actions -->
     <div class="flex flex-wrap gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
-      {% if has_lesson1 || has_lesson2 %}
+      {% if has_lesson1 || has_lesson2 || has_lesson3 %}
       <form method="POST" action="/settings/delete-scraped" class="inline">
         <button type="button" onclick="if(confirm('Delete ALL pronunciation audio?')) this.form.submit();"
                 class="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm">
@@ -344,7 +369,7 @@
       </form>
       {% endif %}
 
-      {% if !has_lesson1 || !has_lesson2 %}
+      {% if !has_lesson1 || !has_lesson2 || !has_lesson3 %}
       <form method="POST" action="/settings/scrape" class="inline">
         <button type="button" onclick="this.disabled=true; this.textContent='Downloading...'; this.form.submit();"
                 class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-sm">
@@ -355,7 +380,7 @@
     </div>
 
     <!-- Global Re-segment Section -->
-    {% if has_lesson1 || has_lesson2 %}
+    {% if has_lesson1 || has_lesson2 || has_lesson3 %}
     <div class="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
       <p class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
         Re-segment all (resets to specified padding, ignores saved params)
@@ -420,9 +445,12 @@
   let segmentQueue = [];
   let currentSegmentIndex = 0;
 
+  // Cache bust value - updated when rows are re-segmented via HTMX
+  var audioCacheBust = Date.now();
+
   function playAudio(lesson, path) {
     stopAudio();
-    settingsAudio = new Audio('/audio/scraped/htsk/' + lesson + '/' + path);
+    settingsAudio = new Audio('/audio/scraped/htsk/' + lesson + '/' + path + '?v=' + audioCacheBust);
     settingsAudio.play().catch(function(err) {
       console.log('Audio playback failed:', err);
     });
@@ -441,7 +469,7 @@
     stopAudio();
     if (!segments || segments.length === 0) return;
 
-    segmentQueue = segments.map(seg => '/audio/scraped/htsk/' + lesson + '/syllables/' + seg + '.mp3');
+    segmentQueue = segments.map(seg => '/audio/scraped/htsk/' + lesson + '/syllables/' + seg + '.mp3?v=' + audioCacheBust);
     currentSegmentIndex = 0;
     playNextSegment();
   }
@@ -464,5 +492,18 @@
       playNextSegment();
     });
   }
+
+  // Toggle syllable edit form
+  function toggleSyllableEdit(lesson, romanization) {
+    const section = document.getElementById('edit-' + lesson + '-' + romanization);
+    if (section) {
+      section.classList.toggle('hidden');
+    }
+  }
+
+  // Update cache bust after HTMX swaps (re-segmenting audio)
+  document.body.addEventListener('htmx:afterSwap', function(evt) {
+    audioCacheBust = Date.now();
+  });
 </script>
 {% endblock %}
