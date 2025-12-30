@@ -1,9 +1,10 @@
 # Korean Hangul Learning App
 
-A Rust web application for learning Korean Hangul using spaced repetition with the modern FSRS algorithm and interactive answer validation.
+A self-hosted Rust web application for learning Korean Hangul using spaced repetition with the modern FSRS algorithm. Multi-user support with per-user databases.
 
 ## Features
 
+- **Multi-User Support**: User registration/login with isolated per-user databases
 - **FSRS Algorithm**: Modern Free Spaced Repetition Scheduler (20-30% more efficient than SM-2)
 - **Interactive Learning**: Type romanization or select Korean from multiple choice - no passive reveal-and-rate
 - **Progressive Hints**: 3-level hint system (length → description → partial reveal)
@@ -17,6 +18,7 @@ A Rust web application for learning Korean Hangul using spaced repetition with t
 - **Focus Mode**: Study specific tiers only
 - **Listening Practice**: Audio recognition with syllable playback
 - **Practice Mode**: Untracked learning without affecting SRS
+- **Self-Hosted**: No cloud dependencies, runs on your own hardware
 - **Mobile-Responsive**: Hamburger menu, touch-friendly buttons, double-tap submit
 - **Haetae Mascot**: Animated Korean guardian companion
 
@@ -50,7 +52,48 @@ docker compose logs -f
 docker compose down
 ```
 
-The database persists in `./data/hangul.db`.
+User data persists in `./data/`.
+
+### Self-Hosting with Tailscale
+
+Run the app on a home server and access it securely from anywhere using [Tailscale](https://tailscale.com/):
+
+1. **Install Tailscale** on your server and devices:
+   ```bash
+   # On your server (Linux)
+   curl -fsSL https://tailscale.com/install.sh | sh
+   sudo tailscale up
+   ```
+
+2. **Run the app** (Docker or native):
+   ```bash
+   docker compose up -d
+   ```
+
+3. **Access from any device** on your Tailnet:
+   ```
+   http://<server-tailscale-ip>:3000
+   ```
+   Find your server's Tailscale IP with `tailscale ip` or in the Tailscale admin console.
+
+4. **Optional: Use MagicDNS** for a friendly hostname:
+   ```
+   http://<server-hostname>:3000
+   ```
+   Enable MagicDNS in Tailscale admin → DNS settings.
+
+**Benefits:**
+- No port forwarding or exposing to the internet
+- Encrypted connections between devices
+- Access from mobile (install Tailscale app)
+- Works behind NAT/firewalls
+
+5. **Optional: Tailscale Funnel** for public access (share with friends not on your Tailnet):
+   ```bash
+   # Enable HTTPS funnel on port 3000
+   sudo tailscale funnel 3000
+   ```
+   This gives you a public `https://<hostname>.<tailnet>.ts.net` URL. Enable Funnel in Tailscale admin → Access controls first.
 
 ### Option 2: Native Rust
 
@@ -84,14 +127,34 @@ cargo clippy
 
 ## Configuration
 
-Database path is configurable (priority order):
-1. `config.toml` → `[database] path = "..."`
-2. `DATABASE_PATH` environment variable
-3. Default: `data/hangul.db`
+Configuration via `config.toml` (copy from `config.toml.example`):
 
 ```bash
-cp config.toml.example config.toml  # Optional local config
+cp config.toml.example config.toml
 ```
+
+### Data Directory Structure
+
+```
+data/
+├── auth.db              # Shared auth database (users, sessions)
+└── users/
+    └── <username>/
+        └── hangul.db    # Per-user learning database
+```
+
+Each user gets an isolated database with their own SRS state, progress, and settings.
+
+## Authentication
+
+The app uses a simple username/password authentication system:
+
+- **Registration**: Create account at `/register` (username + password)
+- **Login**: Authenticate at `/login`
+- **Sessions**: HTTP-only cookies, 7-day expiry
+- **Password Storage**: Client-side SHA-256 → server-side Argon2 (server never sees plaintext)
+
+All routes except `/login` and `/register` require authentication.
 
 ## Usage
 
@@ -129,13 +192,20 @@ kr_notebook/
 ├── src/                    # Rust backend
 │   ├── main.rs             # Server entry point
 │   ├── lib.rs              # Module exports
+│   ├── state.rs            # AppState (shared auth DB, paths)
 │   ├── paths.rs            # Centralized path constants
 │   ├── config.rs           # Configuration loading
 │   ├── audio.rs            # Audio file handling
-│   ├── session.rs          # Session management
+│   ├── session.rs          # Session ID generation
 │   ├── filters.rs          # Template filters
 │   ├── validation.rs       # Answer validation
-│   ├── db/                 # Database layer
+│   ├── auth/               # Authentication system
+│   │   ├── mod.rs          # Module exports
+│   │   ├── db.rs           # Auth database (users, sessions)
+│   │   ├── handlers.rs     # Login, register, logout
+│   │   ├── middleware.rs   # Auth middleware, AuthContext
+│   │   └── password.rs     # Argon2 hashing
+│   ├── db/                 # User database layer
 │   │   ├── mod.rs          # Pool management, seed data
 │   │   ├── schema.rs       # Table definitions
 │   │   ├── cards.rs        # Card queries
@@ -164,6 +234,9 @@ kr_notebook/
 ├── templates/              # Askama HTML templates
 ├── doc/                    # Documentation
 └── data/                   # Runtime data (gitignored)
+    ├── auth.db             # Shared auth database
+    ├── users/<username>/   # Per-user data
+    │   └── hangul.db       # User's learning database
     └── scraped/htsk/       # Scraped audio + manifests
 ```
 
