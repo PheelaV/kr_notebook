@@ -92,6 +92,7 @@ pub async fn progress(auth: AuthContext) -> axum::response::Response {
   crate::profile_log!(EventType::HandlerStart {
     route: "/progress".into(),
     method: "GET".into(),
+    username: Some(auth.username.clone()),
   });
 
   let conn = match auth.user_db.lock() {
@@ -191,12 +192,24 @@ pub async fn unlock_tier(auth: AuthContext) -> Redirect {
   crate::profile_log!(EventType::HandlerStart {
     route: "/unlock-tier".into(),
     method: "POST".into(),
+    username: Some(auth.username.clone()),
   });
 
   let conn = match auth.user_db.lock() {
     Ok(conn) => conn,
     Err(_) => return Redirect::to("/progress"),
   };
+
+  #[cfg(feature = "profiling")]
+  if let Ok(new_tier) = db::unlock_next_tier(&conn) {
+    crate::profile_log!(EventType::TierUnlock {
+      tier: new_tier,
+      username: auth.username.clone(),
+    });
+  }
+
+  #[cfg(not(feature = "profiling"))]
   let _ = db::unlock_next_tier(&conn);
+
   Redirect::to("/progress")
 }

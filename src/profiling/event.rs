@@ -75,6 +75,8 @@ pub enum EventType {
         route: String,
         /// HTTP method
         method: String,
+        /// Username (None for public routes)
+        username: Option<String>,
     },
     /// HTTP handler finished processing
     HandlerEnd {
@@ -82,6 +84,29 @@ pub enum EventType {
         route: String,
         /// HTTP status code
         status: u16,
+        /// Duration in milliseconds
+        duration_ms: u64,
+        /// Username (None for public routes)
+        username: Option<String>,
+    },
+
+    // === Auth events ===
+    /// User login attempt
+    AuthLogin {
+        /// Username attempting login
+        username: String,
+        /// Whether login succeeded
+        success: bool,
+    },
+    /// User registration
+    AuthRegister {
+        /// Newly registered username
+        username: String,
+    },
+    /// User logout
+    AuthLogout {
+        /// Username logging out
+        username: String,
     },
 
     // === Database operations ===
@@ -98,6 +123,19 @@ pub enum EventType {
         operation: String,
         /// Number of rows affected/returned
         rows: i64,
+        /// Duration in milliseconds
+        duration_ms: u64,
+    },
+    /// Database batch operation (tier graduation, bulk updates)
+    DbBatchOp {
+        /// Operation type
+        operation: String,
+        /// Table name
+        table: String,
+        /// Number of rows affected
+        rows_affected: i64,
+        /// Username performing the operation
+        username: String,
     },
 
     // === SRS calculations ===
@@ -109,6 +147,8 @@ pub enum EventType {
         card_id: i64,
         /// User's rating
         rating: u8,
+        /// Username
+        username: String,
     },
 
     // === Card selection ===
@@ -120,6 +160,8 @@ pub enum EventType {
         excluded_sibling: Option<i64>,
         /// Number of cards considered
         cards_available: Option<i64>,
+        /// Username
+        username: String,
     },
 
     // === Answer validation ===
@@ -131,6 +173,8 @@ pub enum EventType {
         is_correct: bool,
         /// Hint level used (0 = none, 1-3 = hints)
         hints_used: Option<u8>,
+        /// Username
+        username: String,
     },
 
     // === Settings ===
@@ -140,6 +184,98 @@ pub enum EventType {
         setting: String,
         /// New value
         value: String,
+        /// Username
+        username: String,
+    },
+
+    // === Tier management ===
+    /// Tier was unlocked
+    TierUnlock {
+        /// Tier number
+        tier: u8,
+        /// Username
+        username: String,
+    },
+
+    // === Listen mode ===
+    /// Answer submitted in listen mode
+    ListenAnswer {
+        /// Tier being practiced
+        tier: u8,
+        /// Syllable character
+        syllable: String,
+        /// Whether answer was correct
+        is_correct: bool,
+        /// Username
+        username: String,
+    },
+    /// Listen session completed or exited
+    ListenSession {
+        /// Tier being practiced
+        tier: u8,
+        /// Correct answers
+        correct: u8,
+        /// Total questions
+        total: u8,
+        /// Hard mode enabled
+        hard_mode: bool,
+        /// Username
+        username: String,
+    },
+
+    // === Audio operations ===
+    /// Audio manifest loaded
+    AudioManifestLoad {
+        /// Lesson identifier
+        lesson_id: String,
+        /// Number of syllables in manifest
+        syllable_count: usize,
+        /// Load duration in milliseconds
+        duration_ms: u64,
+    },
+    /// Audio file access attempt
+    AudioFileAccess {
+        /// Lesson identifier
+        lesson_id: String,
+        /// Syllable romanization
+        syllable: String,
+        /// Whether file was found
+        found: bool,
+    },
+
+    // === Progress tracking ===
+    /// Tier progress calculated
+    TierProgressCalc {
+        /// Tier number
+        tier: u8,
+        /// Total cards in tier
+        total_cards: i64,
+        /// Percentage learned
+        learned_pct: f64,
+        /// Username
+        username: String,
+    },
+    /// Character stats updated
+    CharacterStatsUpdate {
+        /// Korean character
+        character: String,
+        /// Whether answer was correct
+        correct: bool,
+        /// Username
+        username: String,
+    },
+
+    // === Errors ===
+    /// Error occurred
+    Error {
+        /// Context where error occurred
+        context: String,
+        /// Error type/category
+        error_type: String,
+        /// Error message
+        message: String,
+        /// Username (None if not authenticated)
+        username: Option<String>,
     },
 
     // === Timed scope ===
@@ -147,6 +283,8 @@ pub enum EventType {
     TimedScope {
         /// Name of the scope
         name: String,
+        /// Duration in milliseconds
+        duration_ms: u64,
     },
 
     // === Custom events ===

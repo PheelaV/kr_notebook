@@ -34,6 +34,7 @@ pub async fn library(auth: AuthContext) -> Html<String> {
   crate::profile_log!(EventType::HandlerStart {
     route: "/library".into(),
     method: "GET".into(),
+    username: Some(auth.username.clone()),
   });
 
   let conn = match auth.user_db.lock() {

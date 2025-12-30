@@ -332,6 +332,7 @@ pub async fn study_start_interactive(auth: AuthContext) -> impl IntoResponse {
   crate::profile_log!(EventType::HandlerStart {
     route: "/study".into(),
     method: "GET".into(),
+    username: Some(auth.username.clone()),
   });
 
   let conn = match auth.user_db.lock() {
@@ -503,6 +504,7 @@ pub async fn validate_answer_handler(
   crate::profile_log!(EventType::HandlerStart {
     route: "/validate-answer".into(),
     method: "POST".into(),
+    username: Some(auth.username.clone()),
   });
 
   let conn = match auth.user_db.lock() {
@@ -532,6 +534,7 @@ pub async fn validate_answer_handler(
       card_id: card.id,
       is_correct,
       hints_used: Some(form.hints_used),
+      username: auth.username.clone(),
     });
 
     // Record confusion if incorrect
@@ -567,6 +570,7 @@ pub async fn validate_answer_handler(
         algorithm: "fsrs_hybrid".into(),
         card_id: card.id,
         rating: quality,
+        username: auth.username.clone(),
       });
 
       let _ = db::update_card_after_fsrs_review(
@@ -670,6 +674,7 @@ pub async fn next_card_interactive(
   crate::profile_log!(EventType::HandlerStart {
     route: "/next-card".into(),
     method: "POST".into(),
+    username: Some(auth.username.clone()),
   });
 
   let conn = match auth.user_db.lock() {
@@ -751,6 +756,7 @@ pub async fn submit_review_interactive(
   crate::profile_log!(EventType::HandlerStart {
     route: "/review".into(),
     method: "POST".into(),
+    username: Some(auth.username.clone()),
   });
 
   let conn = match auth.user_db.lock() {

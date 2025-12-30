@@ -209,9 +209,7 @@ pub fn get_effective_tiers(conn: &Connection) -> Result<Vec<u8>> {
 }
 
 pub fn set_max_unlocked_tier(conn: &Connection, tier: u8) -> Result<()> {
-    #[cfg(feature = "profiling")]
-    crate::profile_log!(EventType::TierUnlock { tier });
-
+    // TierUnlock profiling moved to handler level (requires username)
     set_setting(conn, "max_unlocked_tier", &tier.to_string())
 }
 
@@ -223,9 +221,7 @@ pub fn unlock_next_tier(conn: &Connection) -> Result<u8> {
     // Auto-enable focus mode on the newly unlocked tier
     set_focus_tier(conn, Some(next))?;
 
-    #[cfg(feature = "profiling")]
-    crate::profile_log!(EventType::TierUnlock { tier: next });
-
+    // TierUnlock profiling moved to handler level (requires username)
     Ok(next)
 }
 

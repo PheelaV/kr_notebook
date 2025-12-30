@@ -3,12 +3,15 @@ use axum::response::{Html, Redirect};
 use std::path::Path;
 
 use super::settings::{has_lesson1, has_lesson2, has_lesson3};
+use crate::auth::AuthContext;
 use crate::filters;
 use crate::audio::{
     get_available_syllables, get_row_romanization, get_row_syllables, load_manifest,
     row_has_audio, vowel_romanization,
 };
 use crate::paths;
+#[cfg(feature = "profiling")]
+use crate::profiling::EventType;
 
 /// Check if scraped pronunciation content exists (any lesson)
 pub fn has_scraped_content() -> bool {
@@ -188,8 +191,18 @@ fn build_table_from_manifest(
     }
 }
 
-pub async fn pronunciation_page() -> axum::response::Response {
+pub async fn pronunciation_page(auth: AuthContext) -> axum::response::Response {
     use axum::response::IntoResponse;
+
+    #[cfg(feature = "profiling")]
+    crate::profile_log!(EventType::HandlerStart {
+        route: "/pronunciation".into(),
+        method: "GET".into(),
+        username: Some(auth.username.clone()),
+    });
+
+    // Silence unused variable warning when profiling is disabled
+    let _ = &auth;
 
     if !has_scraped_content() {
         return Redirect::to("/").into_response();

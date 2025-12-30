@@ -279,6 +279,7 @@ pub async fn settings_page(auth: AuthContext) -> Html<String> {
   crate::profile_log!(EventType::HandlerStart {
     route: "/settings".into(),
     method: "GET".into(),
+    username: Some(auth.username.clone()),
   });
 
   let conn = match auth.user_db.lock() {
@@ -371,6 +372,7 @@ pub async fn update_settings(
   crate::profile_log!(EventType::HandlerStart {
     route: "/settings".into(),
     method: "POST".into(),
+    username: Some(auth.username.clone()),
   });
 
   let conn = match auth.user_db.lock() {
@@ -386,6 +388,7 @@ pub async fn update_settings(
   crate::profile_log!(EventType::SettingsUpdate {
     setting: "all_tiers_unlocked".into(),
     value: all_tiers_unlocked.to_string(),
+    username: auth.username.clone(),
   });
 
   // Update enabled tiers
@@ -414,6 +417,7 @@ pub async fn update_settings(
   crate::profile_log!(EventType::SettingsUpdate {
     setting: "enabled_tiers".into(),
     value: format!("{:?}", enabled_tiers),
+    username: auth.username.clone(),
   });
 
   // Update desired retention if provided
@@ -427,6 +431,7 @@ pub async fn update_settings(
     crate::profile_log!(EventType::SettingsUpdate {
       setting: "desired_retention".into(),
       value: retention_f64.to_string(),
+      username: auth.username.clone(),
     });
   }
 
@@ -443,6 +448,7 @@ pub async fn update_settings(
     crate::profile_log!(EventType::SettingsUpdate {
       setting: "focus_tier".into(),
       value: focus_tier.map(|t| t.to_string()).unwrap_or_else(|| "none".to_string()),
+      username: auth.username.clone(),
     });
   }
 
@@ -459,6 +465,7 @@ pub async fn trigger_scrape(auth: AuthContext) -> Redirect {
   crate::profile_log!(EventType::HandlerStart {
     route: "/settings/scrape".into(),
     method: "POST".into(),
+    username: Some(auth.username.clone()),
   });
 
   // Run the scraper commands for all lessons
@@ -479,8 +486,9 @@ pub async fn trigger_scrape_lesson(auth: AuthContext, Path(lesson): Path<String>
 
   #[cfg(feature = "profiling")]
   crate::profile_log!(EventType::HandlerStart {
-    route: format!("/settings/scrape/{}", lesson).into(),
+    route: format!("/settings/scrape/{}", lesson),
     method: "POST".into(),
+    username: Some(auth.username.clone()),
   });
 
   let cmd = match lesson.as_str() {
@@ -514,6 +522,7 @@ pub async fn delete_scraped(auth: AuthContext) -> Redirect {
   crate::profile_log!(EventType::HandlerStart {
     route: "/settings/delete-scraped".into(),
     method: "POST".into(),
+    username: Some(auth.username.clone()),
   });
 
   // Run the clean command
@@ -531,8 +540,9 @@ pub async fn delete_scraped_lesson(auth: AuthContext, Path(lesson): Path<String>
 
   #[cfg(feature = "profiling")]
   crate::profile_log!(EventType::HandlerStart {
-    route: format!("/settings/delete-scraped/{}", lesson).into(),
+    route: format!("/settings/delete-scraped/{}", lesson),
     method: "POST".into(),
+    username: Some(auth.username.clone()),
   });
 
   let path = match lesson.as_str() {
@@ -885,6 +895,7 @@ pub async fn make_all_due(auth: AuthContext) -> Redirect {
   crate::profile_log!(EventType::HandlerStart {
     route: "/settings/make-all-due".into(),
     method: "POST".into(),
+    username: Some(auth.username.clone()),
   });
 
   let conn = match auth.user_db.lock() {
@@ -908,6 +919,7 @@ pub async fn graduate_tier(auth: AuthContext, Path(tier): Path<u8>) -> Redirect 
   crate::profile_log!(EventType::HandlerStart {
     route: format!("/settings/graduate-tier/{}", tier),
     method: "POST".into(),
+    username: Some(auth.username.clone()),
   });
 
   let conn = match auth.user_db.lock() {
@@ -935,6 +947,7 @@ pub async fn restore_tier(auth: AuthContext, Path(tier): Path<u8>) -> Redirect {
   crate::profile_log!(EventType::HandlerStart {
     route: format!("/settings/restore-tier/{}", tier),
     method: "POST".into(),
+    username: Some(auth.username.clone()),
   });
 
   let conn = match auth.user_db.lock() {

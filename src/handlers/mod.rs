@@ -61,6 +61,7 @@ pub async fn index(auth: AuthContext) -> Html<String> {
   crate::profile_log!(EventType::HandlerStart {
     route: "/".into(),
     method: "GET".into(),
+    username: Some(auth.username.clone()),
   });
 
   let conn = match auth.user_db.lock() {
@@ -70,6 +71,14 @@ pub async fn index(auth: AuthContext) -> Html<String> {
 
   // Check for auto tier unlock
   let unlocked_tier = db::try_auto_unlock_tier(&conn).log_warn("Auto tier unlock failed").flatten();
+
+  #[cfg(feature = "profiling")]
+  if let Some(tier) = unlocked_tier {
+    crate::profile_log!(EventType::TierUnlock {
+      tier,
+      username: auth.username.clone(),
+    });
+  }
 
   let accelerated_mode = db::get_all_tiers_unlocked(&conn).log_warn_default("Failed to get all_tiers_unlocked");
   let due_count = db::get_due_count(&conn).log_warn_default("Failed to get due count");

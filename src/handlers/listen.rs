@@ -14,6 +14,8 @@ use crate::audio::{
     vowel_romanization,
 };
 use crate::config;
+#[cfg(feature = "profiling")]
+use crate::profiling::EventType;
 
 /// A syllable with audio info for listening practice
 #[derive(Clone)]
@@ -311,7 +313,17 @@ pub struct SkipQuery {
 // ============ Handlers ============
 
 /// GET /listen - Tier selection page
-pub async fn listen_index(_auth: AuthContext) -> impl IntoResponse {
+pub async fn listen_index(auth: AuthContext) -> impl IntoResponse {
+    #[cfg(feature = "profiling")]
+    crate::profile_log!(EventType::HandlerStart {
+        route: "/listen".into(),
+        method: "GET".into(),
+        username: Some(auth.username.clone()),
+    });
+
+    // Silence unused variable warning when profiling is disabled
+    let _ = &auth;
+
     let tier1 = if has_lesson1() {
         config::get_listen_tier_info(1)
             .and_then(|(lesson_id, name)| build_tier_from_manifest(1, lesson_id, name))
@@ -346,7 +358,17 @@ pub async fn listen_index(_auth: AuthContext) -> impl IntoResponse {
 }
 
 /// GET /listen/start?tier=1 - Start practice for a tier
-pub async fn listen_start(_auth: AuthContext, Query(query): Query<StartQuery>) -> impl IntoResponse {
+pub async fn listen_start(auth: AuthContext, Query(query): Query<StartQuery>) -> impl IntoResponse {
+    #[cfg(feature = "profiling")]
+    crate::profile_log!(EventType::HandlerStart {
+        route: format!("/listen/start?tier={}", query.tier),
+        method: "GET".into(),
+        username: Some(auth.username.clone()),
+    });
+
+    // Silence unused variable warning when profiling is disabled
+    let _ = &auth;
+
     let (lesson_id, tier_name) = match config::get_listen_tier_info(query.tier) {
         Some((lid, name)) => (lid, name),
         None => return Html("Invalid tier".to_string()),
@@ -385,7 +407,7 @@ pub async fn listen_start(_auth: AuthContext, Query(query): Query<StartQuery>) -
 }
 
 /// POST /listen/answer - Submit answer and get next syllable (legacy full page)
-pub async fn listen_answer(_auth: AuthContext, Form(form): Form<AnswerForm>) -> impl IntoResponse {
+pub async fn listen_answer(auth: AuthContext, Form(form): Form<AnswerForm>) -> impl IntoResponse {
     let (lesson_id, tier_name) = match config::get_listen_tier_info(form.tier) {
         Some((lid, name)) => (lid, name),
         None => return Html("Invalid tier".to_string()),
@@ -397,6 +419,17 @@ pub async fn listen_answer(_auth: AuthContext, Form(form): Form<AnswerForm>) -> 
     };
 
     let was_correct = form.answer == form.correct_syllable;
+
+    #[cfg(feature = "profiling")]
+    crate::profile_log!(EventType::ListenAnswer {
+        tier: form.tier,
+        syllable: form.correct_syllable.clone(),
+        is_correct: was_correct,
+        username: auth.username.clone(),
+    });
+
+    // Silence unused variable warning when profiling is disabled
+    let _ = &auth;
     let new_correct = form.correct + if was_correct { 1 } else { 0 };
     let new_total = form.total + 1;
 
@@ -429,7 +462,7 @@ pub async fn listen_answer(_auth: AuthContext, Form(form): Form<AnswerForm>) -> 
 }
 
 /// POST /listen/answer-htmx - Submit answer via HTMX (partial update)
-pub async fn listen_answer_htmx(_auth: AuthContext, Form(form): Form<AnswerForm>) -> impl IntoResponse {
+pub async fn listen_answer_htmx(auth: AuthContext, Form(form): Form<AnswerForm>) -> impl IntoResponse {
     let lesson_id = match config::get_listen_tier_info(form.tier) {
         Some((lid, _)) => lid,
         None => return Html("Invalid tier".to_string()),
@@ -441,6 +474,17 @@ pub async fn listen_answer_htmx(_auth: AuthContext, Form(form): Form<AnswerForm>
     };
 
     let was_correct = form.answer == form.correct_syllable;
+
+    #[cfg(feature = "profiling")]
+    crate::profile_log!(EventType::ListenAnswer {
+        tier: form.tier,
+        syllable: form.correct_syllable.clone(),
+        is_correct: was_correct,
+        username: auth.username.clone(),
+    });
+
+    // Silence unused variable warning when profiling is disabled
+    let _ = &auth;
     let new_correct = form.correct + if was_correct { 1 } else { 0 };
     let new_total = form.total + 1;
 
@@ -471,7 +515,17 @@ pub async fn listen_answer_htmx(_auth: AuthContext, Form(form): Form<AnswerForm>
 }
 
 /// GET /listen/skip - Skip current syllable
-pub async fn listen_skip(_auth: AuthContext, Query(query): Query<SkipQuery>) -> impl IntoResponse {
+pub async fn listen_skip(auth: AuthContext, Query(query): Query<SkipQuery>) -> impl IntoResponse {
+    #[cfg(feature = "profiling")]
+    crate::profile_log!(EventType::HandlerStart {
+        route: "/listen/skip".into(),
+        method: "GET".into(),
+        username: Some(auth.username.clone()),
+    });
+
+    // Silence unused variable warning when profiling is disabled
+    let _ = &auth;
+
     let (lesson_id, tier_name) = match config::get_listen_tier_info(query.tier) {
         Some((lid, name)) => (lid, name),
         None => return Html("Invalid tier".to_string()),

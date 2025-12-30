@@ -3,8 +3,6 @@ use fsrs::{MemoryState, FSRS, DEFAULT_PARAMETERS};
 
 use crate::config;
 use crate::domain::{Card, FsrsState};
-#[cfg(feature = "profiling")]
-use crate::profiling::EventType;
 
 const GRADUATING_STEP: i64 = 4; // Step at which card graduates to FSRS
 
@@ -62,13 +60,7 @@ pub fn calculate_fsrs_review(
   desired_retention: f64,
   focus_mode: bool,
 ) -> FsrsResult {
-  #[cfg(feature = "profiling")]
-  crate::profile_log!(EventType::SrsCalculation {
-    algorithm: "fsrs_hybrid".into(),
-    card_id: card.id,
-    rating: quality,
-  });
-
+  // SrsCalculation profiling moved to handler level (requires username)
   let now = Utc::now();
   let is_correct = quality >= 2;
   let learning_steps = config::get_learning_steps(focus_mode);

@@ -16,6 +16,8 @@ use super::password;
 use crate::db;
 use crate::session::generate_session_id;
 use crate::state::AppState;
+#[cfg(feature = "profiling")]
+use crate::profiling::EventType;
 
 /// Session duration in hours (1 week)
 const SESSION_DURATION_HOURS: i64 = 24 * 7;
@@ -95,6 +97,12 @@ pub async fn login_submit(
 
     // Verify password (client sent SHA-256 hash, stored is Argon2 of that hash)
     if !password::verify_password(&form.password_hash, &password_hash) {
+        #[cfg(feature = "profiling")]
+        crate::profile_log!(EventType::AuthLogin {
+            username: form.username.clone(),
+            success: false,
+        });
+
         let template = LoginTemplate {
             error: Some("Invalid username or password".to_string()),
         };
@@ -114,6 +122,12 @@ pub async fn login_submit(
     }
 
     drop(auth_db);
+
+    #[cfg(feature = "profiling")]
+    crate::profile_log!(EventType::AuthLogin {
+        username: form.username.clone(),
+        success: true,
+    });
 
     // Set cookie and redirect
     let cookie = Cookie::build((SESSION_COOKIE_NAME, session_id))
@@ -254,6 +268,11 @@ pub async fn register_submit(
     }
     drop(auth_db);
 
+    #[cfg(feature = "profiling")]
+    crate::profile_log!(EventType::AuthRegister {
+        username: form.username.clone(),
+    });
+
     // Set cookie and redirect
     let cookie = Cookie::build((SESSION_COOKIE_NAME, session_id))
         .path("/")
@@ -268,11 +287,26 @@ pub async fn register_submit(
 /// POST /logout - Log out and clear session
 pub async fn logout(State(state): State<AppState>, jar: CookieJar) -> impl IntoResponse {
     // Get session from cookie and delete it
+    #[cfg(feature = "profiling")]
+    let mut logged_out_username: Option<String> = None;
+
     if let Some(session_cookie) = jar.get(SESSION_COOKIE_NAME) {
         let session_id = session_cookie.value();
         if let Ok(auth_db) = state.auth_db.lock() {
+            #[cfg(feature = "profiling")]
+            {
+                // Get username before deleting session for profiling
+                if let Ok(Some((_, username))) = auth_db::get_session_user(&auth_db, session_id) {
+                    logged_out_username = Some(username);
+                }
+            }
             let _ = auth_db::delete_session(&auth_db, session_id);
         }
+    }
+
+    #[cfg(feature = "profiling")]
+    if let Some(username) = logged_out_username {
+        crate::profile_log!(EventType::AuthLogout { username });
     }
 
     // Remove cookie by setting empty value with immediate expiry

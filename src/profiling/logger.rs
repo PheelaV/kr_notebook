@@ -143,6 +143,7 @@ pub fn log_timed(name: &str, duration: Duration) {
     let event = ProfileEvent::with_duration(
         EventType::TimedScope {
             name: name.to_string(),
+            duration_ms: duration.as_millis() as u64,
         },
         duration,
     );
