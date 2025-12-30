@@ -10,6 +10,7 @@ use rusqlite::Connection;
 use std::sync::{Arc, Mutex};
 
 use super::db as auth_db;
+use crate::db::run_migrations;
 use crate::state::AppState;
 
 pub const SESSION_COOKIE_NAME: &str = "kr_session";
@@ -55,12 +56,21 @@ impl FromRequestParts<AppState> for AuthContext {
 
         drop(auth_db); // Release lock before opening user db
 
-        // Open user's database
+        // Open user's database and run migrations
         let user_db_path = state.user_db_path(&username);
         let conn = Connection::open(&user_db_path).map_err(|_| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "Failed to open user database",
+            )
+                .into_response()
+        })?;
+
+        // Ensure schema is up to date (adds new columns if missing)
+        run_migrations(&conn).map_err(|_| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to run database migrations",
             )
                 .into_response()
         })?;
