@@ -35,7 +35,7 @@ data/scraped/**/*.mp3
 !data/reference/*
 
 # Local/personal directories
-MY_LOCAL_*/
+MY_LOCAL*/
 
 # Static assets (CDN-served) - but track our custom JS
 static/*
