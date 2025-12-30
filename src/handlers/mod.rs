@@ -9,16 +9,17 @@ pub mod settings;
 pub mod study;
 
 use askama::Template;
-use axum::{extract::State, response::Html};
+use axum::response::Html;
 use chrono::{DateTime, Utc};
 
-use crate::db::{self, try_lock, DbPool, LogOnError};
+use crate::auth::AuthContext;
+use crate::db::{self, LogOnError};
 use crate::filters;
 #[cfg(feature = "profiling")]
 use crate::profiling::EventType;
 
 /// Error HTML returned when database is unavailable
-const DB_ERROR_HTML: &str = r#"<!DOCTYPE html><html><head><title>Error</title></head><body><h1>Database Error</h1><p>Please refresh the page. If the problem persists, restart the application.</p></body></html>"#;
+pub const DB_ERROR_HTML: &str = r#"<!DOCTYPE html><html><head><title>Error</title></head><body><h1>Database Error</h1><p>Please refresh the page. If the problem persists, restart the application.</p></body></html>"#;
 
 #[derive(Template)]
 #[template(path = "index.html")]
@@ -55,14 +56,14 @@ fn format_relative_time(dt: DateTime<Utc>) -> String {
   }
 }
 
-pub async fn index(State(pool): State<DbPool>) -> Html<String> {
+pub async fn index(auth: AuthContext) -> Html<String> {
   #[cfg(feature = "profiling")]
   crate::profile_log!(EventType::HandlerStart {
     route: "/".into(),
     method: "GET".into(),
   });
 
-  let conn = match try_lock(&pool) {
+  let conn = match auth.user_db.lock() {
     Ok(conn) => conn,
     Err(_) => return Html(DB_ERROR_HTML.to_string()),
   };

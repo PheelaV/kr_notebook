@@ -1,4 +1,5 @@
 pub mod audio;
+pub mod auth;
 pub mod config;
 pub mod db;
 pub mod domain;
@@ -8,4 +9,5 @@ pub mod paths;
 pub mod profiling;
 pub mod session;
 pub mod srs;
+pub mod state;
 pub mod validation;

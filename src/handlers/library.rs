@@ -1,9 +1,10 @@
 use askama::Template;
-use axum::{extract::State, response::Html};
+use axum::response::Html;
 
+use crate::auth::AuthContext;
 use crate::config;
+use crate::db::{self, LogOnError};
 use crate::filters;
-use crate::db::{self, try_lock, DbPool, LogOnError};
 #[cfg(feature = "profiling")]
 use crate::profiling::EventType;
 
@@ -28,14 +29,14 @@ pub struct LibraryTemplate {
   pub max_unlocked_tier: u8,
 }
 
-pub async fn library(State(pool): State<DbPool>) -> Html<String> {
+pub async fn library(auth: AuthContext) -> Html<String> {
   #[cfg(feature = "profiling")]
   crate::profile_log!(EventType::HandlerStart {
     route: "/library".into(),
     method: "GET".into(),
   });
 
-  let conn = match try_lock(&pool) {
+  let conn = match auth.user_db.lock() {
     Ok(conn) => conn,
     Err(_) => return Html("<h1>Database Error</h1><p>Please refresh the page.</p>".to_string()),
   };

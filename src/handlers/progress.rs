@@ -1,10 +1,8 @@
 use askama::Template;
-use axum::{
-  extract::State,
-  response::{Html, Redirect},
-};
+use axum::response::{Html, Redirect};
 
-use crate::db::{self, try_lock, CharacterStats, DbPool, LogOnError, TierProgress};
+use crate::auth::AuthContext;
+use crate::db::{self, CharacterStats, LogOnError, TierProgress};
 use crate::filters;
 #[cfg(feature = "profiling")]
 use crate::profiling::EventType;
@@ -87,7 +85,7 @@ pub struct ProgressTemplate {
   pub character_stats_groups: Vec<CharacterStatsGroup>,
 }
 
-pub async fn progress(State(pool): State<DbPool>) -> axum::response::Response {
+pub async fn progress(auth: AuthContext) -> axum::response::Response {
   use axum::response::IntoResponse;
 
   #[cfg(feature = "profiling")]
@@ -96,7 +94,7 @@ pub async fn progress(State(pool): State<DbPool>) -> axum::response::Response {
     method: "GET".into(),
   });
 
-  let conn = match try_lock(&pool) {
+  let conn = match auth.user_db.lock() {
     Ok(conn) => conn,
     Err(_) => return Redirect::to("/").into_response(),
   };
@@ -188,14 +186,14 @@ fn build_character_stats_groups(all_stats: Vec<CharacterStats>) -> Vec<Character
   groups
 }
 
-pub async fn unlock_tier(State(pool): State<DbPool>) -> Redirect {
+pub async fn unlock_tier(auth: AuthContext) -> Redirect {
   #[cfg(feature = "profiling")]
   crate::profile_log!(EventType::HandlerStart {
     route: "/unlock-tier".into(),
     method: "POST".into(),
   });
 
-  let conn = match try_lock(&pool) {
+  let conn = match auth.user_db.lock() {
     Ok(conn) => conn,
     Err(_) => return Redirect::to("/progress"),
   };

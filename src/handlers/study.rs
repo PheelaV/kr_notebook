@@ -1,13 +1,14 @@
 use askama::Template;
 use axum::{
-  extract::{Query, State},
+  extract::Query,
   response::{Html, IntoResponse},
   Form,
 };
 use rand::seq::SliceRandom;
 use serde::Deserialize;
 
-use crate::db::{self, try_lock, DbPool, LogOnError};
+use crate::auth::AuthContext;
+use crate::db::{self, LogOnError};
 use crate::filters;
 use crate::domain::{Card, InputMethod, ReviewDirection, ReviewQuality, StudyMode};
 use crate::session;
@@ -213,8 +214,8 @@ pub struct PracticeTemplate {
 }
 
 
-pub async fn study_start(State(pool): State<DbPool>) -> impl IntoResponse {
-  let conn = match try_lock(&pool) {
+pub async fn study_start(auth: AuthContext) -> impl IntoResponse {
+  let conn = match auth.user_db.lock() {
     Ok(conn) => conn,
     Err(_) => return Html("<h1>Database Error</h1><p>Please refresh the page.</p>".to_string()),
   };
@@ -252,10 +253,10 @@ pub struct ReviewForm {
 }
 
 pub async fn submit_review(
-  State(pool): State<DbPool>,
+  auth: AuthContext,
   Form(form): Form<ReviewForm>,
 ) -> impl IntoResponse {
-  let conn = match try_lock(&pool) {
+  let conn = match auth.user_db.lock() {
     Ok(conn) => conn,
     Err(_) => return Html("<h1>Database Error</h1><p>Please refresh the page.</p>".to_string()),
   };
@@ -326,14 +327,14 @@ pub async fn submit_review(
 }
 
 /// Interactive study mode with input-based validation
-pub async fn study_start_interactive(State(pool): State<DbPool>) -> impl IntoResponse {
+pub async fn study_start_interactive(auth: AuthContext) -> impl IntoResponse {
   #[cfg(feature = "profiling")]
   crate::profile_log!(EventType::HandlerStart {
     route: "/study".into(),
     method: "GET".into(),
   });
 
-  let conn = match try_lock(&pool) {
+  let conn = match auth.user_db.lock() {
     Ok(conn) => conn,
     Err(_) => return Html("<h1>Database Error</h1><p>Please refresh the page.</p>".to_string()),
   };
@@ -495,7 +496,7 @@ pub struct ValidateAnswerForm {
 
 /// Validate user's typed answer and record the review result
 pub async fn validate_answer_handler(
-  State(pool): State<DbPool>,
+  auth: AuthContext,
   Form(form): Form<ValidateAnswerForm>,
 ) -> impl IntoResponse {
   #[cfg(feature = "profiling")]
@@ -504,7 +505,7 @@ pub async fn validate_answer_handler(
     method: "POST".into(),
   });
 
-  let conn = match try_lock(&pool) {
+  let conn = match auth.user_db.lock() {
     Ok(conn) => conn,
     Err(_) => return Html("<h1>Database Error</h1><p>Please refresh the page.</p>".to_string()),
   };
@@ -662,7 +663,7 @@ pub struct NextCardForm {
 
 /// Get next interactive card (review was already recorded during validation)
 pub async fn next_card_interactive(
-  State(pool): State<DbPool>,
+  auth: AuthContext,
   Form(form): Form<NextCardForm>,
 ) -> impl IntoResponse {
   #[cfg(feature = "profiling")]
@@ -671,7 +672,7 @@ pub async fn next_card_interactive(
     method: "POST".into(),
   });
 
-  let conn = match try_lock(&pool) {
+  let conn = match auth.user_db.lock() {
     Ok(conn) => conn,
     Err(_) => return Html("<h1>Database Error</h1><p>Please refresh the page.</p>".to_string()),
   };
@@ -743,7 +744,7 @@ pub async fn next_card_interactive(
 /// DEPRECATED: Review recording now happens in validate_answer_handler.
 /// Use next_card_interactive instead. Kept for backwards compatibility.
 pub async fn submit_review_interactive(
-  State(pool): State<DbPool>,
+  auth: AuthContext,
   Form(form): Form<ReviewForm>,
 ) -> impl IntoResponse {
   #[cfg(feature = "profiling")]
@@ -752,7 +753,7 @@ pub async fn submit_review_interactive(
     method: "POST".into(),
   });
 
-  let conn = match try_lock(&pool) {
+  let conn = match auth.user_db.lock() {
     Ok(conn) => conn,
     Err(_) => return Html("<h1>Database Error</h1><p>Please refresh the page.</p>".to_string()),
   };
@@ -836,10 +837,10 @@ fn default_track_progress() -> Option<bool> {
 
 // Practice mode - review cards even when not due
 pub async fn practice_start(
-  State(pool): State<DbPool>,
+  auth: AuthContext,
   Query(query): Query<PracticeQuery>,
 ) -> impl IntoResponse {
-  let conn = match try_lock(&pool) {
+  let conn = match auth.user_db.lock() {
     Ok(conn) => conn,
     Err(_) => return Html("<h1>Database Error</h1><p>Please refresh the page.</p>".to_string()),
   };
@@ -892,11 +893,11 @@ pub struct PracticeForm {
 }
 
 pub async fn practice_next(
-  State(pool): State<DbPool>,
+  auth: AuthContext,
   Query(query): Query<PracticeQuery>,
   Form(form): Form<PracticeForm>,
 ) -> impl IntoResponse {
-  let conn = match try_lock(&pool) {
+  let conn = match auth.user_db.lock() {
     Ok(conn) => conn,
     Err(_) => return Html("<h1>Database Error</h1><p>Please refresh the page.</p>".to_string()),
   };
@@ -969,10 +970,10 @@ pub struct PracticeValidateForm {
 
 /// Validate answer in practice mode (optionally logs to stats)
 pub async fn practice_validate(
-  State(pool): State<DbPool>,
+  auth: AuthContext,
   Form(form): Form<PracticeValidateForm>,
 ) -> impl IntoResponse {
-  let conn = match try_lock(&pool) {
+  let conn = match auth.user_db.lock() {
     Ok(conn) => conn,
     Err(_) => return Html("<h1>Database Error</h1><p>Please refresh the page.</p>".to_string()),
   };

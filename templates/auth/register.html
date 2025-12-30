@@ -1,0 +1,117 @@
+{% extends "base_minimal.html" %}
+
+{% block title %}Register - Hangul Learn{% endblock %}
+
+{% block content %}
+<div class="min-h-screen flex items-center justify-center px-4">
+  <div class="max-w-md w-full space-y-8">
+    <!-- Logo and title -->
+    <div class="text-center">
+      <div class="flex justify-center mb-4">
+        <svg class="w-16 h-16 text-indigo-600 dark:text-indigo-400" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="24" cy="14" r="8" stroke="currentColor" stroke-width="3" fill="none"/>
+          <path d="M10 28 L38 28" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+          <path d="M14 38 L34 38" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <h2 class="text-3xl font-bold text-gray-900 dark:text-white">Create account</h2>
+      <p class="mt-2 text-gray-600 dark:text-gray-400">Start your Korean learning journey</p>
+    </div>
+
+    <!-- Error message -->
+    {% if let Some(err) = error %}
+    <div class="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg">
+      {{ err }}
+    </div>
+    {% endif %}
+
+    <!-- Registration form -->
+    <form id="register-form" method="post" class="mt-8 space-y-6">
+      <div class="space-y-4">
+        <div>
+          <label for="username" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Username</label>
+          <input
+            type="text"
+            name="username"
+            id="username"
+            required
+            autofocus
+            autocomplete="username"
+            pattern="[a-zA-Z0-9_]{3,32}"
+            title="3-32 alphanumeric characters or underscores"
+            class="block w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg shadow-sm
+                   bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                   placeholder-gray-400 dark:placeholder-gray-500
+                   focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+          <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">3-32 characters, letters, numbers, or underscores</p>
+        </div>
+
+        <div>
+          <label for="password" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Password</label>
+          <input
+            type="password"
+            name="password"
+            id="password"
+            required
+            minlength="8"
+            autocomplete="new-password"
+            class="block w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg shadow-sm
+                   bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                   placeholder-gray-400 dark:placeholder-gray-500
+                   focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+          <div id="password-strength" class="hidden"></div>
+          <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">At least 8 characters</p>
+        </div>
+
+        <div>
+          <label for="password_confirm" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Confirm password</label>
+          <input
+            type="password"
+            name="confirm_password"
+            id="password_confirm"
+            required
+            minlength="8"
+            autocomplete="new-password"
+            class="block w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg shadow-sm
+                   bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                   placeholder-gray-400 dark:placeholder-gray-500
+                   focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+        </div>
+      </div>
+
+      <button
+        type="submit"
+        class="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm
+               text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700
+               focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500
+               transition-colors duration-200">
+        Create account
+      </button>
+    </form>
+
+    <!-- Login link -->
+    <div class="text-center text-sm">
+      <span class="text-gray-600 dark:text-gray-400">Already have an account?</span>
+      <a href="/login" class="ml-1 font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-500">
+        Sign in
+      </a>
+    </div>
+
+    <!-- Privacy notice -->
+    <div class="text-center">
+      <button type="button" onclick="document.getElementById('privacy-notice').classList.toggle('hidden')"
+              class="inline-flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+        </svg>
+        How is my password protected?
+      </button>
+      <div id="privacy-notice" class="hidden mt-2 p-3 bg-gray-100 dark:bg-gray-800 rounded-lg text-xs text-gray-600 dark:text-gray-400 text-left">
+        <p class="font-medium mb-1">Your password never leaves your browser.</p>
+        <p>We hash your password locally before sending it to the server. The server only receives and stores a cryptographic hash - never your actual password. Even we cannot see or recover it.</p>
+      </div>
+    </div>
+  </div>
+</div>
+<script src="/static/js/auth.js"></script>
+{% endblock %}

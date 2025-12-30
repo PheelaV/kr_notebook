@@ -1,6 +1,6 @@
 use askama::Template;
 use axum::{
-  extract::{Path, State},
+  extract::Path,
   response::{Html, Redirect},
   Form,
 };
@@ -8,11 +8,11 @@ use serde::Deserialize;
 use std::collections::HashSet;
 use std::fs;
 use std::path::Path as StdPath;
-
-use crate::filters;
 use std::process::Command;
 
-use crate::db::{self, try_lock, DbPool, LogOnError};
+use crate::auth::AuthContext;
+use crate::db::{self, LogOnError};
+use crate::filters;
 use crate::paths;
 #[cfg(feature = "profiling")]
 use crate::profiling::EventType;
@@ -250,6 +250,7 @@ fn get_lesson_audio(lesson_id: &str, lesson_name: &str) -> Option<LessonAudio> {
 #[derive(Template)]
 #[template(path = "settings.html")]
 pub struct SettingsTemplate {
+  pub is_admin: bool,
   pub all_tiers_unlocked: bool,
   pub enabled_tiers: Vec<u8>,
   pub desired_retention: u8, // 80, 85, 90, or 95
@@ -273,14 +274,14 @@ pub struct SettingsTemplate {
 /// Error HTML for database unavailable
 const DB_ERROR_HTML: &str = r#"<!DOCTYPE html><html><head><title>Error</title></head><body><h1>Database Error</h1><p>Please refresh the page.</p></body></html>"#;
 
-pub async fn settings_page(State(pool): State<DbPool>) -> Html<String> {
+pub async fn settings_page(auth: AuthContext) -> Html<String> {
   #[cfg(feature = "profiling")]
   crate::profile_log!(EventType::HandlerStart {
     route: "/settings".into(),
     method: "GET".into(),
   });
 
-  let conn = match try_lock(&pool) {
+  let conn = match auth.user_db.lock() {
     Ok(conn) => conn,
     Err(_) => return Html(DB_ERROR_HTML.to_string()),
   };
@@ -324,6 +325,7 @@ pub async fn settings_page(State(pool): State<DbPool>) -> Html<String> {
     .collect();
 
   let template = SettingsTemplate {
+    is_admin: auth.is_admin,
     all_tiers_unlocked,
     enabled_tiers,
     desired_retention,
@@ -362,7 +364,7 @@ pub struct SettingsForm {
 }
 
 pub async fn update_settings(
-  State(pool): State<DbPool>,
+  auth: AuthContext,
   Form(form): Form<SettingsForm>,
 ) -> Redirect {
   #[cfg(feature = "profiling")]
@@ -371,7 +373,7 @@ pub async fn update_settings(
     method: "POST".into(),
   });
 
-  let conn = match try_lock(&pool) {
+  let conn = match auth.user_db.lock() {
     Ok(conn) => conn,
     Err(_) => return Redirect::to("/settings"),
   };
@@ -447,8 +449,12 @@ pub async fn update_settings(
   Redirect::to("/settings")
 }
 
-/// Scrape all lessons
-pub async fn trigger_scrape() -> Redirect {
+/// Scrape all lessons (admin only)
+pub async fn trigger_scrape(auth: AuthContext) -> Redirect {
+  if !auth.is_admin {
+    return Redirect::to("/settings");
+  }
+
   #[cfg(feature = "profiling")]
   crate::profile_log!(EventType::HandlerStart {
     route: "/settings/scrape".into(),
@@ -465,8 +471,12 @@ pub async fn trigger_scrape() -> Redirect {
   Redirect::to("/settings")
 }
 
-/// Scrape a specific lesson
-pub async fn trigger_scrape_lesson(Path(lesson): Path<String>) -> Redirect {
+/// Scrape a specific lesson (admin only)
+pub async fn trigger_scrape_lesson(auth: AuthContext, Path(lesson): Path<String>) -> Redirect {
+  if !auth.is_admin {
+    return Redirect::to("/settings");
+  }
+
   #[cfg(feature = "profiling")]
   crate::profile_log!(EventType::HandlerStart {
     route: format!("/settings/scrape/{}", lesson).into(),
@@ -494,8 +504,12 @@ pub async fn trigger_scrape_lesson(Path(lesson): Path<String>) -> Redirect {
   Redirect::to("/settings")
 }
 
-/// Delete all scraped content
-pub async fn delete_scraped() -> Redirect {
+/// Delete all scraped content (admin only)
+pub async fn delete_scraped(auth: AuthContext) -> Redirect {
+  if !auth.is_admin {
+    return Redirect::to("/settings");
+  }
+
   #[cfg(feature = "profiling")]
   crate::profile_log!(EventType::HandlerStart {
     route: "/settings/delete-scraped".into(),
@@ -509,8 +523,12 @@ pub async fn delete_scraped() -> Redirect {
   Redirect::to("/settings")
 }
 
-/// Delete a specific lesson's content
-pub async fn delete_scraped_lesson(Path(lesson): Path<String>) -> Redirect {
+/// Delete a specific lesson's content (admin only)
+pub async fn delete_scraped_lesson(auth: AuthContext, Path(lesson): Path<String>) -> Redirect {
+  if !auth.is_admin {
+    return Redirect::to("/settings");
+  }
+
   #[cfg(feature = "profiling")]
   crate::profile_log!(EventType::HandlerStart {
     route: format!("/settings/delete-scraped/{}", lesson).into(),
@@ -540,7 +558,12 @@ fn default_segment_padding() -> u32 {
   75
 }
 
-pub async fn trigger_segment(Form(form): Form<SegmentForm>) -> Html<String> {
+/// Re-segment all lessons (admin only)
+pub async fn trigger_segment(auth: AuthContext, Form(form): Form<SegmentForm>) -> Html<String> {
+  if !auth.is_admin {
+    return Html(r#"<span class="text-red-600 dark:text-red-400">Admin access required</span>"#.to_string());
+  }
+
   #[cfg(feature = "profiling")]
   crate::profile_log!(
     EventType::Custom {
@@ -650,7 +673,12 @@ pub struct AudioRowTemplate {
   pub status_success: bool,
 }
 
-pub async fn trigger_row_segment(Form(form): Form<RowSegmentForm>) -> Html<String> {
+/// Re-segment a single row (admin only)
+pub async fn trigger_row_segment(auth: AuthContext, Form(form): Form<RowSegmentForm>) -> Html<String> {
+  if !auth.is_admin {
+    return Html(r#"<span class="text-red-600 dark:text-red-400">Admin access required</span>"#.to_string());
+  }
+
   #[cfg(feature = "profiling")]
   crate::profile_log!(
     EventType::Custom {
@@ -852,14 +880,14 @@ fn get_audio_row(lesson_id: &str, row_romanization: &str) -> Option<AudioRow> {
 }
 
 /// Make all cards due now for accelerated learning/testing
-pub async fn make_all_due(State(pool): State<DbPool>) -> Redirect {
+pub async fn make_all_due(auth: AuthContext) -> Redirect {
   #[cfg(feature = "profiling")]
   crate::profile_log!(EventType::HandlerStart {
     route: "/settings/make-all-due".into(),
     method: "POST".into(),
   });
 
-  let conn = match try_lock(&pool) {
+  let conn = match auth.user_db.lock() {
     Ok(conn) => conn,
     Err(_) => return Redirect::to("/settings"),
   };
@@ -875,14 +903,14 @@ pub async fn make_all_due(State(pool): State<DbPool>) -> Redirect {
 }
 
 /// Graduate all cards in a tier (escape hatch for users who know the material)
-pub async fn graduate_tier(State(pool): State<DbPool>, Path(tier): Path<u8>) -> Redirect {
+pub async fn graduate_tier(auth: AuthContext, Path(tier): Path<u8>) -> Redirect {
   #[cfg(feature = "profiling")]
   crate::profile_log!(EventType::HandlerStart {
     route: format!("/settings/graduate-tier/{}", tier),
     method: "POST".into(),
   });
 
-  let conn = match try_lock(&pool) {
+  let conn = match auth.user_db.lock() {
     Ok(conn) => conn,
     Err(_) => return Redirect::to("/settings"),
   };
@@ -902,14 +930,14 @@ pub async fn graduate_tier(State(pool): State<DbPool>, Path(tier): Path<u8>) -> 
 }
 
 /// Restore a tier to its pre-graduation state (undo graduation)
-pub async fn restore_tier(State(pool): State<DbPool>, Path(tier): Path<u8>) -> Redirect {
+pub async fn restore_tier(auth: AuthContext, Path(tier): Path<u8>) -> Redirect {
   #[cfg(feature = "profiling")]
   crate::profile_log!(EventType::HandlerStart {
     route: format!("/settings/restore-tier/{}", tier),
     method: "POST".into(),
   });
 
-  let conn = match try_lock(&pool) {
+  let conn = match auth.user_db.lock() {
     Ok(conn) => conn,
     Err(_) => return Redirect::to("/settings"),
   };
@@ -936,7 +964,12 @@ pub struct ManualSegmentForm {
   pub end_ms: i32,
 }
 
-pub async fn trigger_manual_segment(Form(form): Form<ManualSegmentForm>) -> Html<String> {
+/// Apply manual segment timestamps (admin only)
+pub async fn trigger_manual_segment(auth: AuthContext, Form(form): Form<ManualSegmentForm>) -> Html<String> {
+  if !auth.is_admin {
+    return Html(r#"<span class="text-red-600 dark:text-red-400">Admin access required</span>"#.to_string());
+  }
+
   #[cfg(feature = "profiling")]
   crate::profile_log!(
     EventType::Custom {
@@ -1004,7 +1037,12 @@ pub struct ResetSegmentForm {
   pub row: String,           // Row romanization for refreshing UI
 }
 
-pub async fn trigger_reset_segment(Form(form): Form<ResetSegmentForm>) -> Html<String> {
+/// Reset manual segment timestamps to baseline (admin only)
+pub async fn trigger_reset_segment(auth: AuthContext, Form(form): Form<ResetSegmentForm>) -> Html<String> {
+  if !auth.is_admin {
+    return Html(r#"<span class="text-red-600 dark:text-red-400">Admin access required</span>"#.to_string());
+  }
+
   #[cfg(feature = "profiling")]
   crate::profile_log!(
     EventType::Custom {

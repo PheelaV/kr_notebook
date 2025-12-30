@@ -1,5 +1,4 @@
 use axum::{
-  extract::State,
   response::{Html, IntoResponse},
   Form,
 };
@@ -9,7 +8,8 @@ use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::Path;
 
-use crate::db::{self, try_lock, DbPool};
+use crate::auth::AuthContext;
+use crate::db;
 
 #[derive(Deserialize)]
 pub struct DiagnosticForm {
@@ -19,10 +19,10 @@ pub struct DiagnosticForm {
 }
 
 pub async fn log_diagnostic(
-  State(pool): State<DbPool>,
+  auth: AuthContext,
   Form(form): Form<DiagnosticForm>,
 ) -> impl IntoResponse {
-  let conn = match try_lock(&pool) {
+  let conn = match auth.user_db.lock() {
     Ok(conn) => conn,
     Err(_) => return Html("<p>Database error - diagnostic not logged.</p>".to_string()),
   };

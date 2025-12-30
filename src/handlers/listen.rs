@@ -7,6 +7,7 @@ use rand::prelude::IndexedRandom;
 use serde::Deserialize;
 
 use super::settings::{has_lesson1, has_lesson2, has_lesson3};
+use crate::auth::AuthContext;
 use crate::filters;
 use crate::audio::{
     get_available_syllables, get_row_romanization, get_row_syllables, load_manifest,
@@ -310,7 +311,7 @@ pub struct SkipQuery {
 // ============ Handlers ============
 
 /// GET /listen - Tier selection page
-pub async fn listen_index() -> impl IntoResponse {
+pub async fn listen_index(_auth: AuthContext) -> impl IntoResponse {
     let tier1 = if has_lesson1() {
         config::get_listen_tier_info(1)
             .and_then(|(lesson_id, name)| build_tier_from_manifest(1, lesson_id, name))
@@ -345,7 +346,7 @@ pub async fn listen_index() -> impl IntoResponse {
 }
 
 /// GET /listen/start?tier=1 - Start practice for a tier
-pub async fn listen_start(Query(query): Query<StartQuery>) -> impl IntoResponse {
+pub async fn listen_start(_auth: AuthContext, Query(query): Query<StartQuery>) -> impl IntoResponse {
     let (lesson_id, tier_name) = match config::get_listen_tier_info(query.tier) {
         Some((lid, name)) => (lid, name),
         None => return Html("Invalid tier".to_string()),
@@ -384,7 +385,7 @@ pub async fn listen_start(Query(query): Query<StartQuery>) -> impl IntoResponse 
 }
 
 /// POST /listen/answer - Submit answer and get next syllable (legacy full page)
-pub async fn listen_answer(Form(form): Form<AnswerForm>) -> impl IntoResponse {
+pub async fn listen_answer(_auth: AuthContext, Form(form): Form<AnswerForm>) -> impl IntoResponse {
     let (lesson_id, tier_name) = match config::get_listen_tier_info(form.tier) {
         Some((lid, name)) => (lid, name),
         None => return Html("Invalid tier".to_string()),
@@ -428,7 +429,7 @@ pub async fn listen_answer(Form(form): Form<AnswerForm>) -> impl IntoResponse {
 }
 
 /// POST /listen/answer-htmx - Submit answer via HTMX (partial update)
-pub async fn listen_answer_htmx(Form(form): Form<AnswerForm>) -> impl IntoResponse {
+pub async fn listen_answer_htmx(_auth: AuthContext, Form(form): Form<AnswerForm>) -> impl IntoResponse {
     let lesson_id = match config::get_listen_tier_info(form.tier) {
         Some((lid, _)) => lid,
         None => return Html("Invalid tier".to_string()),
@@ -470,7 +471,7 @@ pub async fn listen_answer_htmx(Form(form): Form<AnswerForm>) -> impl IntoRespon
 }
 
 /// GET /listen/skip - Skip current syllable
-pub async fn listen_skip(Query(query): Query<SkipQuery>) -> impl IntoResponse {
+pub async fn listen_skip(_auth: AuthContext, Query(query): Query<SkipQuery>) -> impl IntoResponse {
     let (lesson_id, tier_name) = match config::get_listen_tier_info(query.tier) {
         Some((lid, name)) => (lid, name),
         None => return Html("Invalid tier".to_string()),
