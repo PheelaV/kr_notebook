@@ -17,19 +17,24 @@ use crate::paths;
 #[cfg(feature = "profiling")]
 use crate::profiling::EventType;
 
+/// Check if lesson content exists for a given lesson ID
+pub fn has_lesson(lesson_id: &str) -> bool {
+  StdPath::new(&paths::manifest_path(lesson_id)).exists()
+}
+
 /// Check if lesson1 content exists
 pub fn has_lesson1() -> bool {
-  StdPath::new(&paths::manifest_path("lesson1")).exists()
+  has_lesson("lesson1")
 }
 
 /// Check if lesson2 content exists
 pub fn has_lesson2() -> bool {
-  StdPath::new(&paths::manifest_path("lesson2")).exists()
+  has_lesson("lesson2")
 }
 
 /// Check if lesson3 content exists
 pub fn has_lesson3() -> bool {
-  StdPath::new(&paths::manifest_path("lesson3")).exists()
+  has_lesson("lesson3")
 }
 
 /// Count segmented syllables for a lesson
@@ -382,7 +387,8 @@ pub async fn update_settings(
 
   // Update all_tiers_unlocked
   let all_tiers_unlocked = form.all_tiers_unlocked.is_some();
-  let _ = db::set_all_tiers_unlocked(&conn, all_tiers_unlocked);
+  db::set_all_tiers_unlocked(&conn, all_tiers_unlocked)
+    .log_warn("Failed to save all_tiers_unlocked setting");
 
   #[cfg(feature = "profiling")]
   crate::profile_log!(EventType::SettingsUpdate {
@@ -411,7 +417,8 @@ pub async fn update_settings(
     enabled_tiers.push(1);
   }
 
-  let _ = db::set_enabled_tiers(&conn, &enabled_tiers);
+  db::set_enabled_tiers(&conn, &enabled_tiers)
+    .log_warn("Failed to save enabled_tiers setting");
 
   #[cfg(feature = "profiling")]
   crate::profile_log!(EventType::SettingsUpdate {
@@ -425,7 +432,8 @@ pub async fn update_settings(
     // Validate and clamp to valid range
     let retention_pct = retention.clamp(80, 95);
     let retention_f64 = f64::from(retention_pct) / 100.0;
-    let _ = db::set_setting(&conn, "desired_retention", &retention_f64.to_string());
+    db::set_setting(&conn, "desired_retention", &retention_f64.to_string())
+      .log_warn("Failed to save desired_retention setting");
 
     #[cfg(feature = "profiling")]
     crate::profile_log!(EventType::SettingsUpdate {
@@ -442,7 +450,8 @@ pub async fn update_settings(
     } else {
       focus_str.parse::<u8>().ok()
     };
-    let _ = db::set_focus_tier(&conn, focus_tier);
+    db::set_focus_tier(&conn, focus_tier)
+      .log_warn("Failed to save focus_tier setting");
 
     #[cfg(feature = "profiling")]
     crate::profile_log!(EventType::SettingsUpdate {
@@ -473,7 +482,17 @@ pub async fn trigger_scrape(auth: AuthContext) -> Redirect {
     "cd {} && uv run kr-scraper lesson1 && uv run kr-scraper lesson2 && uv run kr-scraper lesson3 && uv run kr-scraper segment --padding 75",
     paths::PY_SCRIPTS_DIR
   );
-  let _ = Command::new("sh").args(["-c", &cmd]).output();
+  match Command::new("sh").args(["-c", &cmd]).output() {
+    Ok(output) if !output.status.success() => {
+      tracing::warn!(
+        "Scrape command failed with status {}: {}",
+        output.status,
+        String::from_utf8_lossy(&output.stderr)
+      );
+    }
+    Err(e) => tracing::warn!("Failed to run scrape command: {}", e),
+    _ => {}
+  }
 
   Redirect::to("/settings")
 }
@@ -507,7 +526,18 @@ pub async fn trigger_scrape_lesson(auth: AuthContext, Path(lesson): Path<String>
     _ => return Redirect::to("/settings"),
   };
 
-  let _ = Command::new("sh").args(["-c", &cmd]).output();
+  match Command::new("sh").args(["-c", &cmd]).output() {
+    Ok(output) if !output.status.success() => {
+      tracing::warn!(
+        "Scrape lesson {} failed with status {}: {}",
+        lesson,
+        output.status,
+        String::from_utf8_lossy(&output.stderr)
+      );
+    }
+    Err(e) => tracing::warn!("Failed to run scrape command for lesson {}: {}", lesson, e),
+    _ => {}
+  }
 
   Redirect::to("/settings")
 }
@@ -527,7 +557,17 @@ pub async fn delete_scraped(auth: AuthContext) -> Redirect {
 
   // Run the clean command
   let cmd = format!("cd {} && uv run kr-scraper clean --yes", paths::PY_SCRIPTS_DIR);
-  let _ = Command::new("sh").args(["-c", &cmd]).output();
+  match Command::new("sh").args(["-c", &cmd]).output() {
+    Ok(output) if !output.status.success() => {
+      tracing::warn!(
+        "Clean command failed with status {}: {}",
+        output.status,
+        String::from_utf8_lossy(&output.stderr)
+      );
+    }
+    Err(e) => tracing::warn!("Failed to run clean command: {}", e),
+    _ => {}
+  }
 
   Redirect::to("/settings")
 }
@@ -552,7 +592,9 @@ pub async fn delete_scraped_lesson(auth: AuthContext, Path(lesson): Path<String>
     _ => return Redirect::to("/settings"),
   };
 
-  let _ = std::fs::remove_dir_all(path);
+  if let Err(e) = std::fs::remove_dir_all(&path) {
+    tracing::warn!("Failed to remove lesson {} directory: {}", lesson, e);
+  }
 
   Redirect::to("/settings")
 }
@@ -930,7 +972,7 @@ pub async fn graduate_tier(auth: AuthContext, Path(tier): Path<u8>) -> Redirect 
   let _count = db::graduate_tier(&conn, tier).log_warn_default("Failed to graduate tier");
 
   // Try to unlock next tier if applicable
-  let _ = db::try_auto_unlock_tier(&conn);
+  db::try_auto_unlock_tier(&conn).log_warn("Failed to auto-unlock next tier");
 
   #[cfg(feature = "profiling")]
   crate::profile_log!(EventType::Custom {

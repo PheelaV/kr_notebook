@@ -250,6 +250,7 @@ mod tests {
       card_type: CardType::Consonant,
       tier: 1,
       audio_hint: None,
+      is_reverse: false,
       ease_factor: 2.5,
       interval_days: 0,
       repetitions: 0,

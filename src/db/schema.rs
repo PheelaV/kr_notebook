@@ -13,6 +13,7 @@ pub fn run_migrations(conn: &Connection) -> Result<()> {
       card_type TEXT NOT NULL,
       tier INTEGER NOT NULL,
       audio_hint TEXT,
+      is_reverse INTEGER NOT NULL DEFAULT 0,
       ease_factor REAL NOT NULL DEFAULT 2.5,
       interval_days INTEGER NOT NULL DEFAULT 0,
       repetitions INTEGER NOT NULL DEFAULT 0,
@@ -123,6 +124,23 @@ pub fn run_migrations(conn: &Connection) -> Result<()> {
     if has_reviews {
       conn.execute(
         "UPDATE review_logs SET is_correct = CASE WHEN quality >= 2 THEN 1 ELSE 0 END WHERE is_correct IS NULL",
+        [],
+      )?;
+    }
+  }
+
+  // Migration: Add is_reverse column for explicit direction tracking
+  let had_is_reverse = column_exists(conn, "cards", "is_reverse");
+  add_column_if_missing(conn, "cards", "is_reverse", "INTEGER NOT NULL DEFAULT 0")?;
+
+  // Backfill is_reverse based on front text pattern (migrating from string-based detection)
+  if !had_is_reverse {
+    let has_cards: bool = conn
+      .query_row("SELECT COUNT(*) > 0 FROM cards", [], |row| row.get(0))
+      .unwrap_or(false);
+    if has_cards {
+      conn.execute(
+        "UPDATE cards SET is_reverse = 1 WHERE front LIKE 'Which letter sounds like%'",
         [],
       )?;
     }

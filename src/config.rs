@@ -66,6 +66,10 @@ pub fn server_bind_addr() -> String {
 /// Session expiration time in hours
 pub const SESSION_EXPIRY_HOURS: i64 = 1;
 
+/// Probability threshold for session cleanup (0-255, lower = more frequent)
+/// Value of 25 means ~10% chance (25/256) on each session access
+pub const SESSION_CLEANUP_THRESHOLD: u8 = 25;
+
 // ==================== Tier Configuration ====================
 
 /// Tier information struct
@@ -120,6 +124,11 @@ pub fn get_tier_name(tier: u8) -> String {
 pub fn get_listen_tier_info(tier: u8) -> Option<(&'static str, &'static str)> {
     get_tier_info(tier).map(|t| (t.lesson_id, t.name))
 }
+
+// ==================== Study Configuration ====================
+
+/// Number of distractor choices in multiple choice mode
+pub const DISTRACTOR_COUNT: usize = 3;
 
 // ==================== Query Limits ====================
 

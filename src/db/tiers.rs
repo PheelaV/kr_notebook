@@ -79,41 +79,6 @@ pub fn set_setting(conn: &Connection, key: &str, value: &str) -> Result<()> {
     Ok(())
 }
 
-// TODO: Planned feature - Dark mode UI toggle
-// Settings stored in DB but UI toggle not yet implemented
-
-#[allow(dead_code)]
-pub fn get_dark_mode(conn: &Connection) -> Result<bool> {
-    get_setting(conn, "dark_mode").map(|v| v.as_deref() == Some("true"))
-}
-
-#[allow(dead_code)]
-pub fn set_dark_mode(conn: &Connection, enabled: bool) -> Result<()> {
-    set_setting(conn, "dark_mode", if enabled { "true" } else { "false" })
-}
-
-// TODO: Planned feature - Text-to-speech integration
-// Settings stored in DB, awaiting TTS provider integration (MMS model)
-
-#[allow(dead_code)]
-pub fn get_tts_enabled(conn: &Connection) -> Result<bool> {
-    get_setting(conn, "tts_enabled").map(|v| v.as_deref() != Some("false"))
-}
-
-#[allow(dead_code)]
-pub fn set_tts_enabled(conn: &Connection, enabled: bool) -> Result<()> {
-    set_setting(conn, "tts_enabled", if enabled { "true" } else { "false" })
-}
-
-#[allow(dead_code)]
-pub fn get_tts_model(conn: &Connection) -> Result<String> {
-    get_setting(conn, "tts_model").map(|v| v.unwrap_or_else(|| "mms".to_string()))
-}
-
-#[allow(dead_code)]
-pub fn set_tts_model(conn: &Connection, model: &str) -> Result<()> {
-    set_setting(conn, "tts_model", model)
-}
 
 // ==================== Tier Management ====================
 
@@ -144,14 +109,6 @@ pub fn set_enabled_tiers(conn: &Connection, tiers: &[u8]) -> Result<()> {
         .collect::<Vec<_>>()
         .join(",");
     set_setting(conn, "enabled_tiers", &value)
-}
-
-// TODO: Planned feature - Per-tier enable/disable in UI
-// Used for fine-grained study control when all_tiers_unlocked is true
-#[allow(dead_code)]
-pub fn is_tier_enabled(conn: &Connection, tier: u8) -> Result<bool> {
-    let enabled = get_enabled_tiers(conn)?;
-    Ok(enabled.contains(&tier))
 }
 
 pub fn get_max_unlocked_tier(conn: &Connection) -> Result<u8> {

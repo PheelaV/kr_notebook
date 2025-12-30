@@ -7,12 +7,8 @@ use crate::filters;
 #[cfg(feature = "profiling")]
 use crate::profiling::EventType;
 
-/// A card that the user frequently gets wrong
-///
-/// TODO: Planned feature - Problem card analysis
-/// Will show cards with high confusion rates and common wrong answers
+/// A card that the user frequently gets wrong - shows high confusion rates
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub struct ProblemCard {
   pub id: i64,
   pub front: String,

@@ -23,8 +23,8 @@ static SESSIONS: LazyLock<Mutex<HashMap<String, SessionEntry>>> =
 pub fn get_session(session_id: &str) -> StudySession {
   let mut sessions = SESSIONS.lock().expect("Session store lock poisoned");
 
-  // Clean up expired sessions occasionally (1 in 10 chance)
-  if rand::random::<u8>() < 25 {
+  // Clean up expired sessions occasionally (~10% chance)
+  if rand::random::<u8>() < config::SESSION_CLEANUP_THRESHOLD {
     cleanup_expired(&mut sessions);
   }
 

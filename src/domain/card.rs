@@ -74,6 +74,8 @@ pub struct Card {
   pub card_type: CardType,
   pub tier: u8,
   pub audio_hint: Option<String>,
+  /// True if this is a reverse card (romanization->Korean, "Which letter sounds like...?")
+  pub is_reverse: bool,
 
   // SM-2 fields (kept for backward compatibility and fallback)
   pub ease_factor: f64,
@@ -110,6 +112,7 @@ impl Card {
       card_type,
       tier,
       audio_hint: None,
+      is_reverse: false,
       ease_factor: 2.5,
       interval_days: 0,
       repetitions: 0,
@@ -121,14 +124,5 @@ impl Card {
       total_reviews: 0,
       correct_reviews: 0,
     }
-  }
-
-  /// Check if this card is a reverse card (sound->letter question format)
-  ///
-  /// TODO: Planned feature - Reverse card detection for bidirectional study
-  /// Will enable letter→sound and sound→letter practice modes
-  #[allow(dead_code)]
-  pub fn is_reverse_card(&self) -> bool {
-    self.front.starts_with("Which letter")
   }
 }

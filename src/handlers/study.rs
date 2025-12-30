@@ -8,23 +8,19 @@ use rand::seq::SliceRandom;
 use serde::Deserialize;
 
 use crate::auth::AuthContext;
+use crate::config;
 use crate::db::{self, LogOnError};
-use crate::filters;
 use crate::domain::{Card, InputMethod, ReviewDirection, ReviewQuality, StudyMode};
+use crate::filters;
 use crate::session;
 use crate::srs::{self, select_next_card};
 use crate::validation::{validate_answer, HintGenerator};
 
-/// Determine the review direction based on card front text
+/// Determine the review direction based on card type
 fn get_review_direction(card: &Card) -> ReviewDirection {
-  if card.front.starts_with("Which letter sounds like") {
-    // Question asking for Korean character from romanization
+  if card.is_reverse {
     ReviewDirection::RomToKr
-  } else if is_korean(&card.front) {
-    // Korean character shown, asking for romanization
-    ReviewDirection::KrToRom
   } else {
-    // Default to Korean to romanization
     ReviewDirection::KrToRom
   }
 }
@@ -36,14 +32,11 @@ fn get_character_type(card: &Card) -> &'static str {
 
 /// Get the character to track stats for (the Korean character being learned)
 fn get_tracked_character(card: &Card) -> &str {
-  if is_korean(&card.front) {
-    // Front is Korean, track it
-    &card.front
-  } else if is_korean(&card.main_answer) {
-    // Answer is Korean (e.g., "Which letter sounds like 'g'?" -> "ㄱ")
+  if card.is_reverse {
+    // Reverse card: answer is Korean
     &card.main_answer
   } else {
-    // Fallback to front
+    // Forward card: front is Korean
     &card.front
   }
 }
@@ -74,10 +67,10 @@ fn generate_choices(card: &Card, all_cards: &[Card]) -> Vec<String> {
     .map(|c| c.main_answer.clone())
     .collect();
 
-  // Shuffle and take up to 3 distractors
+  // Shuffle and take distractors
   let mut rng = rand::rng();
   distractors.shuffle(&mut rng);
-  distractors.truncate(3);
+  distractors.truncate(config::DISTRACTOR_COUNT);
 
   // Combine correct answer with distractors
   let mut choices = vec![correct];
@@ -97,6 +90,7 @@ pub struct StudyTemplate {
   pub main_answer: String,
   pub description: Option<String>,
   pub tier: u8,
+  pub is_reverse: bool,
   pub has_card: bool,
 }
 
@@ -108,6 +102,7 @@ pub struct CardTemplate {
   pub main_answer: String,
   pub description: Option<String>,
   pub tier: u8,
+  pub is_reverse: bool,
 }
 
 #[derive(Template)]
@@ -118,6 +113,7 @@ pub struct PracticeCardTemplate {
   pub main_answer: String,
   pub description: Option<String>,
   pub tier: u8,
+  pub is_reverse: bool,
 }
 
 #[derive(Template)]
@@ -134,6 +130,7 @@ pub struct InteractiveCardTemplate {
   pub main_answer: String,
   pub description: Option<String>,
   pub tier: u8,
+  pub is_reverse: bool,
   pub validated: bool,
   pub is_correct: bool,
   pub user_answer: String,
@@ -161,6 +158,7 @@ pub struct StudyInteractiveTemplate {
   pub main_answer: String,
   pub description: Option<String>,
   pub tier: u8,
+  pub is_reverse: bool,
   pub validated: bool,
   pub is_correct: bool,
   pub user_answer: String,
@@ -194,6 +192,7 @@ pub struct PracticeTemplate {
   pub main_answer: String,
   pub description: Option<String>,
   pub tier: u8,
+  pub is_reverse: bool,
   pub mode: String,
   // Interactive mode fields
   pub validated: bool,
@@ -228,6 +227,7 @@ pub async fn study_start(auth: AuthContext) -> impl IntoResponse {
       main_answer: card.main_answer.clone(),
       description: card.description.clone(),
       tier: card.tier,
+      is_reverse: card.is_reverse,
       has_card: true,
     };
     Html(template.render().unwrap_or_default())
@@ -238,6 +238,7 @@ pub async fn study_start(auth: AuthContext) -> impl IntoResponse {
       main_answer: String::new(),
       description: None,
       tier: 0,
+      is_reverse: false,
       has_card: false,
     };
     Html(template.render().unwrap_or_default())
@@ -318,6 +319,7 @@ pub async fn submit_review(
       main_answer: next_card.main_answer.clone(),
       description: next_card.description.clone(),
       tier: next_card.tier,
+      is_reverse: next_card.is_reverse,
     };
     Html(template.render().unwrap_or_default())
   } else {
@@ -395,6 +397,7 @@ pub async fn study_start_interactive(auth: AuthContext) -> impl IntoResponse {
         main_answer: card.main_answer.clone(),
         description: card.description.clone(),
         tier: card.tier,
+        is_reverse: card.is_reverse,
         validated: false,
         is_correct: false,
         user_answer: String::new(),
@@ -429,6 +432,7 @@ pub async fn study_start_interactive(auth: AuthContext) -> impl IntoResponse {
     main_answer: String::new(),
     description: None,
     tier: 0,
+    is_reverse: false,
     validated: false,
     is_correct: false,
     user_answer: String::new(),
@@ -637,6 +641,7 @@ pub async fn validate_answer_handler(
       main_answer: card.main_answer.clone(),
       description: card.description.clone(),
       tier: card.tier,
+      is_reverse: card.is_reverse,
       validated: true,
       is_correct,
       user_answer: form.answer,
@@ -723,6 +728,7 @@ pub async fn next_card_interactive(
         main_answer: next_card.main_answer.clone(),
         description: next_card.description.clone(),
         tier: next_card.tier,
+        is_reverse: next_card.is_reverse,
         validated: false,
         is_correct: false,
         user_answer: String::new(),
@@ -808,6 +814,7 @@ pub async fn submit_review_interactive(
         main_answer: next_card.main_answer.clone(),
         description: next_card.description.clone(),
         tier: next_card.tier,
+        is_reverse: next_card.is_reverse,
         validated: false,
         is_correct: false,
         user_answer: String::new(),
@@ -869,6 +876,7 @@ pub async fn practice_start(
       main_answer: card.main_answer.clone(),
       description: card.description.clone(),
       tier: card.tier,
+      is_reverse: card.is_reverse,
       mode,
       validated: false,
       is_correct: false,
@@ -934,6 +942,7 @@ pub async fn practice_next(
         main_answer: next_card.main_answer.clone(),
         description: next_card.description.clone(),
         tier: next_card.tier,
+        is_reverse: next_card.is_reverse,
         validated: false,
         is_correct: false,
         user_answer: String::new(),
@@ -956,6 +965,7 @@ pub async fn practice_next(
         main_answer: next_card.main_answer.clone(),
         description: next_card.description.clone(),
         tier: next_card.tier,
+        is_reverse: next_card.is_reverse,
       };
       Html(template.render().unwrap_or_default())
     }
@@ -1034,6 +1044,7 @@ pub async fn practice_validate(
     main_answer: card.main_answer.clone(),
     description: card.description.clone(),
     tier: card.tier,
+    is_reverse: card.is_reverse,
     validated: true,
     is_correct,
     user_answer: form.answer,

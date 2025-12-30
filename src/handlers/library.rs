@@ -49,9 +49,9 @@ pub async fn library(auth: AuthContext) -> Html<String> {
   let mut tier_map: std::collections::BTreeMap<u8, Vec<LibraryEntry>> = std::collections::BTreeMap::new();
 
   for card in cards {
-    // Only include cards where front is a single Korean character (jamo)
-    // Skip reverse cards like "Which letter sounds like..."
-    if card.front.chars().count() == 1 {
+    // Only include forward cards (Korean -> romanization)
+    // Skip reverse cards (romanization -> Korean)
+    if !card.is_reverse {
       let entry = LibraryEntry {
         front: card.front,
         main_answer: card.main_answer,

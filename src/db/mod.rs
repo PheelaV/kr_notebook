@@ -112,7 +112,7 @@ pub fn seed_hangul_cards(conn: &Connection) -> Result<()> {
   Ok(())
 }
 
-// Helper to create a card with main answer and description
+// Helper to create a forward card (Korean -> romanization)
 fn card(front: &str, main: &str, desc: Option<&str>, card_type: CardType, tier: u8) -> Card {
   Card::new(
     front.to_string(),
@@ -121,6 +121,19 @@ fn card(front: &str, main: &str, desc: Option<&str>, card_type: CardType, tier: 
     card_type,
     tier,
   )
+}
+
+// Helper to create a reverse card (romanization -> Korean)
+fn reverse_card(romanization: &str, korean: &str, card_type: CardType, tier: u8) -> Card {
+  let mut card = Card::new(
+    romanization.to_string(),
+    korean.to_string(),
+    None,
+    card_type,
+    tier,
+  );
+  card.is_reverse = true;
+  card
 }
 
 fn get_hangul_seed_data() -> Vec<Card> {
@@ -142,13 +155,7 @@ fn get_hangul_seed_data() -> Vec<Card> {
   for (front, main, desc) in tier1_consonants {
     cards.push(card(front, main, Some(desc), CardType::Consonant, 1));
     // Reverse card: sound -> letter
-    cards.push(card(
-      &format!("Which letter sounds like '{}'?", main),
-      front,
-      None,
-      CardType::Consonant,
-      1,
-    ));
+    cards.push(reverse_card(main, front, CardType::Consonant, 1));
   }
 
   // Tier 1: Basic Vowels (letter -> sound)
@@ -163,13 +170,7 @@ fn get_hangul_seed_data() -> Vec<Card> {
 
   for (front, main, desc) in tier1_vowels {
     cards.push(card(front, main, Some(desc), CardType::Vowel, 1));
-    cards.push(card(
-      &format!("Which letter sounds like '{}'?", main),
-      front,
-      None,
-      CardType::Vowel,
-      1,
-    ));
+    cards.push(reverse_card(main, front, CardType::Vowel, 1));
   }
 
   // Tier 2: ㅇ and Y-vowels
@@ -199,13 +200,7 @@ fn get_hangul_seed_data() -> Vec<Card> {
 
   for (front, main, desc) in tier2_vowels {
     cards.push(card(front, main, Some(desc), CardType::Vowel, 2));
-    cards.push(card(
-      &format!("Which letter sounds like '{}'?", main),
-      front,
-      None,
-      CardType::Vowel,
-      2,
-    ));
+    cards.push(reverse_card(main, front, CardType::Vowel, 2));
   }
 
   // Tier 3: Aspirated Consonants
@@ -218,13 +213,7 @@ fn get_hangul_seed_data() -> Vec<Card> {
 
   for (front, main, desc) in tier3_aspirated {
     cards.push(card(front, main, Some(desc), CardType::AspiratedConsonant, 3));
-    cards.push(card(
-      &format!("Which letter sounds like '{}'?", main),
-      front,
-      None,
-      CardType::AspiratedConsonant,
-      3,
-    ));
+    cards.push(reverse_card(main, front, CardType::AspiratedConsonant, 3));
   }
 
   // Tier 3: Tense Consonants
@@ -238,13 +227,7 @@ fn get_hangul_seed_data() -> Vec<Card> {
 
   for (front, main, desc) in tier3_tense {
     cards.push(card(front, main, Some(desc), CardType::TenseConsonant, 3));
-    cards.push(card(
-      &format!("Which letter sounds like '{}'?", main),
-      front,
-      None,
-      CardType::TenseConsonant,
-      3,
-    ));
+    cards.push(reverse_card(main, front, CardType::TenseConsonant, 3));
   }
 
   // Tier 4: Compound Vowels
@@ -262,13 +245,7 @@ fn get_hangul_seed_data() -> Vec<Card> {
 
   for (front, main, desc) in tier4_compound {
     cards.push(card(front, main, Some(desc), CardType::CompoundVowel, 4));
-    cards.push(card(
-      &format!("Which letter sounds like '{}'?", main),
-      front,
-      None,
-      CardType::CompoundVowel,
-      4,
-    ));
+    cards.push(reverse_card(main, front, CardType::CompoundVowel, 4));
   }
 
   cards

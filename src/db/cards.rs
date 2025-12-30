@@ -12,9 +12,9 @@ use super::tiers::{get_all_tiers_unlocked, get_effective_tiers, get_enabled_tier
 pub fn insert_card(conn: &Connection, card: &Card) -> Result<i64> {
     conn.execute(
         r#"
-    INSERT INTO cards (front, main_answer, description, card_type, tier, audio_hint, ease_factor,
+    INSERT INTO cards (front, main_answer, description, card_type, tier, audio_hint, is_reverse, ease_factor,
                        interval_days, repetitions, next_review, total_reviews, correct_reviews)
-    VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+    VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
     "#,
         params![
             card.front,
@@ -23,6 +23,7 @@ pub fn insert_card(conn: &Connection, card: &Card) -> Result<i64> {
             card.card_type.as_str(),
             card.tier,
             card.audio_hint,
+            card.is_reverse,
             card.ease_factor,
             card.interval_days,
             card.repetitions,
@@ -37,7 +38,7 @@ pub fn insert_card(conn: &Connection, card: &Card) -> Result<i64> {
 pub fn get_card_by_id(conn: &Connection, id: i64) -> Result<Option<Card>> {
     let mut stmt = conn.prepare(
         r#"
-    SELECT id, front, main_answer, description, card_type, tier, audio_hint, ease_factor,
+    SELECT id, front, main_answer, description, card_type, tier, audio_hint, is_reverse, ease_factor,
            interval_days, repetitions, next_review, total_reviews, correct_reviews, learning_step,
            fsrs_stability, fsrs_difficulty, fsrs_state
     FROM cards WHERE id = ?1
@@ -80,7 +81,7 @@ pub fn get_due_cards(
         if let Ok(Some(last_card)) = get_card_by_id(conn, last_id) {
             let query = format!(
                 r#"
-        SELECT id, front, main_answer, description, card_type, tier, audio_hint, ease_factor,
+        SELECT id, front, main_answer, description, card_type, tier, audio_hint, is_reverse, ease_factor,
                interval_days, repetitions, next_review, total_reviews, correct_reviews, learning_step,
                fsrs_stability, fsrs_difficulty, fsrs_state
         FROM cards
@@ -107,7 +108,7 @@ pub fn get_due_cards(
 
     let query = format!(
         r#"
-    SELECT id, front, main_answer, description, card_type, tier, audio_hint, ease_factor,
+    SELECT id, front, main_answer, description, card_type, tier, audio_hint, is_reverse, ease_factor,
            interval_days, repetitions, next_review, total_reviews, correct_reviews, learning_step,
            fsrs_stability, fsrs_difficulty, fsrs_state
     FROM cards
@@ -253,7 +254,7 @@ pub fn get_due_cards_interleaved(
 
     let query = format!(
         r#"
-    SELECT id, front, main_answer, description, card_type, tier, audio_hint, ease_factor,
+    SELECT id, front, main_answer, description, card_type, tier, audio_hint, is_reverse, ease_factor,
            interval_days, repetitions, next_review, total_reviews, correct_reviews, learning_step,
            fsrs_stability, fsrs_difficulty, fsrs_state
     FROM cards
@@ -299,7 +300,7 @@ pub fn get_practice_cards(
         if let Ok(Some(last_card)) = get_card_by_id(conn, last_id) {
             let query = format!(
                 r#"
-        SELECT id, front, main_answer, description, card_type, tier, audio_hint, ease_factor,
+        SELECT id, front, main_answer, description, card_type, tier, audio_hint, is_reverse, ease_factor,
                interval_days, repetitions, next_review, total_reviews, correct_reviews, learning_step,
                fsrs_stability, fsrs_difficulty, fsrs_state
         FROM cards
@@ -326,7 +327,7 @@ pub fn get_practice_cards(
 
     let query = format!(
         r#"
-    SELECT id, front, main_answer, description, card_type, tier, audio_hint, ease_factor,
+    SELECT id, front, main_answer, description, card_type, tier, audio_hint, is_reverse, ease_factor,
            interval_days, repetitions, next_review, total_reviews, correct_reviews, learning_step,
            fsrs_stability, fsrs_difficulty, fsrs_state
     FROM cards
@@ -365,7 +366,7 @@ pub fn get_unlocked_cards(conn: &Connection) -> Result<Vec<Card>> {
 
     let query = format!(
         r#"
-    SELECT id, front, main_answer, description, card_type, tier, audio_hint, ease_factor,
+    SELECT id, front, main_answer, description, card_type, tier, audio_hint, is_reverse, ease_factor,
            interval_days, repetitions, next_review, total_reviews, correct_reviews, learning_step,
            fsrs_stability, fsrs_difficulty, fsrs_state
     FROM cards
@@ -410,7 +411,7 @@ pub fn get_all_unlocked_cards(conn: &Connection) -> Result<Vec<Card>> {
 
     let query = format!(
         r#"
-    SELECT id, front, main_answer, description, card_type, tier, audio_hint, ease_factor,
+    SELECT id, front, main_answer, description, card_type, tier, audio_hint, is_reverse, ease_factor,
            interval_days, repetitions, next_review, total_reviews, correct_reviews, learning_step,
            fsrs_stability, fsrs_difficulty, fsrs_state
     FROM cards
@@ -474,7 +475,7 @@ pub fn get_unreviewed_today(
 
     let query = format!(
         r#"
-    SELECT c.id, c.front, c.main_answer, c.description, c.card_type, c.tier, c.audio_hint,
+    SELECT c.id, c.front, c.main_answer, c.description, c.card_type, c.tier, c.audio_hint, c.is_reverse,
            c.ease_factor, c.interval_days, c.repetitions, c.next_review, c.total_reviews,
            c.correct_reviews, c.learning_step, c.fsrs_stability, c.fsrs_difficulty, c.fsrs_state
     FROM cards c
@@ -541,7 +542,7 @@ pub fn get_unreviewed_today_count(conn: &Connection) -> Result<i64> {
 pub fn get_cards_by_tier(conn: &Connection, tier: u8) -> Result<Vec<Card>> {
     let mut stmt = conn.prepare(
         r#"
-    SELECT id, front, main_answer, description, card_type, tier, audio_hint, ease_factor,
+    SELECT id, front, main_answer, description, card_type, tier, audio_hint, is_reverse, ease_factor,
            interval_days, repetitions, next_review, total_reviews, correct_reviews, learning_step,
            fsrs_stability, fsrs_difficulty, fsrs_state
     FROM cards
@@ -635,8 +636,9 @@ pub fn update_card_after_fsrs_review(
 /// Convert a database row to a Card struct
 pub(crate) fn row_to_card(row: &rusqlite::Row) -> Result<Card> {
     let card_type_str: String = row.get(4)?;
-    let next_review_str: String = row.get(10)?;
-    let fsrs_state_str: Option<String> = row.get(16)?;
+    let is_reverse_int: i64 = row.get(7)?;
+    let next_review_str: String = row.get(11)?;
+    let fsrs_state_str: Option<String> = row.get(17)?;
 
     Ok(Card {
         id: row.get(0)?,
@@ -646,17 +648,18 @@ pub(crate) fn row_to_card(row: &rusqlite::Row) -> Result<Card> {
         card_type: CardType::from_str(&card_type_str).unwrap_or(CardType::Consonant),
         tier: row.get(5)?,
         audio_hint: row.get(6)?,
-        ease_factor: row.get(7)?,
-        interval_days: row.get(8)?,
-        repetitions: row.get(9)?,
+        is_reverse: is_reverse_int != 0,
+        ease_factor: row.get(8)?,
+        interval_days: row.get(9)?,
+        repetitions: row.get(10)?,
         next_review: DateTime::parse_from_rfc3339(&next_review_str)
             .map(|dt| dt.with_timezone(&Utc))
             .unwrap_or_else(|_| Utc::now()),
-        total_reviews: row.get(11)?,
-        correct_reviews: row.get(12)?,
-        learning_step: row.get(13)?,
-        fsrs_stability: row.get(14)?,
-        fsrs_difficulty: row.get(15)?,
+        total_reviews: row.get(12)?,
+        correct_reviews: row.get(13)?,
+        learning_step: row.get(14)?,
+        fsrs_stability: row.get(15)?,
+        fsrs_difficulty: row.get(16)?,
         fsrs_state: fsrs_state_str.map(|s| FsrsState::from_str(&s)),
     })
 }
