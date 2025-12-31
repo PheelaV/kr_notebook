@@ -1,15 +1,17 @@
-//! Admin-only operations: scraper, segmentation, tier graduation.
+//! Admin-only operations: scraper, segmentation, tier graduation, guest management.
 
 use askama::Template;
-use axum::extract::Path;
+use axum::extract::{Path, State};
 use axum::response::{Html, Redirect};
 use axum::Form;
 use serde::Deserialize;
 use std::process::Command;
 
+use crate::auth::db as auth_db;
 use crate::auth::AuthContext;
 use crate::db::{self, LogOnError};
 use crate::paths;
+use crate::state::AppState;
 #[cfg(feature = "profiling")]
 use crate::profiling::EventType;
 
@@ -582,6 +584,69 @@ pub async fn restore_tier(auth: AuthContext, Path(tier): Path<u8>) -> Redirect {
     name: "restore_tier".into(),
     data: serde_json::json!({ "tier": tier, "cards_restored": _count }),
   });
+
+  Redirect::to("/settings")
+}
+
+// ============================================================================
+// Guest Management (Admin Only)
+// ============================================================================
+
+/// Cleanup expired guest accounts
+pub async fn cleanup_guests(auth: AuthContext, State(state): State<AppState>) -> Redirect {
+  if !auth.is_admin {
+    return Redirect::to("/settings");
+  }
+
+  #[cfg(feature = "profiling")]
+  crate::profile_log!(EventType::HandlerStart {
+    route: "/settings/cleanup-guests".into(),
+    method: "POST".into(),
+    username: Some(auth.username.clone()),
+  });
+
+  let auth_db = match state.auth_db.lock() {
+    Ok(conn) => conn,
+    Err(_) => return Redirect::to("/settings"),
+  };
+
+  let expiry_hours = auth_db::get_guest_expiry_hours(&auth_db).unwrap_or(24);
+  if let Ok(expired_usernames) = auth_db::cleanup_expired_guests(&auth_db, expiry_hours) {
+    for username in &expired_usernames {
+      let user_dir = state.user_dir(username);
+      let _ = std::fs::remove_dir_all(&user_dir);
+    }
+    tracing::info!("Cleaned up {} expired guest accounts", expired_usernames.len());
+  }
+
+  Redirect::to("/settings")
+}
+
+/// Delete all guest accounts
+pub async fn delete_all_guests(auth: AuthContext, State(state): State<AppState>) -> Redirect {
+  if !auth.is_admin {
+    return Redirect::to("/settings");
+  }
+
+  #[cfg(feature = "profiling")]
+  crate::profile_log!(EventType::HandlerStart {
+    route: "/settings/delete-all-guests".into(),
+    method: "POST".into(),
+    username: Some(auth.username.clone()),
+  });
+
+  let auth_db = match state.auth_db.lock() {
+    Ok(conn) => conn,
+    Err(_) => return Redirect::to("/settings"),
+  };
+
+  if let Ok(deleted_usernames) = auth_db::delete_all_guests(&auth_db) {
+    for username in &deleted_usernames {
+      let user_dir = state.user_dir(username);
+      let _ = std::fs::remove_dir_all(&user_dir);
+    }
+    tracing::info!("Deleted {} guest accounts", deleted_usernames.len());
+  }
 
   Redirect::to("/settings")
 }

@@ -34,6 +34,12 @@ pub struct RegisterTemplate {
     pub error: Option<String>,
 }
 
+#[derive(Template)]
+#[template(path = "auth/guest.html")]
+pub struct GuestTemplate {
+    pub error: Option<String>,
+}
+
 #[derive(Deserialize)]
 pub struct LoginForm {
     pub username: String,
@@ -46,6 +52,13 @@ pub struct RegisterForm {
     pub username: String,
     /// Client-side SHA-256 hash of password+username (server never sees plaintext)
     pub password_hash: String,
+}
+
+#[derive(Deserialize)]
+pub struct GuestForm {
+    /// Optional nickname (if empty, random name generated)
+    #[serde(default)]
+    pub nickname: String,
 }
 
 /// GET /login - Show login page
@@ -152,6 +165,35 @@ pub async fn register_submit(
     jar: CookieJar,
     Form(form): Form<RegisterForm>,
 ) -> impl IntoResponse {
+    // Check registration limits first
+    {
+        let auth_db = match state.auth_db.lock() {
+            Ok(conn) => conn,
+            Err(_) => {
+                let template = RegisterTemplate {
+                    error: Some("Database error".to_string()),
+                };
+                return (jar, Html(template.render().unwrap_or_default())).into_response();
+            }
+        };
+
+        match auth_db::can_register_user(&auth_db) {
+            Ok(false) => {
+                let template = RegisterTemplate {
+                    error: Some("Registration is currently disabled or at capacity".to_string()),
+                };
+                return (jar, Html(template.render().unwrap_or_default())).into_response();
+            }
+            Err(_) => {
+                let template = RegisterTemplate {
+                    error: Some("Database error".to_string()),
+                };
+                return (jar, Html(template.render().unwrap_or_default())).into_response();
+            }
+            Ok(true) => {}
+        }
+    }
+
     // Validate username
     if !is_valid_username(&form.username) {
         let template = RegisterTemplate {
@@ -316,6 +358,194 @@ pub async fn logout(State(state): State<AppState>, jar: CookieJar) -> impl IntoR
         .build();
 
     (jar.remove(cookie), Redirect::to("/login"))
+}
+
+/// GET /guest - Show guest login page
+pub async fn guest_page() -> Html<String> {
+    let template = GuestTemplate { error: None };
+    Html(template.render().unwrap_or_default())
+}
+
+/// POST /guest - Create guest account and log in
+pub async fn guest_login(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    Form(form): Form<GuestForm>,
+) -> impl IntoResponse {
+    let auth_db = match state.auth_db.lock() {
+        Ok(conn) => conn,
+        Err(_) => {
+            let template = GuestTemplate {
+                error: Some("Database error".to_string()),
+            };
+            return (jar, Html(template.render().unwrap_or_default())).into_response();
+        }
+    };
+
+    // Clean up expired guests first
+    let expiry_hours = auth_db::get_guest_expiry_hours(&auth_db).unwrap_or(24);
+    if let Ok(expired_usernames) = auth_db::cleanup_expired_guests(&auth_db, expiry_hours) {
+        // Clean up directories for expired guests
+        for username in expired_usernames {
+            let user_dir = state.user_dir(&username);
+            let _ = fs::remove_dir_all(&user_dir);
+            tracing::info!("Cleaned up expired guest: {}", username);
+        }
+    }
+
+    // Check if guest creation is allowed
+    match auth_db::can_create_guest(&auth_db) {
+        Ok(false) => {
+            let template = GuestTemplate {
+                error: Some("Guest accounts are currently disabled or at capacity".to_string()),
+            };
+            return (jar, Html(template.render().unwrap_or_default())).into_response();
+        }
+        Err(_) => {
+            let template = GuestTemplate {
+                error: Some("Database error".to_string()),
+            };
+            return (jar, Html(template.render().unwrap_or_default())).into_response();
+        }
+        Ok(true) => {}
+    }
+
+    // Generate guest username
+    let nickname = form.nickname.trim();
+    let username = if nickname.is_empty() {
+        // Generate random 8-char suffix
+        let suffix: String = (0..8)
+            .map(|_| {
+                let idx = rand::random::<u8>() % 36;
+                match idx {
+                    0..=9 => (b'0' + idx) as char,
+                    _ => (b'a' + idx - 10) as char,
+                }
+            })
+            .collect();
+        format!("_guest_{}", suffix)
+    } else {
+        // Sanitize nickname: only alphanumeric, max 20 chars
+        let sanitized: String = nickname
+            .chars()
+            .filter(|c| c.is_ascii_alphanumeric())
+            .take(20)
+            .collect();
+        if sanitized.is_empty() {
+            let template = GuestTemplate {
+                error: Some("Nickname must contain at least one letter or number".to_string()),
+            };
+            return (jar, Html(template.render().unwrap_or_default())).into_response();
+        }
+        format!("_guest_{}", sanitized.to_lowercase())
+    };
+
+    // Check if username already taken (unlikely but possible with custom nicknames)
+    if auth_db::username_exists(&auth_db, &username).unwrap_or(false) {
+        let template = GuestTemplate {
+            error: Some("That nickname is already taken. Try another one or leave it empty.".to_string()),
+        };
+        return (jar, Html(template.render().unwrap_or_default())).into_response();
+    }
+
+    // Generate random password (user doesn't see or need it)
+    let random_password: String = (0..32)
+        .map(|_| {
+            let idx = rand::random::<u8>() % 62;
+            match idx {
+                0..=9 => (b'0' + idx) as char,
+                10..=35 => (b'a' + idx - 10) as char,
+                _ => (b'A' + idx - 36) as char,
+            }
+        })
+        .collect();
+
+    // Hash password for storage
+    let password_hash = match password::hash_password(&random_password) {
+        Ok(hash) => hash,
+        Err(_) => {
+            let template = GuestTemplate {
+                error: Some("Failed to create guest account".to_string()),
+            };
+            return (jar, Html(template.render().unwrap_or_default())).into_response();
+        }
+    };
+
+    // Create guest user
+    let user_id = match auth_db::create_guest_user(&auth_db, &username, &password_hash) {
+        Ok(id) => id,
+        Err(_) => {
+            let template = GuestTemplate {
+                error: Some("Failed to create guest account".to_string()),
+            };
+            return (jar, Html(template.render().unwrap_or_default())).into_response();
+        }
+    };
+
+    drop(auth_db); // Release lock before file operations
+
+    // Create user's data directory
+    let user_dir = state.user_dir(&username);
+    if let Err(e) = fs::create_dir_all(&user_dir) {
+        tracing::error!("Failed to create guest directory: {}", e);
+        let template = GuestTemplate {
+            error: Some("Failed to create guest data".to_string()),
+        };
+        return (jar, Html(template.render().unwrap_or_default())).into_response();
+    }
+
+    // Initialize user's database with schema and seed data
+    let user_db_path = state.user_db_path(&username);
+    let user_db = match db::init_db(&user_db_path) {
+        Ok(pool) => pool,
+        Err(e) => {
+            tracing::error!("Failed to initialize guest database: {}", e);
+            let _ = fs::remove_dir_all(&user_dir);
+            let template = GuestTemplate {
+                error: Some("Failed to initialize guest data".to_string()),
+            };
+            return (jar, Html(template.render().unwrap_or_default())).into_response();
+        }
+    };
+
+    // Seed the database with hangul cards
+    {
+        let conn = user_db.lock().expect("User DB lock failed");
+        if let Err(e) = db::seed_hangul_cards(&conn) {
+            tracing::error!("Failed to seed guest database: {}", e);
+            drop(conn);
+            let _ = fs::remove_dir_all(&user_dir);
+            let template = GuestTemplate {
+                error: Some("Failed to seed guest data".to_string()),
+            };
+            return (jar, Html(template.render().unwrap_or_default())).into_response();
+        }
+    }
+
+    // Create session
+    let session_id = generate_session_id();
+    let auth_db = state.auth_db.lock().expect("Auth DB lock failed");
+    if let Err(e) = auth_db::create_session(&auth_db, user_id, &session_id, SESSION_DURATION_HOURS) {
+        tracing::error!("Failed to create session for guest: {}", e);
+    }
+    drop(auth_db);
+
+    #[cfg(feature = "profiling")]
+    crate::profile_log!(EventType::AuthRegister {
+        username: username.clone(),
+    });
+
+    tracing::info!("Guest account created: {}", username);
+
+    // Set cookie and redirect
+    let cookie = Cookie::build((SESSION_COOKIE_NAME, session_id))
+        .path("/")
+        .http_only(true)
+        .secure(false)
+        .max_age(time::Duration::hours(SESSION_DURATION_HOURS))
+        .build();
+
+    (jar.add(cookie), Redirect::to("/")).into_response()
 }
 
 /// Validate username: 3-32 chars, alphanumeric or underscore
