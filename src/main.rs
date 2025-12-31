@@ -35,6 +35,17 @@ async fn main() {
 
     // Initialize auth database
     let auth_db_path = Path::new(AUTH_DB_PATH);
+
+    // Backup auth database before migrations if it exists
+    if auth_db_path.exists() {
+        let backup_path = Path::new("data/app.db.backup");
+        if let Err(e) = std::fs::copy(auth_db_path, backup_path) {
+            tracing::warn!("Could not create auth database backup: {}", e);
+        } else {
+            tracing::debug!("Auth database backed up to {:?}", backup_path);
+        }
+    }
+
     let auth_conn = Connection::open(auth_db_path).expect("Failed to open auth database");
     auth::db::init_auth_schema(&auth_conn).expect("Failed to initialize auth schema");
     let auth_db = Arc::new(Mutex::new(auth_conn));
@@ -62,6 +73,7 @@ async fn main() {
             get(auth::register_page).post(auth::register_submit),
         )
         .route("/logout", post(auth::logout))
+        .route("/guest", get(auth::guest_page).post(auth::guest_login))
         // Public reference/guide pages
         .route("/guide", get(handlers::guide))
         .route("/reference", get(handlers::reference_index))
@@ -121,6 +133,13 @@ async fn main() {
         .route(
             "/settings/restore-tier/{tier}",
             post(handlers::restore_tier),
+        )
+        .route("/settings/export", get(handlers::export_data))
+        .route("/settings/import", post(handlers::import_data))
+        .route("/settings/cleanup-guests", post(handlers::cleanup_guests))
+        .route(
+            "/settings/delete-all-guests",
+            post(handlers::delete_all_guests),
         )
         .route("/diagnostic", post(handlers::log_diagnostic));
 

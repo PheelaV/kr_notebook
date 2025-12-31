@@ -10,16 +10,18 @@ use crate::paths;
 
 // Re-export public items
 pub use admin::{
-  delete_scraped, delete_scraped_lesson, graduate_tier, make_all_due, restore_tier,
-  trigger_manual_segment, trigger_reset_segment, trigger_row_segment, trigger_scrape,
-  trigger_scrape_lesson, trigger_segment, AudioRowTemplate, ManualSegmentForm, ResetSegmentForm,
-  RowSegmentForm, SegmentForm,
+  cleanup_guests, delete_all_guests, delete_scraped, delete_scraped_lesson, graduate_tier,
+  make_all_due, restore_tier, trigger_manual_segment, trigger_reset_segment, trigger_row_segment,
+  trigger_scrape, trigger_scrape_lesson, trigger_segment, AudioRowTemplate, ManualSegmentForm,
+  ResetSegmentForm, RowSegmentForm, SegmentForm,
 };
 pub use audio::{
   get_audio_row, get_lesson_audio, AudioRow, LessonAudio, SegmentParams, SyllablePreview,
   TierGraduationStatus,
 };
-pub use user::{settings_page, update_settings, SettingsForm, SettingsTemplate};
+pub use user::{
+  export_data, import_data, settings_page, update_settings, SettingsForm, SettingsTemplate,
+};
 
 /// Check if lesson content exists for a given lesson ID
 pub fn has_lesson(lesson_id: &str) -> bool {

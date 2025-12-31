@@ -1,13 +1,18 @@
 //! User-facing settings page and preferences.
 
 use askama::Template;
-use axum::response::{Html, Redirect};
+use axum::extract::{Multipart, State};
+use axum::http::{header, StatusCode};
+use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum::Form;
+use chrono::Utc;
+use rusqlite::Connection;
 use serde::Deserialize;
 
 use crate::auth::AuthContext;
-use crate::db::{self, LogOnError};
+use crate::db::{self, run_migrations, LogOnError};
 use crate::filters;
+use crate::state::AppState;
 #[cfg(feature = "profiling")]
 use crate::profiling::EventType;
 
@@ -224,4 +229,187 @@ pub async fn update_settings(
   }
 
   Redirect::to("/settings")
+}
+
+/// Export user's learning database as a downloadable file
+pub async fn export_data(auth: AuthContext, State(state): State<AppState>) -> Response {
+  #[cfg(feature = "profiling")]
+  crate::profile_log!(EventType::HandlerStart {
+    route: "/settings/export".into(),
+    method: "GET".into(),
+    username: Some(auth.username.clone()),
+  });
+
+  let db_path = state.user_db_path(&auth.username);
+
+  // Read the database file
+  let file_bytes = match std::fs::read(&db_path) {
+    Ok(bytes) => bytes,
+    Err(e) => {
+      tracing::error!("Failed to read database file for export: {}", e);
+      return (StatusCode::INTERNAL_SERVER_ERROR, "Failed to export data").into_response();
+    }
+  };
+
+  // Generate filename with timestamp
+  let date = Utc::now().format("%Y%m%d");
+  let filename = format!("kr_notebook_{}_{}.db", auth.username, date);
+
+  // Return as downloadable file
+  (
+    [
+      (header::CONTENT_TYPE, "application/x-sqlite3"),
+      (
+        header::CONTENT_DISPOSITION,
+        &format!("attachment; filename=\"{}\"", filename),
+      ),
+    ],
+    file_bytes,
+  )
+    .into_response()
+}
+
+/// Import a learning database from uploaded file
+pub async fn import_data(
+  auth: AuthContext,
+  State(state): State<AppState>,
+  mut multipart: Multipart,
+) -> Response {
+  #[cfg(feature = "profiling")]
+  crate::profile_log!(EventType::HandlerStart {
+    route: "/settings/import".into(),
+    method: "POST".into(),
+    username: Some(auth.username.clone()),
+  });
+
+  // Extract the uploaded file
+  let file_bytes = match extract_uploaded_file(&mut multipart).await {
+    Ok(bytes) => bytes,
+    Err(e) => {
+      tracing::warn!("Import failed: {}", e);
+      return import_error_redirect(&e);
+    }
+  };
+
+  // Validate it's a valid SQLite database with expected tables
+  if let Err(e) = validate_imported_database(&file_bytes) {
+    tracing::warn!("Import validation failed: {}", e);
+    return import_error_redirect(&e);
+  }
+
+  // Drop the current database connection before file operations
+  drop(auth.user_db);
+
+  let db_path = state.user_db_path(&auth.username);
+  let backup_path = db_path.with_extension("db.old");
+
+  // Backup current database
+  if db_path.exists() {
+    if let Err(e) = std::fs::rename(&db_path, &backup_path) {
+      tracing::error!("Failed to backup current database: {}", e);
+      return import_error_redirect("Failed to backup current data");
+    }
+  }
+
+  // Write new database file
+  if let Err(e) = std::fs::write(&db_path, &file_bytes) {
+    tracing::error!("Failed to write imported database: {}", e);
+    // Try to restore backup
+    if backup_path.exists() {
+      let _ = std::fs::rename(&backup_path, &db_path);
+    }
+    return import_error_redirect("Failed to save imported data");
+  }
+
+  // Run migrations on the new database
+  match Connection::open(&db_path) {
+    Ok(conn) => {
+      if let Err(e) = run_migrations(&conn) {
+        tracing::error!("Failed to run migrations on imported database: {}", e);
+        // Restore backup
+        drop(conn);
+        let _ = std::fs::remove_file(&db_path);
+        if backup_path.exists() {
+          let _ = std::fs::rename(&backup_path, &db_path);
+        }
+        return import_error_redirect("Imported database failed migration");
+      }
+    }
+    Err(e) => {
+      tracing::error!("Failed to open imported database: {}", e);
+      let _ = std::fs::remove_file(&db_path);
+      if backup_path.exists() {
+        let _ = std::fs::rename(&backup_path, &db_path);
+      }
+      return import_error_redirect("Failed to open imported database");
+    }
+  }
+
+  tracing::info!("User {} successfully imported database", auth.username);
+
+  // Success - redirect with message
+  Redirect::to("/settings?import=success").into_response()
+}
+
+/// Extract file bytes from multipart upload
+async fn extract_uploaded_file(multipart: &mut Multipart) -> Result<Vec<u8>, String> {
+  while let Ok(Some(field)) = multipart.next_field().await {
+    let name = field.name().unwrap_or_default().to_string();
+    if name == "database" {
+      return field
+        .bytes()
+        .await
+        .map(|b| b.to_vec())
+        .map_err(|e| format!("Failed to read upload: {}", e));
+    }
+  }
+  Err("No database file uploaded".to_string())
+}
+
+/// Validate that the uploaded bytes are a valid SQLite database with expected schema
+fn validate_imported_database(bytes: &[u8]) -> Result<(), String> {
+  // Check SQLite magic header
+  if bytes.len() < 16 || &bytes[0..16] != b"SQLite format 3\0" {
+    return Err("Not a valid SQLite database file".to_string());
+  }
+
+  // Write to temp file and try to open
+  let temp_path = std::env::temp_dir().join(format!("import_validate_{}.db", std::process::id()));
+  std::fs::write(&temp_path, bytes).map_err(|e| format!("Validation error: {}", e))?;
+
+  let result = (|| {
+    let conn = Connection::open(&temp_path).map_err(|e| format!("Invalid database: {}", e))?;
+
+    // Check for required tables
+    let has_cards: bool = conn
+      .query_row(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='cards')",
+        [],
+        |row| row.get(0),
+      )
+      .unwrap_or(false);
+
+    if !has_cards {
+      return Err("Database missing 'cards' table".to_string());
+    }
+
+    // Check cards table has expected columns
+    let column_check = conn.prepare("SELECT id, front, main_answer FROM cards LIMIT 1");
+    if column_check.is_err() {
+      return Err("Cards table missing required columns".to_string());
+    }
+
+    Ok(())
+  })();
+
+  // Clean up temp file
+  let _ = std::fs::remove_file(&temp_path);
+
+  result
+}
+
+/// Create redirect response for import error
+fn import_error_redirect(error: &str) -> Response {
+  let encoded = urlencoding::encode(error);
+  Redirect::to(&format!("/settings?import=error&message={}", encoded)).into_response()
 }
