@@ -39,7 +39,7 @@ data/scraped/**/*.mp3
 MY_LOCAL*/
 backups/
 
-# Static assets (CDN-served) - but track our custom JS
+# Static assets (not yet CDN-served) - 
 static/*
 !static/js/
 
