@@ -19,6 +19,7 @@ Thumbs.db
 
 # Local config overrides
 config.toml
+.rpi-deploy.conf
 
 # SQLite database files (personal data)
 *.db
@@ -36,6 +37,7 @@ data/scraped/**/*.mp3
 
 # Local/personal directories
 MY_LOCAL*/
+backups/
 
 # Static assets (CDN-served) - but track our custom JS
 static/*
