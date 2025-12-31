@@ -13,6 +13,9 @@ use std::fs;
 use super::db as auth_db;
 use super::middleware::SESSION_COOKIE_NAME;
 use super::password;
+
+/// Username cookie (not HttpOnly, readable by JS for navbar display)
+const USERNAME_COOKIE_NAME: &str = "kr_username";
 use crate::db;
 use crate::session::generate_session_id;
 use crate::state::AppState;
@@ -142,15 +145,23 @@ pub async fn login_submit(
         success: true,
     });
 
-    // Set cookie and redirect
-    let cookie = Cookie::build((SESSION_COOKIE_NAME, session_id))
+    // Set session cookie
+    let session_cookie = Cookie::build((SESSION_COOKIE_NAME, session_id))
         .path("/")
         .http_only(true)
         .secure(false) // Set to true in production with HTTPS
         .max_age(time::Duration::hours(SESSION_DURATION_HOURS))
         .build();
 
-    (jar.add(cookie), Redirect::to("/")).into_response()
+    // Set username cookie (readable by JS for navbar display)
+    let username_cookie = Cookie::build((USERNAME_COOKIE_NAME, form.username.clone()))
+        .path("/")
+        .http_only(false)
+        .secure(false)
+        .max_age(time::Duration::hours(SESSION_DURATION_HOURS))
+        .build();
+
+    (jar.add(session_cookie).add(username_cookie), Redirect::to("/")).into_response()
 }
 
 /// GET /register - Show registration page
@@ -315,15 +326,23 @@ pub async fn register_submit(
         username: form.username.clone(),
     });
 
-    // Set cookie and redirect
-    let cookie = Cookie::build((SESSION_COOKIE_NAME, session_id))
+    // Set session cookie
+    let session_cookie = Cookie::build((SESSION_COOKIE_NAME, session_id))
         .path("/")
         .http_only(true)
         .secure(false)
         .max_age(time::Duration::hours(SESSION_DURATION_HOURS))
         .build();
 
-    (jar.add(cookie), Redirect::to("/")).into_response()
+    // Set username cookie (readable by JS for navbar display)
+    let username_cookie = Cookie::build((USERNAME_COOKIE_NAME, form.username.clone()))
+        .path("/")
+        .http_only(false)
+        .secure(false)
+        .max_age(time::Duration::hours(SESSION_DURATION_HOURS))
+        .build();
+
+    (jar.add(session_cookie).add(username_cookie), Redirect::to("/")).into_response()
 }
 
 /// POST /logout - Log out and clear session
@@ -351,13 +370,19 @@ pub async fn logout(State(state): State<AppState>, jar: CookieJar) -> impl IntoR
         crate::profile_log!(EventType::AuthLogout { username });
     }
 
-    // Remove cookie by setting empty value with immediate expiry
-    let cookie = Cookie::build((SESSION_COOKIE_NAME, ""))
+    // Remove session cookie
+    let session_cookie = Cookie::build((SESSION_COOKIE_NAME, ""))
         .path("/")
         .max_age(time::Duration::seconds(0))
         .build();
 
-    (jar.remove(cookie), Redirect::to("/login"))
+    // Remove username cookie
+    let username_cookie = Cookie::build((USERNAME_COOKIE_NAME, ""))
+        .path("/")
+        .max_age(time::Duration::seconds(0))
+        .build();
+
+    (jar.remove(session_cookie).remove(username_cookie), Redirect::to("/login"))
 }
 
 /// GET /guest - Show guest login page
@@ -537,15 +562,23 @@ pub async fn guest_login(
 
     tracing::info!("Guest account created: {}", username);
 
-    // Set cookie and redirect
-    let cookie = Cookie::build((SESSION_COOKIE_NAME, session_id))
+    // Set session cookie
+    let session_cookie = Cookie::build((SESSION_COOKIE_NAME, session_id))
         .path("/")
         .http_only(true)
         .secure(false)
         .max_age(time::Duration::hours(SESSION_DURATION_HOURS))
         .build();
 
-    (jar.add(cookie), Redirect::to("/")).into_response()
+    // Set username cookie (readable by JS for navbar display)
+    let username_cookie = Cookie::build((USERNAME_COOKIE_NAME, username))
+        .path("/")
+        .http_only(false)
+        .secure(false)
+        .max_age(time::Duration::hours(SESSION_DURATION_HOURS))
+        .build();
+
+    (jar.add(session_cookie).add(username_cookie), Redirect::to("/")).into_response()
 }
 
 /// Validate username: 3-32 chars, alphanumeric or underscore

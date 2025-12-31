@@ -4,6 +4,14 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}Hangul Learn{% endblock %}</title>
+  <!-- Favicon bundle -->
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+  <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+  <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/static/favicon-16x16.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">
+  <link rel="manifest" href="/static/site.webmanifest">
+  <meta name="theme-color" content="#4F46E5">
   <script>
     // Apply dark mode immediately to prevent flash
     if (localStorage.getItem('darkMode') === 'true' ||
@@ -13,6 +21,7 @@
   </script>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+  <script src="https://code.iconify.design/iconify-icon/2.1.0/iconify-icon.min.js"></script>
   <script src="{{ "/static/js/card-interactions.js"|asset_url }}"></script>
   <script>
     tailwind.config = {
@@ -203,7 +212,7 @@
 </head>
 <body class="h-full bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
   <div class="min-h-full">
-    <nav class="bg-white dark:bg-gray-800 shadow-sm">
+    <nav class="relative bg-white dark:bg-gray-800 shadow-sm">
       <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div class="flex h-16 justify-between items-center">
           <!-- Logo -->
@@ -221,8 +230,8 @@
 
           <!-- Desktop Navigation -->
           <div class="hidden md:flex items-center space-x-1">
-            <a href="/" class="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 px-3 py-2 rounded-md text-sm font-medium">
-              Home
+            <a href="/" class="inline-flex items-center text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 p-2 rounded-md" title="Home">
+              <iconify-icon icon="heroicons:home" width="20" height="20"></iconify-icon>
             </a>
             <a href="/study" class="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 px-3 py-2 rounded-md text-sm font-medium">
               Study
@@ -245,19 +254,23 @@
             <a href="/guide" class="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 px-3 py-2 rounded-md text-sm font-medium">
               Guide
             </a>
-            <a href="/settings" class="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 px-3 py-2 rounded-md text-sm font-medium">
-              Settings
-            </a>
-            <form action="/logout" method="POST" class="inline">
-              <button type="submit" class="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 px-3 py-2 rounded-md text-sm font-medium">
-                Logout
-              </button>
-            </form>
+            <div class="h-5 w-px bg-gray-300 dark:bg-gray-600 mx-2"></div>
+            <div class="flex items-center">
+              <span id="nav-username" class="text-gray-500 dark:text-gray-400 text-sm px-3 py-2"></span>
+              <a href="/settings" class="inline-flex items-center text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 p-2 rounded-md" title="Settings">
+                <iconify-icon icon="heroicons:cog-6-tooth" width="20" height="20"></iconify-icon>
+              </a>
+              <form action="/logout" method="POST" class="inline-flex items-center">
+                <button type="submit" class="inline-flex items-center text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 p-2 rounded-md" title="Logout">
+                  <iconify-icon icon="heroicons:arrow-right-start-on-rectangle" width="20" height="20"></iconify-icon>
+                </button>
+              </form>
+            </div>
           </div>
 
           <!-- Mobile menu button -->
           <div class="md:hidden flex items-center">
-            <button type="button" onclick="toggleMobileMenu()" class="inline-flex items-center justify-center p-2 rounded-md text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 focus:outline-none" aria-expanded="false">
+            <button type="button" onclick="toggleMobileMenu(event)" class="inline-flex items-center justify-center p-2 rounded-md text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 focus:outline-none" aria-expanded="false">
               <span class="sr-only">Open main menu</span>
               <!-- Hamburger icon -->
               <svg id="menu-icon-closed" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -272,9 +285,9 @@
         </div>
       </div>
 
-      <!-- Mobile menu (hidden by default) -->
-      <div id="mobile-menu" class="hidden md:hidden border-t border-gray-200 dark:border-gray-700">
-        <div class="px-2 pt-2 pb-3 space-y-1">
+      <!-- Mobile menu (hidden by default) - overlay style -->
+      <div id="mobile-menu" class="hidden md:hidden absolute right-0 top-16 w-48 bg-white dark:bg-gray-800 shadow-lg rounded-bl-lg border border-gray-200 dark:border-gray-700 z-50">
+        <div class="py-2 space-y-1">
           <a href="/" class="block text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 px-3 py-2 rounded-md text-base font-medium">
             Home
           </a>
@@ -302,11 +315,14 @@
           <a href="/settings" class="block text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 px-3 py-2 rounded-md text-base font-medium">
             Settings
           </a>
-          <form action="/logout" method="POST">
-            <button type="submit" class="block w-full text-left text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 px-3 py-2 rounded-md text-base font-medium">
-              Logout
-            </button>
-          </form>
+          <div class="border-t border-gray-200 dark:border-gray-700 pt-2 mt-2">
+            <span id="nav-username-mobile" class="block text-gray-500 dark:text-gray-400 text-sm px-3 py-1"></span>
+            <form action="/logout" method="POST">
+              <button type="submit" class="block w-full text-left text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 px-3 py-2 rounded-md text-base font-medium">
+                Logout
+              </button>
+            </form>
+          </div>
         </div>
       </div>
     </nav>
@@ -318,7 +334,8 @@
 
   <script>
     // Mobile menu toggle
-    function toggleMobileMenu() {
+    function toggleMobileMenu(event) {
+      if (event) event.stopPropagation();
       const menu = document.getElementById('mobile-menu');
       const iconClosed = document.getElementById('menu-icon-closed');
       const iconOpen = document.getElementById('menu-icon-open');
@@ -327,6 +344,45 @@
       iconClosed.classList.toggle('hidden');
       iconOpen.classList.toggle('hidden');
     }
+
+    function closeMobileMenu() {
+      const menu = document.getElementById('mobile-menu');
+      const iconClosed = document.getElementById('menu-icon-closed');
+      const iconOpen = document.getElementById('menu-icon-open');
+
+      if (!menu.classList.contains('hidden')) {
+        menu.classList.add('hidden');
+        iconClosed.classList.remove('hidden');
+        iconOpen.classList.add('hidden');
+      }
+    }
+
+    // Close menu when clicking outside
+    document.addEventListener('click', function(event) {
+      const menu = document.getElementById('mobile-menu');
+      const menuButton = event.target.closest('button[onclick*="toggleMobileMenu"]');
+      if (!menu.contains(event.target) && !menuButton) {
+        closeMobileMenu();
+      }
+    });
+
+    // Display username from cookie (similar pattern to dark mode with localStorage)
+    (function() {
+      function getCookie(name) {
+        const value = '; ' + document.cookie;
+        const parts = value.split('; ' + name + '=');
+        if (parts.length === 2) return decodeURIComponent(parts.pop().split(';').shift());
+        return null;
+      }
+
+      const username = getCookie('kr_username');
+      if (username) {
+        const navUsername = document.getElementById('nav-username');
+        const navUsernameMobile = document.getElementById('nav-username-mobile');
+        if (navUsername) navUsername.textContent = username;
+        if (navUsernameMobile) navUsernameMobile.textContent = username;
+      }
+    })();
 
     // Check if pronunciation content exists and show/hide nav links
     (function() {

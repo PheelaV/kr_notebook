@@ -1,7 +1,7 @@
 //! Interactive study mode with input-based validation.
 
 use askama::Template;
-use axum::response::{Html, IntoResponse};
+use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum::Form;
 
 use crate::auth::AuthContext;
@@ -24,7 +24,7 @@ use super::{
 };
 
 /// Interactive study mode with input-based validation
-pub async fn study_start_interactive(auth: AuthContext) -> impl IntoResponse {
+pub async fn study_start_interactive(auth: AuthContext) -> Response {
   #[cfg(feature = "profiling")]
   crate::profile_log!(EventType::HandlerStart {
     route: "/study".into(),
@@ -35,7 +35,7 @@ pub async fn study_start_interactive(auth: AuthContext) -> impl IntoResponse {
   let conn = match auth.user_db.lock() {
     Ok(conn) => conn,
     Err(_) => {
-      return Html("<h1>Database Error</h1><p>Please refresh the page.</p>".to_string())
+      return Html("<h1>Database Error</h1><p>Please refresh the page.</p>".to_string()).into_response()
     }
   };
 
@@ -119,7 +119,7 @@ pub async fn study_start_interactive(auth: AuthContext) -> impl IntoResponse {
         focus_tier_progress,
         show_exit_focus_recommendation,
       };
-      return Html(template.render().unwrap_or_default());
+      return Html(template.render().unwrap_or_default()).into_response();
     }
   }
 
@@ -154,14 +154,14 @@ pub async fn study_start_interactive(auth: AuthContext) -> impl IntoResponse {
     #[cfg(not(feature = "testing"))]
     testing_mode: false,
   };
-  Html(template.render().unwrap_or_default())
+  Html(template.render().unwrap_or_default()).into_response()
 }
 
 /// Validate user's typed answer and record the review result
 pub async fn validate_answer_handler(
   auth: AuthContext,
   Form(form): Form<ValidateAnswerForm>,
-) -> impl IntoResponse {
+) -> Response {
   #[cfg(feature = "profiling")]
   crate::profile_log!(EventType::HandlerStart {
     route: "/validate-answer".into(),
@@ -172,7 +172,7 @@ pub async fn validate_answer_handler(
   let conn = match auth.user_db.lock() {
     Ok(conn) => conn,
     Err(_) => {
-      return Html("<h1>Database Error</h1><p>Please refresh the page.</p>".to_string())
+      return Html("<h1>Database Error</h1><p>Please refresh the page.</p>".to_string()).into_response()
     }
   };
 
@@ -321,10 +321,10 @@ pub async fn validate_answer_handler(
       is_tracked: true,
       track_progress: false,
     };
-    Html(template.render().unwrap_or_default())
+    Html(template.render().unwrap_or_default()).into_response()
   } else {
     let template = NoCardsTemplate {};
-    Html(template.render().unwrap_or_default())
+    Html(template.render().unwrap_or_default()).into_response()
   }
 }
 
@@ -332,7 +332,7 @@ pub async fn validate_answer_handler(
 pub async fn next_card_interactive(
   auth: AuthContext,
   Form(form): Form<NextCardForm>,
-) -> impl IntoResponse {
+) -> Response {
   #[cfg(feature = "profiling")]
   crate::profile_log!(EventType::HandlerStart {
     route: "/next-card".into(),
@@ -343,7 +343,7 @@ pub async fn next_card_interactive(
   let conn = match auth.user_db.lock() {
     Ok(conn) => conn,
     Err(_) => {
-      return Html("<h1>Database Error</h1><p>Please refresh the page.</p>".to_string())
+      return Html("<h1>Database Error</h1><p>Please refresh the page.</p>".to_string()).into_response()
     }
   };
 
@@ -404,12 +404,17 @@ pub async fn next_card_interactive(
         is_tracked: true,
         track_progress: false,
       };
-      return Html(template.render().unwrap_or_default());
+      return Html(template.render().unwrap_or_default()).into_response();
     }
   }
 
+  // Check if a new tier was unlocked - if so, redirect to home to show notification
+  if db::try_auto_unlock_tier(&conn).log_warn("Auto tier unlock failed").flatten().is_some() {
+    return Redirect::to("/").into_response();
+  }
+
   let template = NoCardsTemplate {};
-  Html(template.render().unwrap_or_default())
+  Html(template.render().unwrap_or_default()).into_response()
 }
 
 /// Get next interactive card after submitting review
@@ -418,7 +423,7 @@ pub async fn next_card_interactive(
 pub async fn submit_review_interactive(
   auth: AuthContext,
   Form(form): Form<ReviewForm>,
-) -> impl IntoResponse {
+) -> Response {
   #[cfg(feature = "profiling")]
   crate::profile_log!(EventType::HandlerStart {
     route: "/review".into(),
@@ -429,7 +434,7 @@ pub async fn submit_review_interactive(
   let conn = match auth.user_db.lock() {
     Ok(conn) => conn,
     Err(_) => {
-      return Html("<h1>Database Error</h1><p>Please refresh the page.</p>".to_string())
+      return Html("<h1>Database Error</h1><p>Please refresh the page.</p>".to_string()).into_response()
     }
   };
 
@@ -493,10 +498,15 @@ pub async fn submit_review_interactive(
         is_tracked: true,
         track_progress: false,
       };
-      return Html(template.render().unwrap_or_default());
+      return Html(template.render().unwrap_or_default()).into_response();
     }
   }
 
+  // Check if a new tier was unlocked - if so, redirect to home to show notification
+  if db::try_auto_unlock_tier(&conn).log_warn("Auto tier unlock failed").flatten().is_some() {
+    return Redirect::to("/").into_response();
+  }
+
   let template = NoCardsTemplate {};
-  Html(template.render().unwrap_or_default())
+  Html(template.render().unwrap_or_default()).into_response()
 }
