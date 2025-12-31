@@ -11,16 +11,12 @@
 <div class="mb-4">
   {% if is_correct %}
   <div class="flex items-center justify-center gap-2 text-green-600 dark:text-green-400 mb-2">
-    <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
-    </svg>
+    <iconify-icon icon="heroicons:check" width="32" height="32"></iconify-icon>
     <span class="text-2xl font-bold">Correct!</span>
   </div>
   {% else %}
   <div class="flex items-center justify-center gap-2 text-red-600 dark:text-red-400 mb-2">
-    <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
-    </svg>
+    <iconify-icon icon="heroicons:x-mark" width="32" height="32"></iconify-icon>
     <span class="text-2xl font-bold">Incorrect</span>
   </div>
   {% endif %}

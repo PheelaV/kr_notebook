@@ -10,18 +10,14 @@
     <button onclick="playAudio('{{ lesson_id }}', 'rows/row_{{ row.romanization }}.mp3')"
             class="flex items-center gap-1 px-2 py-1 text-sm bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 rounded hover:bg-indigo-200"
             title="Play original source">
-      <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-        <path d="M8 5v14l11-7z"/>
-      </svg>
+      <iconify-icon icon="heroicons:play-solid" width="16" height="16"></iconify-icon>
       Src
     </button>
 
     <button onclick="playSegmentsSequence('{{ lesson_id }}', {{ row.segments_json }})"
             class="flex items-center gap-1 px-2 py-1 text-sm bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded hover:bg-green-200"
             title="Play segments in sequence">
-      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
-      </svg>
+      <iconify-icon icon="heroicons:chevron-right" width="16" height="16"></iconify-icon>
       Seg ({{ row.available_count }}/{{ row.syllables.len() }})
     </button>
 
