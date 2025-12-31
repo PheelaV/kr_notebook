@@ -38,7 +38,7 @@ echo ""
 
 # Step 1: Build
 if [ "$DO_BUILD" = true ]; then
-    echo "[1/6] Building for $TARGET ($PROFILE_NAME)..."
+    echo "[1/7] Building for $TARGET ($PROFILE_NAME)..."
 
     # Build features (optional)
     FEATURES_ARG=""
@@ -61,7 +61,7 @@ if [ "$DO_BUILD" = true ]; then
     fi
     echo ""
 else
-    echo "[1/6] Skipping build (--no-build)"
+    echo "[1/7] Skipping build (--no-build)"
 fi
 
 # Check binary exists
@@ -72,7 +72,7 @@ if [ ! -f "$BINARY" ]; then
 fi
 
 # Step 2: Test SSH connection
-echo "[2/6] Testing SSH connection..."
+echo "[2/7] Testing SSH connection..."
 if ! ssh -o ConnectTimeout=5 "$RPI_SSH" "echo 'OK'" &>/dev/null; then
     echo "Error: Cannot connect to $RPI_SSH"
     echo "Check RPI_SSH in .rpi-deploy.conf"
@@ -83,7 +83,7 @@ echo "  Connected to $(ssh "$RPI_SSH" 'hostname')"
 # Step 3: Backup on RPi
 if [ "$DO_BACKUP" = true ]; then
     echo ""
-    echo "[3/6] Creating backup on RPi..."
+    echo "[3/7] Creating backup on RPi..."
     ssh "$RPI_SSH" bash -s "$RPI_INSTALL_DIR" "$TIMESTAMP" << 'BACKUP_SCRIPT'
         INSTALL_DIR="$1"
         TIMESTAMP="$2"
@@ -117,12 +117,12 @@ if [ "$DO_BACKUP" = true ]; then
 BACKUP_SCRIPT
 else
     echo ""
-    echo "[3/6] Skipping backup (--no-backup)"
+    echo "[3/7] Skipping backup (--no-backup)"
 fi
 
 # Step 4: Stop service
 echo ""
-echo "[4/6] Stopping service..."
+echo "[4/7] Stopping service..."
 ssh "$RPI_SSH" bash -s "$RPI_SERVICE" << 'STOP_SCRIPT'
     SERVICE="$1"
     if systemctl is-active --quiet "$SERVICE" 2>/dev/null; then
@@ -135,7 +135,7 @@ STOP_SCRIPT
 
 # Step 5: Deploy binary
 echo ""
-echo "[5/6] Deploying binary..."
+echo "[5/7] Deploying binary..."
 ssh "$RPI_SSH" "mkdir -p $RPI_INSTALL_DIR/target/release"
 scp "$BINARY" "$RPI_SSH:$RPI_INSTALL_DIR/target/release/kr_notebook.new"
 ssh "$RPI_SSH" bash -s "$RPI_INSTALL_DIR" << 'DEPLOY_SCRIPT'
@@ -153,9 +153,14 @@ ssh "$RPI_SSH" bash -s "$RPI_INSTALL_DIR" << 'DEPLOY_SCRIPT'
     echo "  Binary installed"
 DEPLOY_SCRIPT
 
-# Step 6: Start service
+# Step 6: Deploy static assets
 echo ""
-echo "[6/6] Starting service..."
+echo "[6/7] Syncing static assets..."
+rsync -av --delete --exclude='.DS_Store' "$PROJECT_DIR/static/" "$RPI_SSH:$RPI_INSTALL_DIR/static/"
+
+# Step 7: Start service
+echo ""
+echo "[7/7] Starting service..."
 ssh "$RPI_SSH" bash -s "$RPI_SERVICE" << 'START_SCRIPT'
     SERVICE="$1"
     if systemctl list-unit-files | grep -q "^$SERVICE"; then

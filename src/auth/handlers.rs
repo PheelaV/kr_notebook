@@ -17,6 +17,7 @@ use super::password;
 /// Username cookie (not HttpOnly, readable by JS for navbar display)
 const USERNAME_COOKIE_NAME: &str = "kr_username";
 use crate::db;
+use crate::filters;
 use crate::session::generate_session_id;
 use crate::state::AppState;
 #[cfg(feature = "profiling")]

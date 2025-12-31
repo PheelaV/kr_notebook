@@ -4,6 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}Hangul Learn{% endblock %}</title>
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+  <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+  <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">
   <script>
     // Apply dark mode immediately to prevent flash
     if (localStorage.getItem('darkMode') === 'true' ||
@@ -11,13 +14,8 @@
       document.documentElement.classList.add('dark');
     }
   </script>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="{{ "/static/css/styles.css"|asset_url }}">
   <script src="https://code.iconify.design/iconify-icon/2.1.0/iconify-icon.min.js"></script>
-  <script>
-    tailwind.config = {
-      darkMode: 'class',
-    }
-  </script>
 </head>
 <body class="h-full bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
   {% block content %}{% endblock %}

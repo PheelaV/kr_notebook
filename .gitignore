@@ -39,7 +39,7 @@ data/scraped/**/*.mp3
 MY_LOCAL*/
 backups/
 
-# Static assets (not yet CDN-served) - 
+# Static assets - generated CSS is built from src/input.css
 static/*
 !static/js/
 
