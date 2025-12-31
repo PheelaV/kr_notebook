@@ -27,7 +27,7 @@ A self-hosted Rust web application for learning Korean Hangul using spaced repet
 - **Backend**: Axum (async web framework)
 - **Database**: SQLite via rusqlite
 - **Templating**: Askama (compile-time templates)
-- **Frontend**: HTMX 2.x + Tailwind CSS (CDN)
+- **Frontend**: HTMX 2.x + Tailwind CSS (build-time)
 - **SRS**: FSRS 5.2 (with SM-2 fallback)
 
 ## Getting Started
@@ -99,7 +99,10 @@ Run the app on a home server and access it securely from anywhere using [Tailsca
 
 #### Prerequisites
 
-- Rust 1.88+
+- Rust 1.80+ (edition 2024)
+- Tailwind CSS v4 standalone CLI (for development builds)
+  - Download from: https://github.com/tailwindlabs/tailwindcss/releases
+  - Place in PATH (e.g., `~/.local/bin/tailwindcss`)
 
 #### Installation
 
@@ -125,6 +128,25 @@ cargo test
 cargo clippy
 ```
 
+### Cross-Compilation (Raspberry Pi)
+
+For deploying to Raspberry Pi or other ARM64 Linux targets:
+
+```bash
+# Install cross
+cargo install cross
+
+# Build for ARM64
+cross build --release --target aarch64-unknown-linux-gnu
+```
+
+The included `Cross.toml` automatically installs Tailwind CLI in the build container.
+
+Deployment scripts are available in `scripts/`:
+- `rpi-setup.sh` - Initial RPi configuration
+- `rpi-deploy.sh` - Deploy binary and static assets
+- `sync-audio.sh` - Sync pronunciation audio
+
 ## Configuration
 
 Configuration via `config.toml` (copy from `config.toml.example`):
@@ -137,10 +159,10 @@ cp config.toml.example config.toml
 
 ```
 data/
-├── auth.db              # Shared auth database (users, sessions)
+├── app.db               # Shared auth database (users, sessions)
 └── users/
     └── <username>/
-        └── hangul.db    # Per-user learning database
+        └── learning.db  # Per-user learning database
 ```
 
 Each user gets an isolated database with their own SRS state, progress, and settings.
@@ -185,7 +207,7 @@ All routes except `/login` and `/register` require authentication.
 ```
 kr_notebook/
 ├── Cargo.toml
-├── build.rs                # Compile-time asset hashing
+├── build.rs                # Tailwind CSS build + asset hashing
 ├── askama.toml             # Askama configuration
 ├── Dockerfile              # Multi-stage Rust build
 ├── docker-compose.yml      # LAN deployment (kr_notebook + py-tools)
@@ -215,10 +237,19 @@ kr_notebook/
 │   ├── domain/             # Data models
 │   ├── handlers/           # HTTP handlers
 │   │   ├── mod.rs          # Index, exports
-│   │   ├── study.rs        # Study session
+│   │   ├── study/          # Study handlers
+│   │   │   ├── mod.rs
+│   │   │   ├── interactive.rs  # Interactive study mode
+│   │   │   ├── classic.rs      # Classic reveal-and-rate
+│   │   │   ├── practice.rs     # Untracked practice
+│   │   │   └── templates.rs    # Shared templates
+│   │   ├── settings/       # Settings handlers
+│   │   │   ├── mod.rs
+│   │   │   ├── user.rs         # User settings, export/import
+│   │   │   ├── admin.rs        # Admin functions, tier management
+│   │   │   └── audio.rs        # Pronunciation audio config
 │   │   ├── listen.rs       # Listening practice
 │   │   ├── progress.rs     # Progress analytics
-│   │   ├── settings.rs     # Settings + audio
 │   │   ├── pronunciation.rs # Audio matrix
 │   │   ├── library.rs      # Character browser
 │   │   ├── reference.rs    # Reference pages
@@ -234,9 +265,9 @@ kr_notebook/
 ├── templates/              # Askama HTML templates
 ├── doc/                    # Documentation
 └── data/                   # Runtime data (gitignored)
-    ├── auth.db             # Shared auth database
+    ├── app.db              # Shared auth database
     ├── users/<username>/   # Per-user data
-    │   └── hangul.db       # User's learning database
+    │   └── learning.db     # User's learning database
     └── scraped/htsk/       # Scraped audio + manifests
 ```
 
