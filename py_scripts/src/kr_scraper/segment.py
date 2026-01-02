@@ -66,11 +66,12 @@ def romanize_syllable(syllable: str) -> str:
                 "a", "ae", "ya", "yae", "eo", "e", "yeo", "ye", "o", "wa",
                 "wae", "oe", "yo", "u", "wo", "we", "wi", "yu", "eu", "ui", "i",
             ]
-            # Final consonants (first is empty = no final)
+            # Final consonants - Revised Romanization (different from initials!)
+            # ㄱ→k, ㄷ→t, ㅂ→p, ㄹ→l (not g, d, b, r like initials)
             JONGSEONG_ROM = [
-                "", "g", "gg", "gs", "n", "nj", "nh", "d", "r", "rg",
-                "rm", "rb", "rs", "rt", "rp", "rh", "m", "b", "bs", "s",
-                "ss", "ng", "j", "ch", "k", "t", "p", "h",
+                "", "k", "k", "k", "n", "n", "n", "t", "l", "k",
+                "m", "l", "l", "l", "p", "l", "m", "p", "p", "t",
+                "t", "ng", "t", "t", "k", "t", "p", "t",
             ]
 
             cho = CHOSEONG_ROM[cho_index]
