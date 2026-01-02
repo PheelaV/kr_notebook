@@ -1,0 +1,105 @@
+<!-- TOC JavaScript - Include once at end of page -->
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  const sections = document.querySelectorAll('section[id]');
+  const tocLinks = document.querySelectorAll('.toc-link');
+
+  // Smooth scroll with ease-out curve
+  function smoothScrollTo(targetY, duration = 400) {
+    const startY = window.scrollY;
+    const distance = targetY - startY;
+    const startTime = performance.now();
+
+    function easeOutCubic(t) {
+      return 1 - Math.pow(1 - t, 3);
+    }
+
+    function step(currentTime) {
+      const elapsed = currentTime - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      const eased = easeOutCubic(progress);
+
+      window.scrollTo(0, startY + distance * eased);
+
+      if (progress < 1) {
+        requestAnimationFrame(step);
+      }
+    }
+
+    requestAnimationFrame(step);
+  }
+
+  // Handle TOC link clicks
+  tocLinks.forEach(link => {
+    link.addEventListener('click', function(e) {
+      e.preventDefault();
+      const targetId = this.getAttribute('href').slice(1);
+      const target = document.getElementById(targetId);
+      if (target) {
+        const offset = 64; // scroll-mt-16 = 4rem = 64px
+        const targetY = target.offsetTop - offset;
+        smoothScrollTo(targetY);
+        history.pushState(null, '', '#' + targetId);
+      }
+    });
+  });
+
+  // Mobile TOC container for auto-scrolling
+  const mobileTocContainer = document.querySelector('nav.lg\\:hidden > div');
+
+  // Highlight active TOC link based on scroll position
+  let lastActiveSection = '';
+  function updateActiveLink() {
+    const scrollPos = window.scrollY + 100;
+
+    let currentSection = '';
+    sections.forEach(section => {
+      if (section.offsetTop <= scrollPos) {
+        currentSection = section.id;
+      }
+    });
+
+    // Auto-scroll mobile TOC when active section changes
+    if (currentSection !== lastActiveSection && mobileTocContainer) {
+      const activeLink = mobileTocContainer.querySelector(`a[href="#${currentSection}"]`);
+      if (activeLink) {
+        const container = mobileTocContainer;
+        const linkLeft = activeLink.offsetLeft;
+        const linkWidth = activeLink.offsetWidth;
+        const containerWidth = container.offsetWidth;
+        const scrollLeft = container.scrollLeft;
+
+        // Check if link is out of view
+        const linkRight = linkLeft + linkWidth;
+        const viewLeft = scrollLeft;
+        const viewRight = scrollLeft + containerWidth;
+
+        if (linkLeft < viewLeft || linkRight > viewRight) {
+          // Scroll to center the active link
+          const targetScroll = linkLeft - (containerWidth / 2) + (linkWidth / 2);
+          container.scrollTo({ left: targetScroll, behavior: 'smooth' });
+        }
+      }
+      lastActiveSection = currentSection;
+    }
+
+    tocLinks.forEach(link => {
+      const href = link.getAttribute('href').slice(1);
+      if (href === currentSection) {
+        link.classList.add('bg-indigo-100', 'dark:bg-indigo-900/50', 'text-indigo-700', 'dark:text-indigo-300');
+        link.classList.remove('text-gray-600', 'dark:text-gray-400', 'bg-gray-100', 'dark:bg-gray-800');
+      } else {
+        link.classList.remove('bg-indigo-100', 'dark:bg-indigo-900/50', 'text-indigo-700', 'dark:text-indigo-300');
+        if (link.closest('nav.lg\\:hidden')) {
+          link.classList.add('bg-gray-100', 'dark:bg-gray-800', 'text-gray-700', 'dark:text-gray-300');
+        } else {
+          link.classList.add('text-gray-600', 'dark:text-gray-400');
+        }
+      }
+    });
+  }
+
+  window.addEventListener('scroll', updateActiveLink);
+  updateActiveLink();
+});
+</script>

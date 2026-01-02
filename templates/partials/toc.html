@@ -1,0 +1,26 @@
+<!-- Table of Contents Component
+     Variables expected:
+     - toc_items: Vec<TocItem> with fields: id, short_label, full_label
+     - toc_title: String (e.g., "Contents", "Lessons")
+-->
+
+<!-- Mobile TOC - Sticky horizontal scroll -->
+<nav class="lg:hidden sticky top-0 z-40 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 -mx-4 px-4 py-3 mb-6">
+  <div class="flex gap-2 overflow-x-auto pb-2 scrollbar-thin">
+    {% for item in toc_items %}
+    <a href="#{{ item.id }}" class="toc-link shrink-0 px-3 py-1.5 text-xs font-medium rounded-full bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-indigo-100 dark:hover:bg-indigo-900 hover:text-indigo-700 dark:hover:text-indigo-300">{{ item.short_label }}</a>
+    {% endfor %}
+  </div>
+</nav>
+
+<!-- Desktop TOC - Fixed sidebar -->
+<aside class="hidden lg:block lg:w-56 shrink-0">
+  <nav class="sticky top-4 bg-white dark:bg-gray-800 shadow rounded-lg p-4">
+    <h3 class="text-sm font-bold text-gray-900 dark:text-white mb-3 uppercase tracking-wide">{{ toc_title }}</h3>
+    <ul class="space-y-1 text-sm">
+      {% for item in toc_items %}
+      <li><a href="#{{ item.id }}" class="toc-link block py-1.5 px-2 rounded text-gray-600 dark:text-gray-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors">{{ item.full_label }}</a></li>
+      {% endfor %}
+    </ul>
+  </nav>
+</aside>
