@@ -3,19 +3,24 @@
 {% block title %}Pronunciation - Hangul Learn{% endblock %}
 
 {% block content %}
-<div class="max-w-6xl mx-auto">
-  <h1 class="text-2xl font-bold text-gray-900 dark:text-white mb-2">
-    Pronunciation Table
-  </h1>
-  <p class="text-gray-600 dark:text-gray-400 mb-6">
-    Click cells to hear syllable pronunciations. Row/column headers play all syllables in that row/column.
-  </p>
+<div class="lg:flex lg:gap-8 max-w-6xl mx-auto">
+  <!-- TOC Component -->
+  {% include "partials/toc.html" %}
 
-  {% for table in tables %}
-  <div class="mb-8">
-    <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-3">
-      {{ table.lesson_name }}
-    </h2>
+  <!-- Main Content -->
+  <div class="flex-1">
+    <h1 class="text-2xl font-bold text-gray-900 dark:text-white mb-2">
+      Pronunciation Table
+    </h1>
+    <p class="text-gray-600 dark:text-gray-400 mb-6">
+      Click cells to hear syllable pronunciations. Row/column headers play all syllables in that row/column.
+    </p>
+
+    {% for table in tables %}
+    <section id="{{ table.lesson_id }}" class="mb-8 scroll-mt-16">
+      <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-3">
+        {{ table.lesson_name }}
+      </h2>
 
     {% if table.is_matrix %}
     <!-- Pronunciation Matrix (Lesson 1/2) -->
@@ -128,28 +133,29 @@
       {% endfor %}
     </div>
     {% endif %}
-  </div>
-  {% endfor %}
+    </section>
+    {% endfor %}
 
-  <!-- Legend -->
-  <div class="mt-4 flex flex-wrap gap-4 text-sm text-gray-600 dark:text-gray-400">
-    <div class="flex items-center gap-2">
-      <iconify-icon icon="heroicons:speaker-wave" class="text-indigo-600 dark:text-indigo-400" width="20" height="20"></iconify-icon>
-      <span>Play entire row/column</span>
+    <!-- Legend -->
+    <div class="mt-4 flex flex-wrap gap-4 text-sm text-gray-600 dark:text-gray-400">
+      <div class="flex items-center gap-2">
+        <iconify-icon icon="heroicons:speaker-wave" class="text-indigo-600 dark:text-indigo-400" width="20" height="20"></iconify-icon>
+        <span>Play entire row/column</span>
+      </div>
+      <div class="flex items-center gap-2">
+        <iconify-icon icon="heroicons:play-circle" class="text-green-600 dark:text-green-400" width="16" height="16"></iconify-icon>
+        <span>Play individual syllable</span>
+      </div>
+      <div class="flex items-center gap-2">
+        <iconify-icon icon="heroicons:speaker-x-mark" class="text-gray-300 dark:text-gray-600" width="16" height="16"></iconify-icon>
+        <span>Audio not available</span>
+      </div>
     </div>
-    <div class="flex items-center gap-2">
-      <iconify-icon icon="heroicons:play-circle" class="text-green-600 dark:text-green-400" width="16" height="16"></iconify-icon>
-      <span>Play individual syllable</span>
-    </div>
-    <div class="flex items-center gap-2">
-      <iconify-icon icon="heroicons:speaker-x-mark" class="text-gray-300 dark:text-gray-600" width="16" height="16"></iconify-icon>
-      <span>Audio not available</span>
-    </div>
-  </div>
 
-  <p class="mt-4 text-xs text-gray-500 dark:text-gray-500">
-    Audio sourced from howtostudykorean.com
-  </p>
+    <p class="mt-4 text-xs text-gray-500 dark:text-gray-500">
+      Audio sourced from howtostudykorean.com
+    </p>
+  </div>
 </div>
 
 <!-- Hidden audio player -->
@@ -174,4 +180,6 @@
     currentAudio = path;
   }
 </script>
+
+{% include "partials/toc_script.html" %}
 {% endblock %}

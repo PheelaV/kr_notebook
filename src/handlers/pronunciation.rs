@@ -60,11 +60,20 @@ pub struct VowelRow {
     pub is_complete: bool, // all expected syllables have audio
 }
 
+/// TOC item for navigation
+pub struct TocItem {
+    pub id: String,
+    pub short_label: String,
+    pub full_label: String,
+}
+
 #[derive(Template)]
 #[template(path = "pronunciation.html")]
 pub struct PronunciationTemplate {
     pub has_pronunciation: bool,
     pub tables: Vec<PronunciationTable>,
+    pub toc_items: Vec<TocItem>,
+    pub toc_title: String,
 }
 
 /// Build a pronunciation table from a manifest file using shared utilities
@@ -250,9 +259,30 @@ pub async fn pronunciation_page(auth: AuthContext) -> axum::response::Response {
         return Redirect::to("/").into_response();
     }
 
+    // Build TOC items from tables
+    let toc_items: Vec<TocItem> = tables
+        .iter()
+        .map(|t| {
+            let short_label = match t.lesson_id.as_str() {
+                "lesson1" => "Lesson 1",
+                "lesson2" => "Lesson 2",
+                "lesson3" => "Lesson 3",
+                _ => &t.lesson_id,
+            }
+            .to_string();
+            TocItem {
+                id: t.lesson_id.clone(),
+                short_label,
+                full_label: t.lesson_name.clone(),
+            }
+        })
+        .collect();
+
     let template = PronunciationTemplate {
         has_pronunciation: true,
         tables,
+        toc_items,
+        toc_title: "Lessons".to_string(),
     };
 
     Html(template.render().unwrap_or_default()).into_response()
