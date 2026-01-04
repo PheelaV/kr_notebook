@@ -33,3 +33,4 @@ urlencoding = "2.1"
 
 [dev-dependencies]
 axum-test = "18.4.1"
+tempfile = "3.24.0"

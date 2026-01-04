@@ -1,6 +1,7 @@
 pub mod audio;
 pub mod auth;
 pub mod config;
+pub mod content;
 pub mod db;
 pub mod domain;
 pub mod filters;

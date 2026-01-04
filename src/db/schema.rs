@@ -24,7 +24,9 @@ pub fn run_migrations(conn: &Connection) -> Result<()> {
       -- FSRS columns
       fsrs_stability REAL,
       fsrs_difficulty REAL,
-      fsrs_state TEXT DEFAULT 'New'
+      fsrs_state TEXT DEFAULT 'New',
+      -- Content pack columns
+      pack_id TEXT  -- NULL = baseline content, otherwise = pack that created this card
     );
 
     CREATE TABLE IF NOT EXISTS review_logs (
@@ -73,6 +75,14 @@ pub fn run_migrations(conn: &Connection) -> Result<()> {
       created_at TEXT NOT NULL
     );
 
+    -- Content pack management
+    CREATE TABLE IF NOT EXISTS enabled_packs (
+      pack_id TEXT PRIMARY KEY,
+      enabled_at TEXT NOT NULL,
+      cards_created INTEGER DEFAULT 0,  -- 1 if cards were created from this pack
+      config TEXT  -- JSON: user-specific settings for this pack
+    );
+
     -- Default settings
     INSERT OR IGNORE INTO settings (key, value) VALUES ('max_unlocked_tier', '1');
     INSERT OR IGNORE INTO settings (key, value) VALUES ('dark_mode', 'false');
@@ -84,14 +94,6 @@ pub fn run_migrations(conn: &Connection) -> Result<()> {
     INSERT OR IGNORE INTO settings (key, value) VALUES ('use_fsrs', 'true');
     INSERT OR IGNORE INTO settings (key, value) VALUES ('use_interleaving', 'true');
 
-    -- Indexes
-    CREATE INDEX IF NOT EXISTS idx_cards_next_review ON cards(next_review);
-    CREATE INDEX IF NOT EXISTS idx_cards_tier ON cards(tier);
-    CREATE INDEX IF NOT EXISTS idx_review_logs_card_id ON review_logs(card_id);
-    CREATE INDEX IF NOT EXISTS idx_review_logs_reviewed_at ON review_logs(reviewed_at);
-    CREATE INDEX IF NOT EXISTS idx_review_logs_study_mode ON review_logs(study_mode);
-    CREATE INDEX IF NOT EXISTS idx_confusions_card_id ON confusions(card_id);
-    CREATE INDEX IF NOT EXISTS idx_character_stats_type ON character_stats(character_type);
     "#,
   )?;
 
@@ -145,6 +147,38 @@ pub fn run_migrations(conn: &Connection) -> Result<()> {
       )?;
     }
   }
+
+  // Migration: Add pack_id column for content pack tracking
+  add_column_if_missing(conn, "cards", "pack_id", "TEXT")?;
+
+  // Migration: Create enabled_packs table if it doesn't exist
+  // (handles databases created before pack system)
+  conn.execute_batch(
+    r#"
+    CREATE TABLE IF NOT EXISTS enabled_packs (
+      pack_id TEXT PRIMARY KEY,
+      enabled_at TEXT NOT NULL,
+      cards_created INTEGER DEFAULT 0,
+      config TEXT
+    );
+    "#,
+  )?;
+
+  // ============================================================
+  // INDEXES - Created after all migrations so columns exist
+  // ============================================================
+  conn.execute_batch(
+    r#"
+    CREATE INDEX IF NOT EXISTS idx_cards_next_review ON cards(next_review);
+    CREATE INDEX IF NOT EXISTS idx_cards_tier ON cards(tier);
+    CREATE INDEX IF NOT EXISTS idx_cards_pack_id ON cards(pack_id);
+    CREATE INDEX IF NOT EXISTS idx_review_logs_card_id ON review_logs(card_id);
+    CREATE INDEX IF NOT EXISTS idx_review_logs_reviewed_at ON review_logs(reviewed_at);
+    CREATE INDEX IF NOT EXISTS idx_review_logs_study_mode ON review_logs(study_mode);
+    CREATE INDEX IF NOT EXISTS idx_confusions_card_id ON confusions(card_id);
+    CREATE INDEX IF NOT EXISTS idx_character_stats_type ON character_stats(character_type);
+    "#,
+  )?;
 
   // OBSOLETE MIGRATIONS - These were one-time fixes applied to production.
   // Keeping them active interferes with test scenarios where we intentionally

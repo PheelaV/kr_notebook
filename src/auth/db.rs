@@ -32,14 +32,50 @@ pub fn init_auth_schema(conn: &Connection) -> Result<()> {
             value TEXT
         );
 
+        -- Content pack registry (installed packs, both shared and user-specific)
+        CREATE TABLE IF NOT EXISTS content_packs (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            pack_type TEXT NOT NULL,        -- "audio", "generator", "cards"
+            version TEXT,
+            description TEXT,
+            source_path TEXT NOT NULL,      -- Relative path to pack directory
+            scope TEXT NOT NULL,            -- "shared" or "user"
+            installed_at TEXT NOT NULL,
+            installed_by TEXT,              -- Username who installed (NULL for shared)
+            metadata TEXT                   -- JSON: type-specific configuration
+        );
+
         CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
         CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at);
+        CREATE INDEX IF NOT EXISTS idx_content_packs_scope ON content_packs(scope);
+        CREATE INDEX IF NOT EXISTS idx_content_packs_type ON content_packs(pack_type);
     "#,
     )?;
 
     // Migrations for existing databases (must run before index on is_guest)
     add_column_if_missing(conn, "users", "is_guest", "INTEGER DEFAULT 0")?;
     add_column_if_missing(conn, "users", "last_activity_at", "TEXT")?;
+
+    // Migration: Create content_packs table if it doesn't exist (for existing databases)
+    conn.execute_batch(
+        r#"
+        CREATE TABLE IF NOT EXISTS content_packs (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            pack_type TEXT NOT NULL,
+            version TEXT,
+            description TEXT,
+            source_path TEXT NOT NULL,
+            scope TEXT NOT NULL,
+            installed_at TEXT NOT NULL,
+            installed_by TEXT,
+            metadata TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_content_packs_scope ON content_packs(scope);
+        CREATE INDEX IF NOT EXISTS idx_content_packs_type ON content_packs(pack_type);
+    "#,
+    )?;
 
     // Create index on is_guest after migration ensures column exists
     conn.execute_batch(
