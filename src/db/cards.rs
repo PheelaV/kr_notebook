@@ -1,4 +1,10 @@
 //! Card CRUD and query operations
+//!
+//! Cards use a two-database model:
+//! - Card definitions (content) are in app.db/card_definitions
+//! - Card progress (SRS state) is in learning.db/card_progress
+//!
+//! Queries JOIN these tables via ATTACH DATABASE (app.db attached as "app").
 
 use chrono::{DateTime, Utc};
 use rusqlite::{params, Connection, Result};
@@ -8,6 +14,27 @@ use crate::domain::{Card, CardType, FsrsState};
 use crate::profiling::EventType;
 
 use super::tiers::{get_all_tiers_unlocked, get_effective_tiers, get_enabled_tiers, get_max_unlocked_tier};
+
+/// SQL fragment for selecting card data from joined tables
+/// Uses app.card_definitions for content and card_progress for SRS state
+const CARD_SELECT: &str = r#"
+  cd.id, cd.front, cd.main_answer, cd.description, cd.card_type, cd.tier,
+  cd.audio_hint, cd.is_reverse,
+  COALESCE(cp.ease_factor, 2.5) as ease_factor,
+  COALESCE(cp.interval_days, 0) as interval_days,
+  COALESCE(cp.repetitions, 0) as repetitions,
+  COALESCE(cp.next_review, datetime('now')) as next_review,
+  COALESCE(cp.total_reviews, 0) as total_reviews,
+  COALESCE(cp.correct_reviews, 0) as correct_reviews,
+  COALESCE(cp.learning_step, 0) as learning_step,
+  cp.fsrs_stability, cp.fsrs_difficulty, cp.fsrs_state
+"#;
+
+/// SQL fragment for FROM clause with JOIN
+const CARD_FROM: &str = r#"
+FROM app.card_definitions cd
+LEFT JOIN card_progress cp ON cp.card_id = cd.id
+"#;
 
 pub fn insert_card(conn: &Connection, card: &Card) -> Result<i64> {
     conn.execute(
@@ -36,14 +63,11 @@ pub fn insert_card(conn: &Connection, card: &Card) -> Result<i64> {
 }
 
 pub fn get_card_by_id(conn: &Connection, id: i64) -> Result<Option<Card>> {
-    let mut stmt = conn.prepare(
-        r#"
-    SELECT id, front, main_answer, description, card_type, tier, audio_hint, is_reverse, ease_factor,
-           interval_days, repetitions, next_review, total_reviews, correct_reviews, learning_step,
-           fsrs_stability, fsrs_difficulty, fsrs_state
-    FROM cards WHERE id = ?1
-    "#,
-    )?;
+    let query = format!(
+        "SELECT {} {} WHERE cd.id = ?1",
+        CARD_SELECT, CARD_FROM
+    );
+    let mut stmt = conn.prepare(&query)?;
 
     let mut rows = stmt.query(params![id])?;
     if let Some(row) = rows.next()? {
@@ -80,19 +104,14 @@ pub fn get_due_cards(
     if let Some(last_id) = exclude_sibling_of {
         if let Ok(Some(last_card)) = get_card_by_id(conn, last_id) {
             let query = format!(
-                r#"
-        SELECT id, front, main_answer, description, card_type, tier, audio_hint, is_reverse, ease_factor,
-               interval_days, repetitions, next_review, total_reviews, correct_reviews, learning_step,
-               fsrs_stability, fsrs_difficulty, fsrs_state
-        FROM cards
-        WHERE next_review <= ?1 AND tier IN ({})
-          AND id != ?2
-          AND main_answer != ?3
-          AND front NOT LIKE '%' || ?4 || '%'
-        ORDER BY tier ASC, next_review ASC
-        LIMIT ?5
-        "#,
-                tier_list
+                r#"SELECT {} {}
+                WHERE COALESCE(cp.next_review, datetime('now')) <= ?1 AND cd.tier IN ({})
+                  AND cd.id != ?2
+                  AND cd.main_answer != ?3
+                  AND cd.front NOT LIKE '%' || ?4 || '%'
+                ORDER BY cd.tier ASC, COALESCE(cp.next_review, datetime('now')) ASC
+                LIMIT ?5"#,
+                CARD_SELECT, CARD_FROM, tier_list
             );
             let mut stmt = conn.prepare(&query)?;
 
@@ -107,16 +126,11 @@ pub fn get_due_cards(
     }
 
     let query = format!(
-        r#"
-    SELECT id, front, main_answer, description, card_type, tier, audio_hint, is_reverse, ease_factor,
-           interval_days, repetitions, next_review, total_reviews, correct_reviews, learning_step,
-           fsrs_stability, fsrs_difficulty, fsrs_state
-    FROM cards
-    WHERE next_review <= ?1 AND tier IN ({})
-    ORDER BY tier ASC, next_review ASC
-    LIMIT ?2
-    "#,
-        tier_list
+        r#"SELECT {} {}
+        WHERE COALESCE(cp.next_review, datetime('now')) <= ?1 AND cd.tier IN ({})
+        ORDER BY cd.tier ASC, COALESCE(cp.next_review, datetime('now')) ASC
+        LIMIT ?2"#,
+        CARD_SELECT, CARD_FROM, tier_list
     );
     let mut stmt = conn.prepare(&query)?;
 
@@ -147,8 +161,9 @@ pub fn get_due_count(conn: &Connection) -> Result<i64> {
         .join(",");
 
     let query = format!(
-        "SELECT COUNT(*) FROM cards WHERE next_review <= ?1 AND tier IN ({})",
-        tier_list
+        r#"SELECT COUNT(*) {}
+        WHERE COALESCE(cp.next_review, datetime('now')) <= ?1 AND cd.tier IN ({})"#,
+        CARD_FROM, tier_list
     );
     conn.query_row(&query, params![now], |row| row.get(0))
 }
@@ -173,8 +188,9 @@ pub fn get_next_review_time(conn: &Connection) -> Result<Option<DateTime<Utc>>> 
         .join(",");
 
     let query = format!(
-        "SELECT MIN(next_review) FROM cards WHERE tier IN ({})",
-        tier_list
+        r#"SELECT MIN(COALESCE(cp.next_review, datetime('now'))) {}
+        WHERE cd.tier IN ({})"#,
+        CARD_FROM, tier_list
     );
     let result: Option<String> = conn.query_row(&query, [], |row| row.get(0))?;
 
@@ -201,8 +217,9 @@ pub fn get_next_upcoming_review_time(conn: &Connection) -> Result<Option<DateTim
 
     let now = Utc::now().to_rfc3339();
     let query = format!(
-        "SELECT MIN(next_review) FROM cards WHERE tier IN ({}) AND next_review > ?1",
-        tier_list
+        r#"SELECT MIN(COALESCE(cp.next_review, datetime('now'))) {}
+        WHERE cd.tier IN ({}) AND COALESCE(cp.next_review, datetime('now')) > ?1"#,
+        CARD_FROM, tier_list
     );
     let result: Option<String> = conn.query_row(&query, params![now], |row| row.get(0))?;
 
@@ -240,7 +257,7 @@ pub fn get_due_cards_interleaved(
     let exclude_clause = if let Some(last_id) = exclude_sibling_of {
         if let Ok(Some(last_card)) = get_card_by_id(conn, last_id) {
             format!(
-                "AND id != {} AND main_answer != '{}' AND front NOT LIKE '%{}%'",
+                "AND cd.id != {} AND cd.main_answer != '{}' AND cd.front NOT LIKE '%{}%'",
                 last_id,
                 last_card.front.replace('\'', "''"),
                 last_card.main_answer.replace('\'', "''")
@@ -253,17 +270,12 @@ pub fn get_due_cards_interleaved(
     };
 
     let query = format!(
-        r#"
-    SELECT id, front, main_answer, description, card_type, tier, audio_hint, is_reverse, ease_factor,
-           interval_days, repetitions, next_review, total_reviews, correct_reviews, learning_step,
-           fsrs_stability, fsrs_difficulty, fsrs_state
-    FROM cards
-    WHERE next_review <= ?1 AND tier IN ({})
-    {}
-    ORDER BY card_type, RANDOM()
-    LIMIT ?2
-    "#,
-        tier_list, exclude_clause
+        r#"SELECT {} {}
+        WHERE COALESCE(cp.next_review, datetime('now')) <= ?1 AND cd.tier IN ({})
+        {}
+        ORDER BY cd.card_type, RANDOM()
+        LIMIT ?2"#,
+        CARD_SELECT, CARD_FROM, tier_list, exclude_clause
     );
     let mut stmt = conn.prepare(&query)?;
 
@@ -299,19 +311,14 @@ pub fn get_practice_cards(
     if let Some(last_id) = exclude_id {
         if let Ok(Some(last_card)) = get_card_by_id(conn, last_id) {
             let query = format!(
-                r#"
-        SELECT id, front, main_answer, description, card_type, tier, audio_hint, is_reverse, ease_factor,
-               interval_days, repetitions, next_review, total_reviews, correct_reviews, learning_step,
-               fsrs_stability, fsrs_difficulty, fsrs_state
-        FROM cards
-        WHERE tier IN ({})
-          AND id != ?1
-          AND main_answer != ?2
-          AND front NOT LIKE '%' || ?3 || '%'
-        ORDER BY RANDOM()
-        LIMIT ?4
-        "#,
-                tier_list
+                r#"SELECT {} {}
+                WHERE cd.tier IN ({})
+                  AND cd.id != ?1
+                  AND cd.main_answer != ?2
+                  AND cd.front NOT LIKE '%' || ?3 || '%'
+                ORDER BY RANDOM()
+                LIMIT ?4"#,
+                CARD_SELECT, CARD_FROM, tier_list
             );
             let mut stmt = conn.prepare(&query)?;
 
@@ -326,16 +333,11 @@ pub fn get_practice_cards(
     }
 
     let query = format!(
-        r#"
-    SELECT id, front, main_answer, description, card_type, tier, audio_hint, is_reverse, ease_factor,
-           interval_days, repetitions, next_review, total_reviews, correct_reviews, learning_step,
-           fsrs_stability, fsrs_difficulty, fsrs_state
-    FROM cards
-    WHERE tier IN ({})
-    ORDER BY RANDOM()
-    LIMIT ?1
-    "#,
-        tier_list
+        r#"SELECT {} {}
+        WHERE cd.tier IN ({})
+        ORDER BY RANDOM()
+        LIMIT ?1"#,
+        CARD_SELECT, CARD_FROM, tier_list
     );
     let mut stmt = conn.prepare(&query)?;
 
@@ -365,15 +367,10 @@ pub fn get_unlocked_cards(conn: &Connection) -> Result<Vec<Card>> {
         .join(",");
 
     let query = format!(
-        r#"
-    SELECT id, front, main_answer, description, card_type, tier, audio_hint, is_reverse, ease_factor,
-           interval_days, repetitions, next_review, total_reviews, correct_reviews, learning_step,
-           fsrs_stability, fsrs_difficulty, fsrs_state
-    FROM cards
-    WHERE tier IN ({})
-    ORDER BY tier ASC, id ASC
-    "#,
-        tier_list
+        r#"SELECT {} {}
+        WHERE cd.tier IN ({})
+        ORDER BY cd.tier ASC, cd.id ASC"#,
+        CARD_SELECT, CARD_FROM, tier_list
     );
     let mut stmt = conn.prepare(&query)?;
 
@@ -410,15 +407,10 @@ pub fn get_all_unlocked_cards(conn: &Connection) -> Result<Vec<Card>> {
         .join(",");
 
     let query = format!(
-        r#"
-    SELECT id, front, main_answer, description, card_type, tier, audio_hint, is_reverse, ease_factor,
-           interval_days, repetitions, next_review, total_reviews, correct_reviews, learning_step,
-           fsrs_stability, fsrs_difficulty, fsrs_state
-    FROM cards
-    WHERE tier IN ({})
-    ORDER BY tier ASC, id ASC
-    "#,
-        tier_list
+        r#"SELECT {} {}
+        WHERE cd.tier IN ({})
+        ORDER BY cd.tier ASC, cd.id ASC"#,
+        CARD_SELECT, CARD_FROM, tier_list
     );
     let mut stmt = conn.prepare(&query)?;
 
@@ -461,7 +453,7 @@ pub fn get_unreviewed_today(
     let exclude_clause = if let Some(last_id) = exclude_sibling_of {
         if let Ok(Some(last_card)) = get_card_by_id(conn, last_id) {
             format!(
-                "AND c.id != {} AND c.main_answer != '{}' AND c.front NOT LIKE '%{}%'",
+                "AND cd.id != {} AND cd.main_answer != '{}' AND cd.front NOT LIKE '%{}%'",
                 last_id,
                 last_card.front.replace('\'', "''"),
                 last_card.main_answer.replace('\'', "''")
@@ -474,21 +466,16 @@ pub fn get_unreviewed_today(
     };
 
     let query = format!(
-        r#"
-    SELECT c.id, c.front, c.main_answer, c.description, c.card_type, c.tier, c.audio_hint, c.is_reverse,
-           c.ease_factor, c.interval_days, c.repetitions, c.next_review, c.total_reviews,
-           c.correct_reviews, c.learning_step, c.fsrs_stability, c.fsrs_difficulty, c.fsrs_state
-    FROM cards c
-    WHERE c.tier IN ({})
-      AND NOT EXISTS (
-        SELECT 1 FROM review_logs r
-        WHERE r.card_id = c.id AND r.reviewed_at >= ?1
-      )
-      {}
-    ORDER BY c.tier ASC, RANDOM()
-    LIMIT ?2
-    "#,
-        tier_list, exclude_clause
+        r#"SELECT {} {}
+        WHERE cd.tier IN ({})
+          AND NOT EXISTS (
+            SELECT 1 FROM review_logs r
+            WHERE r.card_id = cd.id AND r.reviewed_at >= ?1
+          )
+          {}
+        ORDER BY cd.tier ASC, RANDOM()
+        LIMIT ?2"#,
+        CARD_SELECT, CARD_FROM, tier_list, exclude_clause
     );
     let mut stmt = conn.prepare(&query)?;
 
@@ -525,31 +512,25 @@ pub fn get_unreviewed_today_count(conn: &Connection) -> Result<i64> {
         .to_rfc3339();
 
     let query = format!(
-        r#"
-    SELECT COUNT(*)
-    FROM cards c
-    WHERE c.tier IN ({})
-      AND NOT EXISTS (
-        SELECT 1 FROM review_logs r
-        WHERE r.card_id = c.id AND r.reviewed_at >= ?1
-      )
-    "#,
-        tier_list
+        r#"SELECT COUNT(*) {}
+        WHERE cd.tier IN ({})
+          AND NOT EXISTS (
+            SELECT 1 FROM review_logs r
+            WHERE r.card_id = cd.id AND r.reviewed_at >= ?1
+          )"#,
+        CARD_FROM, tier_list
     );
     conn.query_row(&query, params![today_start], |row| row.get(0))
 }
 
 pub fn get_cards_by_tier(conn: &Connection, tier: u8) -> Result<Vec<Card>> {
-    let mut stmt = conn.prepare(
-        r#"
-    SELECT id, front, main_answer, description, card_type, tier, audio_hint, is_reverse, ease_factor,
-           interval_days, repetitions, next_review, total_reviews, correct_reviews, learning_step,
-           fsrs_stability, fsrs_difficulty, fsrs_state
-    FROM cards
-    WHERE tier = ?1
-    ORDER BY id ASC
-    "#,
-    )?;
+    let query = format!(
+        r#"SELECT {} {}
+        WHERE cd.tier = ?1
+        ORDER BY cd.id ASC"#,
+        CARD_SELECT, CARD_FROM
+    );
+    let mut stmt = conn.prepare(&query)?;
 
     let cards = stmt
         .query_map(params![tier], |row| row_to_card(row))?
@@ -570,25 +551,32 @@ pub fn update_card_after_review(
     #[cfg(feature = "profiling")]
     crate::profile_log!(EventType::DbQuery {
         operation: "update".into(),
-        table: "cards".into(),
+        table: "card_progress".into(),
     });
 
+    // Use INSERT OR REPLACE to create progress if it doesn't exist
     conn.execute(
         r#"
-    UPDATE cards
-    SET ease_factor = ?1, interval_days = ?2, repetitions = ?3, next_review = ?4,
-        learning_step = ?5, total_reviews = total_reviews + 1,
-        correct_reviews = correct_reviews + ?6
-    WHERE id = ?7
-    "#,
+        INSERT INTO card_progress (card_id, ease_factor, interval_days, repetitions, next_review,
+                                   learning_step, total_reviews, correct_reviews)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1, ?7)
+        ON CONFLICT(card_id) DO UPDATE SET
+            ease_factor = ?2,
+            interval_days = ?3,
+            repetitions = ?4,
+            next_review = ?5,
+            learning_step = ?6,
+            total_reviews = total_reviews + 1,
+            correct_reviews = correct_reviews + ?7
+        "#,
         params![
+            card_id,
             ease_factor,
             interval_days,
             repetitions,
             next_review.to_rfc3339(),
             learning_step,
             if correct { 1 } else { 0 },
-            card_id,
         ],
     )?;
     Ok(())
@@ -608,18 +596,28 @@ pub fn update_card_after_fsrs_review(
     #[cfg(feature = "profiling")]
     crate::profile_log!(EventType::DbQuery {
         operation: "update_fsrs".into(),
-        table: "cards".into(),
+        table: "card_progress".into(),
     });
 
+    // Use INSERT OR REPLACE to create progress if it doesn't exist
     conn.execute(
         r#"
-    UPDATE cards
-    SET next_review = ?1, fsrs_stability = ?2, fsrs_difficulty = ?3, fsrs_state = ?4,
-        learning_step = ?5, repetitions = ?6,
-        total_reviews = total_reviews + 1, correct_reviews = correct_reviews + ?7
-    WHERE id = ?8
-    "#,
+        INSERT INTO card_progress (card_id, next_review, fsrs_stability, fsrs_difficulty, fsrs_state,
+                                   learning_step, repetitions, total_reviews, correct_reviews,
+                                   ease_factor, interval_days)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 1, ?8, 2.5, 0)
+        ON CONFLICT(card_id) DO UPDATE SET
+            next_review = ?2,
+            fsrs_stability = ?3,
+            fsrs_difficulty = ?4,
+            fsrs_state = ?5,
+            learning_step = ?6,
+            repetitions = ?7,
+            total_reviews = total_reviews + 1,
+            correct_reviews = correct_reviews + ?8
+        "#,
         params![
+            card_id,
             next_review.to_rfc3339(),
             stability,
             difficulty,
@@ -627,7 +625,6 @@ pub fn update_card_after_fsrs_review(
             learning_step,
             repetitions,
             if correct { 1 } else { 0 },
-            card_id,
         ],
     )?;
     Ok(())

@@ -13,7 +13,7 @@ use crate::domain::{Card, CardType};
 // Re-export all public items from submodules
 pub use cards::*;
 pub use reviews::*;
-pub use schema::run_migrations;
+pub use schema::{run_migrations, run_migrations_with_app_db};
 pub use stats::*;
 pub use tiers::*;
 
@@ -75,6 +75,11 @@ pub fn try_lock(pool: &DbPool) -> std::result::Result<MutexGuard<'_, Connection>
 }
 
 pub fn init_db(path: &Path) -> Result<DbPool> {
+  init_db_with_app_db(path, None)
+}
+
+/// Initialize learning.db with optional app.db path for legacy migration
+pub fn init_db_with_app_db(path: &Path, app_db_path: Option<&Path>) -> Result<DbPool> {
   if let Some(parent) = path.parent() {
     std::fs::create_dir_all(parent).ok();
   }
@@ -88,7 +93,7 @@ pub fn init_db(path: &Path) -> Result<DbPool> {
   }
 
   let conn = Connection::open(path)?;
-  run_migrations(&conn)?;
+  run_migrations_with_app_db(&conn, app_db_path)?;
   Ok(Arc::new(Mutex::new(conn)))
 }
 
@@ -105,7 +110,26 @@ pub fn seed_hangul_cards(conn: &Connection) -> Result<()> {
     return Ok(());
   }
 
-  let cards = get_hangul_seed_data();
+  // Try to load from baseline pack, fall back to hardcoded data
+  let cards = if let Some(pack_cards) = crate::content::load_baseline_cards() {
+    pack_cards
+      .into_iter()
+      .map(|c| {
+        let mut card = Card::new(
+          c.front,
+          c.main_answer,
+          c.description,
+          c.card_type,
+          c.tier,
+        );
+        card.is_reverse = c.is_reverse;
+        card
+      })
+      .collect()
+  } else {
+    get_hangul_seed_data()
+  };
+
   for card in cards {
     insert_card(conn, &card)?;
   }

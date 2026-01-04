@@ -10,8 +10,10 @@ use rusqlite::Connection;
 use std::sync::{Arc, Mutex};
 
 use super::db as auth_db;
-use crate::db::run_migrations;
+use crate::db::run_migrations_with_app_db;
+use crate::paths::AUTH_DB_PATH;
 use crate::state::AppState;
+use std::path::Path;
 
 pub const SESSION_COOKIE_NAME: &str = "kr_session";
 
@@ -67,10 +69,25 @@ impl FromRequestParts<AppState> for AuthContext {
         })?;
 
         // Ensure schema is up to date (adds new columns if missing)
-        run_migrations(&conn).map_err(|_| {
+        // Pass app.db path for legacy cards → card_progress migration
+        let app_db_path = Path::new(AUTH_DB_PATH);
+        run_migrations_with_app_db(&conn, Some(app_db_path)).map_err(|_| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "Failed to run database migrations",
+            )
+                .into_response()
+        })?;
+
+        // Attach app.db for cross-database queries (card_definitions)
+        conn.execute(
+            &format!("ATTACH DATABASE '{}' AS app", AUTH_DB_PATH),
+            [],
+        )
+        .map_err(|_| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to attach app database",
             )
                 .into_response()
         })?;

@@ -1,11 +1,25 @@
-//! Auth database operations (users, sessions, app_settings tables).
+//! Auth database operations (users, sessions, app_settings, card_definitions tables).
 
 use chrono::{Duration, Utc};
 use rusqlite::{params, Connection, Result};
 
+/// Current schema version for app.db
+pub const AUTH_DB_VERSION: i32 = 3;
+
 /// Initialize the auth database schema
 pub fn init_auth_schema(conn: &Connection) -> Result<()> {
-    // Create base tables first
+    // Create db_version table first (for tracking schema migrations)
+    conn.execute_batch(
+        r#"
+        CREATE TABLE IF NOT EXISTS db_version (
+            version INTEGER PRIMARY KEY,
+            applied_at TEXT NOT NULL,
+            description TEXT
+        );
+        "#,
+    )?;
+
+    // Create base tables
     conn.execute_batch(
         r#"
         CREATE TABLE IF NOT EXISTS users (
@@ -46,18 +60,39 @@ pub fn init_auth_schema(conn: &Connection) -> Result<()> {
             metadata TEXT                   -- JSON: type-specific configuration
         );
 
+        -- Shared card definitions (actual card content, referenced by all users)
+        CREATE TABLE IF NOT EXISTS card_definitions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            front TEXT NOT NULL,
+            main_answer TEXT NOT NULL,
+            description TEXT,
+            card_type TEXT NOT NULL,        -- Consonant, Vowel, etc.
+            tier INTEGER NOT NULL,
+            audio_hint TEXT,
+            is_reverse INTEGER NOT NULL DEFAULT 0,
+            pack_id TEXT,                   -- NULL = baseline, otherwise pack that defined it
+            FOREIGN KEY (pack_id) REFERENCES content_packs(id)
+        );
+
         CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
         CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at);
         CREATE INDEX IF NOT EXISTS idx_content_packs_scope ON content_packs(scope);
         CREATE INDEX IF NOT EXISTS idx_content_packs_type ON content_packs(pack_type);
+        CREATE INDEX IF NOT EXISTS idx_card_definitions_pack ON card_definitions(pack_id);
+        CREATE INDEX IF NOT EXISTS idx_card_definitions_tier ON card_definitions(tier);
     "#,
     )?;
 
-    // Migrations for existing databases (must run before index on is_guest)
+    // ============================================================
+    // MIGRATIONS FOR EXISTING DATABASES
+    // ============================================================
+
+    // Migration v1→v2: Add user columns
     add_column_if_missing(conn, "users", "is_guest", "INTEGER DEFAULT 0")?;
     add_column_if_missing(conn, "users", "last_activity_at", "TEXT")?;
 
-    // Migration: Create content_packs table if it doesn't exist (for existing databases)
+    // Migration v2→v3: Create content_packs and card_definitions tables
+    // (CREATE TABLE IF NOT EXISTS is idempotent, so safe to run always)
     conn.execute_batch(
         r#"
         CREATE TABLE IF NOT EXISTS content_packs (
@@ -72,8 +107,22 @@ pub fn init_auth_schema(conn: &Connection) -> Result<()> {
             installed_by TEXT,
             metadata TEXT
         );
+        CREATE TABLE IF NOT EXISTS card_definitions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            front TEXT NOT NULL,
+            main_answer TEXT NOT NULL,
+            description TEXT,
+            card_type TEXT NOT NULL,
+            tier INTEGER NOT NULL,
+            audio_hint TEXT,
+            is_reverse INTEGER NOT NULL DEFAULT 0,
+            pack_id TEXT,
+            FOREIGN KEY (pack_id) REFERENCES content_packs(id)
+        );
         CREATE INDEX IF NOT EXISTS idx_content_packs_scope ON content_packs(scope);
         CREATE INDEX IF NOT EXISTS idx_content_packs_type ON content_packs(pack_type);
+        CREATE INDEX IF NOT EXISTS idx_card_definitions_pack ON card_definitions(pack_id);
+        CREATE INDEX IF NOT EXISTS idx_card_definitions_tier ON card_definitions(tier);
     "#,
     )?;
 
@@ -89,6 +138,185 @@ pub fn init_auth_schema(conn: &Connection) -> Result<()> {
     "#,
     )?;
 
+    // Record schema version
+    record_version(conn, AUTH_DB_VERSION, "Full schema with card_definitions")?;
+
+    // Seed baseline cards if card_definitions is empty
+    seed_baseline_cards(conn)?;
+
+    Ok(())
+}
+
+/// Record a schema version (idempotent - won't duplicate)
+fn record_version(conn: &Connection, version: i32, description: &str) -> Result<()> {
+    let now = Utc::now().to_rfc3339();
+    conn.execute(
+        "INSERT OR IGNORE INTO db_version (version, applied_at, description) VALUES (?1, ?2, ?3)",
+        params![version, now, description],
+    )?;
+    Ok(())
+}
+
+/// Get current schema version
+#[allow(dead_code)]
+pub fn get_schema_version(conn: &Connection) -> Result<i32> {
+    conn.query_row(
+        "SELECT COALESCE(MAX(version), 0) FROM db_version",
+        [],
+        |row| row.get(0),
+    )
+}
+
+/// Seed baseline cards into card_definitions if empty
+fn seed_baseline_cards(conn: &Connection) -> Result<()> {
+    let count: i64 = conn.query_row("SELECT COUNT(*) FROM card_definitions", [], |row| row.get(0))?;
+    if count > 0 {
+        return Ok(());
+    }
+
+    // Try to load from baseline pack, fall back to hardcoded data
+    if let Some(cards) = crate::content::load_baseline_cards() {
+        for card in cards {
+            conn.execute(
+                r#"INSERT INTO card_definitions
+                   (front, main_answer, description, card_type, tier, is_reverse, pack_id)
+                   VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL)"#,
+                params![
+                    card.front,
+                    card.main_answer,
+                    card.description,
+                    card.card_type.as_str(),
+                    card.tier,
+                    card.is_reverse,
+                ],
+            )?;
+        }
+        tracing::info!("Seeded {} baseline cards from pack", count);
+    } else {
+        // Fallback to hardcoded data
+        seed_hardcoded_baseline_cards(conn)?;
+    }
+
+    Ok(())
+}
+
+/// Hardcoded baseline cards as fallback
+fn seed_hardcoded_baseline_cards(conn: &Connection) -> Result<()> {
+    use crate::domain::CardType;
+
+    let tier1_consonants = [
+        ("ㄱ", "g / k", "Like 'g' in 'go' at the start, 'k' in 'kite' at the end"),
+        ("ㄴ", "n", "Like 'n' in 'no'"),
+        ("ㄷ", "d / t", "Like 'd' in 'do' at the start, 't' in 'top' at the end"),
+        ("ㄹ", "r / l", "Like 'r' in 'run' at the start, 'l' in 'ball' at the end"),
+        ("ㅁ", "m", "Like 'm' in 'mom'"),
+        ("ㅂ", "b / p", "Like 'b' in 'boy' at the start, 'p' in 'put' at the end"),
+        ("ㅅ", "s", "Like 's' in 'sun'"),
+        ("ㅈ", "j", "Like 'j' in 'just'"),
+        ("ㅎ", "h", "Like 'h' in 'hi'"),
+    ];
+
+    for (front, main, desc) in tier1_consonants {
+        insert_card_def(conn, front, main, Some(desc), CardType::Consonant, 1, false)?;
+        insert_card_def(conn, main, front, None, CardType::Consonant, 1, true)?;
+    }
+
+    let tier1_vowels = [
+        ("ㅏ", "a", "Like 'a' in 'father'"),
+        ("ㅓ", "eo", "Like 'u' in 'fun' or 'uh'"),
+        ("ㅗ", "o", "Like 'o' in 'go'"),
+        ("ㅜ", "u", "Like 'oo' in 'moon'"),
+        ("ㅡ", "eu", "Like 'u' in 'put', with unrounded lips"),
+        ("ㅣ", "i", "Like 'ee' in 'see'"),
+    ];
+
+    for (front, main, desc) in tier1_vowels {
+        insert_card_def(conn, front, main, Some(desc), CardType::Vowel, 1, false)?;
+        insert_card_def(conn, main, front, None, CardType::Vowel, 1, true)?;
+    }
+
+    // Tier 2
+    insert_card_def(conn, "ㅇ (initial)", "Silent", Some("No sound when at the start of a syllable"), CardType::Consonant, 2, false)?;
+    insert_card_def(conn, "ㅇ (final)", "ng", Some("Like 'ng' in 'sing' when at the end"), CardType::Consonant, 2, false)?;
+
+    let tier2_vowels = [
+        ("ㅑ", "ya", "Like 'ya' in 'yacht'"),
+        ("ㅕ", "yeo", "Like 'yu' in 'yuck'"),
+        ("ㅛ", "yo", "Like 'yo' in 'yoga'"),
+        ("ㅠ", "yu", "Like 'you'"),
+        ("ㅐ", "ae", "Like 'a' in 'can' or 'e' in 'bed'"),
+        ("ㅔ", "e", "Like 'e' in 'bed' (sounds same as ㅐ in modern Korean)"),
+    ];
+
+    for (front, main, desc) in tier2_vowels {
+        insert_card_def(conn, front, main, Some(desc), CardType::Vowel, 2, false)?;
+        insert_card_def(conn, main, front, None, CardType::Vowel, 2, true)?;
+    }
+
+    // Tier 3: Aspirated
+    let tier3_aspirated = [
+        ("ㅋ", "k (aspirated)", "Stronger 'k' with a puff of breath, like 'k' in 'kick'"),
+        ("ㅍ", "p (aspirated)", "Stronger 'p' with a puff of breath, like 'p' in 'pop'"),
+        ("ㅌ", "t (aspirated)", "Stronger 't' with a puff of breath, like 't' in 'top'"),
+        ("ㅊ", "ch (aspirated)", "Stronger 'ch' with a puff of breath, like 'ch' in 'church'"),
+    ];
+
+    for (front, main, desc) in tier3_aspirated {
+        insert_card_def(conn, front, main, Some(desc), CardType::AspiratedConsonant, 3, false)?;
+        insert_card_def(conn, main, front, None, CardType::AspiratedConsonant, 3, true)?;
+    }
+
+    // Tier 3: Tense
+    let tier3_tense = [
+        ("ㄲ", "kk (tense)", "Tense 'k' with no breath, like 'ck' in 'sticky'"),
+        ("ㅃ", "pp (tense)", "Tense 'p' with no breath, like 'pp' in 'happy'"),
+        ("ㄸ", "tt (tense)", "Tense 't' with no breath, like 'tt' in 'butter'"),
+        ("ㅆ", "ss (tense)", "Tense 's', like 'ss' in 'hiss'"),
+        ("ㅉ", "jj (tense)", "Tense 'j', like 'dg' in 'edge'"),
+    ];
+
+    for (front, main, desc) in tier3_tense {
+        insert_card_def(conn, front, main, Some(desc), CardType::TenseConsonant, 3, false)?;
+        insert_card_def(conn, main, front, None, CardType::TenseConsonant, 3, true)?;
+    }
+
+    // Tier 4: Compound vowels
+    let tier4_compound = [
+        ("ㅘ", "wa", "Like 'wa' in 'want'"),
+        ("ㅝ", "wo", "Like 'wo' in 'won'"),
+        ("ㅟ", "wi", "Like 'wee'"),
+        ("ㅚ", "oe", "Like 'we' in 'wet'"),
+        ("ㅢ", "ui", "Like 'oo-ee' said quickly"),
+        ("ㅙ", "wae", "Like 'wa' in 'wax'"),
+        ("ㅞ", "we", "Like 'we' in 'wet'"),
+        ("ㅒ", "yae", "Like 'ya' in 'yam'"),
+        ("ㅖ", "ye", "Like 'ye' in 'yes'"),
+    ];
+
+    for (front, main, desc) in tier4_compound {
+        insert_card_def(conn, front, main, Some(desc), CardType::CompoundVowel, 4, false)?;
+        insert_card_def(conn, main, front, None, CardType::CompoundVowel, 4, true)?;
+    }
+
+    tracing::info!("Seeded 80 baseline cards from hardcoded data");
+    Ok(())
+}
+
+fn insert_card_def(
+    conn: &Connection,
+    front: &str,
+    main: &str,
+    desc: Option<&str>,
+    card_type: crate::domain::CardType,
+    tier: u8,
+    is_reverse: bool,
+) -> Result<()> {
+    conn.execute(
+        r#"INSERT INTO card_definitions
+           (front, main_answer, description, card_type, tier, is_reverse, pack_id)
+           VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL)"#,
+        params![front, main, desc, card_type.as_str(), tier, is_reverse],
+    )?;
     Ok(())
 }
 

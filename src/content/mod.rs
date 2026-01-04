@@ -18,9 +18,11 @@
 //! 3. **Enable**: User enables pack, creating entries in `enabled_packs`
 //! 4. **Activation**: For card packs, cards are created on enable
 
+pub mod cards;
 pub mod discovery;
 pub mod packs;
 
+pub use cards::{load_baseline_cards, load_cards_from_pack, CardDefinition};
 pub use discovery::{discover_packs, PackLocation};
 pub use packs::{AudioConfig, CardConfig, GeneratorConfig, PackManifest, PackType};
 

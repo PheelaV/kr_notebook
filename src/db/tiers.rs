@@ -227,11 +227,17 @@ pub fn get_use_interleaving(conn: &Connection) -> Result<bool> {
 
 // ==================== Progress & Stats ====================
 
+/// SQL constants for tier queries using cross-DB join
+const TIER_FROM: &str = r#"
+FROM app.card_definitions cd
+LEFT JOIN card_progress cp ON cp.card_id = cd.id
+"#;
+
 pub fn get_progress_by_tier(conn: &Connection) -> Result<Vec<TierProgress>> {
     #[cfg(feature = "profiling")]
     crate::profile_log!(EventType::DbQuery {
         operation: "select_progress".into(),
-        table: "cards".into(),
+        table: "card_progress".into(),
     });
 
     let max_tier = get_max_unlocked_tier(conn)?;
@@ -240,31 +246,32 @@ pub fn get_progress_by_tier(conn: &Connection) -> Result<Vec<TierProgress>> {
 
     let mut progress = Vec::new();
     for tier in 1..=4u8 {
-        let total: i64 =
-            conn.query_row("SELECT COUNT(*) FROM cards WHERE tier = ?1", params![tier], |row| {
-                row.get(0)
-            })?;
+        let total: i64 = conn.query_row(
+            &format!("SELECT COUNT(*) {} WHERE cd.tier = ?1", TIER_FROM),
+            params![tier],
+            |row| row.get(0),
+        )?;
 
         let new_cards: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM cards WHERE tier = ?1 AND total_reviews = 0",
+            &format!("SELECT COUNT(*) {} WHERE cd.tier = ?1 AND COALESCE(cp.total_reviews, 0) = 0", TIER_FROM),
             params![tier],
             |row| row.get(0),
         )?;
 
         let learning: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM cards WHERE tier = ?1 AND total_reviews > 0 AND repetitions < 2",
+            &format!("SELECT COUNT(*) {} WHERE cd.tier = ?1 AND COALESCE(cp.total_reviews, 0) > 0 AND COALESCE(cp.repetitions, 0) < 2", TIER_FROM),
             params![tier],
             |row| row.get(0),
         )?;
 
         let learned: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM cards WHERE tier = ?1 AND repetitions >= 2",
+            &format!("SELECT COUNT(*) {} WHERE cd.tier = ?1 AND COALESCE(cp.repetitions, 0) >= 2", TIER_FROM),
             params![tier],
             |row| row.get(0),
         )?;
 
         let total_reviews: i64 = conn.query_row(
-            "SELECT COALESCE(SUM(total_reviews), 0) FROM cards WHERE tier = ?1",
+            &format!("SELECT COALESCE(SUM(cp.total_reviews), 0) {} WHERE cd.tier = ?1", TIER_FROM),
             params![tier],
             |row| row.get(0),
         )?;
@@ -272,26 +279,26 @@ pub fn get_progress_by_tier(conn: &Connection) -> Result<Vec<TierProgress>> {
         // Stability metrics for graduated cards only (learning_step >= 4)
         let avg_stability_days: f64 = conn
             .query_row(
-                "SELECT COALESCE(AVG(fsrs_stability), 0) FROM cards WHERE tier = ?1 AND learning_step >= 4 AND fsrs_stability > 0",
+                &format!("SELECT COALESCE(AVG(cp.fsrs_stability), 0) {} WHERE cd.tier = ?1 AND COALESCE(cp.learning_step, 0) >= 4 AND cp.fsrs_stability > 0", TIER_FROM),
                 params![tier],
                 |row| row.get(0),
             )
             .unwrap_or(0.0);
 
         let strong_memories: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM cards WHERE tier = ?1 AND learning_step >= 4 AND fsrs_stability >= 14",
+            &format!("SELECT COUNT(*) {} WHERE cd.tier = ?1 AND COALESCE(cp.learning_step, 0) >= 4 AND cp.fsrs_stability >= 14", TIER_FROM),
             params![tier],
             |row| row.get(0),
         )?;
 
         let medium_memories: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM cards WHERE tier = ?1 AND learning_step >= 4 AND fsrs_stability >= 7 AND fsrs_stability < 14",
+            &format!("SELECT COUNT(*) {} WHERE cd.tier = ?1 AND COALESCE(cp.learning_step, 0) >= 4 AND cp.fsrs_stability >= 7 AND cp.fsrs_stability < 14", TIER_FROM),
             params![tier],
             |row| row.get(0),
         )?;
 
         let weak_memories: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM cards WHERE tier = ?1 AND learning_step >= 4 AND fsrs_stability > 0 AND fsrs_stability < 7",
+            &format!("SELECT COUNT(*) {} WHERE cd.tier = ?1 AND COALESCE(cp.learning_step, 0) >= 4 AND cp.fsrs_stability > 0 AND cp.fsrs_stability < 7", TIER_FROM),
             params![tier],
             |row| row.get(0),
         )?;
@@ -324,7 +331,7 @@ pub fn get_progress_by_tier(conn: &Connection) -> Result<Vec<TierProgress>> {
 /// Make all cards due now (for testing/accelerated learning)
 pub fn make_all_cards_due(conn: &Connection) -> Result<usize> {
     let now = chrono::Utc::now().to_rfc3339();
-    let count = conn.execute("UPDATE cards SET next_review = ?1", params![now])?;
+    let count = conn.execute("UPDATE card_progress SET next_review = ?1", params![now])?;
     Ok(count)
 }
 
@@ -344,16 +351,31 @@ pub fn graduate_tier(conn: &Connection, tier: u8) -> Result<usize> {
 
     let next_review = (Utc::now() + Duration::days(3)).to_rfc3339();
 
-    let count = conn.execute(
-        "UPDATE cards SET
-            learning_step = 4,
-            repetitions = 2,
-            fsrs_stability = 3.0,
-            fsrs_state = 'Review',
-            next_review = ?1
-         WHERE tier = ?2",
-        params![next_review, tier],
-    )?;
+    // For graduation, we need to insert/update card_progress for all cards in the tier
+    // First, get all card IDs for this tier
+    let card_ids: Vec<i64> = {
+        let mut stmt = conn.prepare(
+            "SELECT cd.id FROM app.card_definitions cd WHERE cd.tier = ?1"
+        )?;
+        stmt.query_map(params![tier], |row| row.get(0))?
+            .collect::<std::result::Result<Vec<_>, _>>()?
+    };
+
+    let mut count = 0;
+    for card_id in card_ids {
+        conn.execute(
+            r#"INSERT INTO card_progress (card_id, learning_step, repetitions, fsrs_stability, fsrs_state, next_review, ease_factor, interval_days, total_reviews, correct_reviews)
+               VALUES (?1, 4, 2, 3.0, 'Review', ?2, 2.5, 3, 0, 0)
+               ON CONFLICT(card_id) DO UPDATE SET
+                   learning_step = 4,
+                   repetitions = 2,
+                   fsrs_stability = 3.0,
+                   fsrs_state = 'Review',
+                   next_review = ?2"#,
+            params![card_id, next_review],
+        )?;
+        count += 1;
+    }
 
     Ok(count)
 }
@@ -376,8 +398,9 @@ struct CardStateBackup {
 
 /// Check if a tier is fully graduated (all cards have learning_step >= 4)
 pub fn is_tier_fully_graduated(conn: &Connection, tier: u8) -> Result<bool> {
+    // A card is not graduated if it either has no progress entry or learning_step < 4
     let count: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM cards WHERE tier = ?1 AND learning_step < 4",
+        &format!("SELECT COUNT(*) {} WHERE cd.tier = ?1 AND COALESCE(cp.learning_step, 0) < 4", TIER_FROM),
         params![tier],
         |row| row.get(0),
     )?;
@@ -389,8 +412,13 @@ pub fn backup_tier_state(conn: &Connection, tier: u8) -> Result<()> {
     use chrono::Utc;
 
     let mut stmt = conn.prepare(
-        "SELECT id, learning_step, repetitions, fsrs_stability, fsrs_difficulty, fsrs_state, next_review
-         FROM cards WHERE tier = ?1",
+        &format!(
+            r#"SELECT cd.id, COALESCE(cp.learning_step, 0), COALESCE(cp.repetitions, 0),
+                      cp.fsrs_stability, cp.fsrs_difficulty, cp.fsrs_state,
+                      COALESCE(cp.next_review, datetime('now'))
+               {} WHERE cd.tier = ?1"#,
+            TIER_FROM
+        ),
     )?;
 
     let backups: Vec<CardStateBackup> = stmt
@@ -437,14 +465,15 @@ pub fn restore_tier_state(conn: &Connection, tier: u8) -> Result<usize> {
     let mut restored = 0;
     for backup in &backups {
         conn.execute(
-            "UPDATE cards SET
-                learning_step = ?1,
-                repetitions = ?2,
-                fsrs_stability = ?3,
-                fsrs_difficulty = ?4,
-                fsrs_state = ?5,
-                next_review = ?6
-             WHERE id = ?7",
+            r#"INSERT INTO card_progress (card_id, learning_step, repetitions, fsrs_stability, fsrs_difficulty, fsrs_state, next_review, ease_factor, interval_days, total_reviews, correct_reviews)
+               VALUES (?7, ?1, ?2, ?3, ?4, ?5, ?6, 2.5, 0, 0, 0)
+               ON CONFLICT(card_id) DO UPDATE SET
+                   learning_step = ?1,
+                   repetitions = ?2,
+                   fsrs_stability = ?3,
+                   fsrs_difficulty = ?4,
+                   fsrs_state = ?5,
+                   next_review = ?6"#,
             params![
                 backup.learning_step,
                 backup.repetitions,
@@ -488,18 +517,21 @@ pub fn get_total_stats(conn: &Connection) -> Result<(i64, i64, i64)> {
     #[cfg(feature = "profiling")]
     crate::profile_log!(EventType::DbQuery {
         operation: "select_total".into(),
-        table: "cards".into(),
+        table: "card_progress".into(),
     });
 
-    let total_cards: i64 =
-        conn.query_row("SELECT COUNT(*) FROM cards", [], |row| row.get(0))?;
+    let total_cards: i64 = conn.query_row(
+        &format!("SELECT COUNT(*) {}", TIER_FROM),
+        [],
+        |row| row.get(0),
+    )?;
     let total_reviews: i64 = conn.query_row(
-        "SELECT COALESCE(SUM(total_reviews), 0) FROM cards",
+        &format!("SELECT COALESCE(SUM(cp.total_reviews), 0) {}", TIER_FROM),
         [],
         |row| row.get(0),
     )?;
     let cards_learned: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM cards WHERE repetitions >= 2",
+        &format!("SELECT COUNT(*) {} WHERE COALESCE(cp.repetitions, 0) >= 2", TIER_FROM),
         [],
         |row| row.get(0),
     )?;

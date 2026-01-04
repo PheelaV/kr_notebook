@@ -380,7 +380,7 @@ fn validate_imported_database(bytes: &[u8]) -> Result<(), String> {
   let result = (|| {
     let conn = Connection::open(&temp_path).map_err(|e| format!("Invalid database: {}", e))?;
 
-    // Check for required tables
+    // Check for required tables (accept either legacy 'cards' or new 'card_progress')
     let has_cards: bool = conn
       .query_row(
         "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='cards')",
@@ -389,14 +389,24 @@ fn validate_imported_database(bytes: &[u8]) -> Result<(), String> {
       )
       .unwrap_or(false);
 
-    if !has_cards {
-      return Err("Database missing 'cards' table".to_string());
+    let has_card_progress: bool = conn
+      .query_row(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='card_progress')",
+        [],
+        |row| row.get(0),
+      )
+      .unwrap_or(false);
+
+    if !has_cards && !has_card_progress {
+      return Err("Database missing 'cards' or 'card_progress' table".to_string());
     }
 
-    // Check cards table has expected columns
-    let column_check = conn.prepare("SELECT id, front, main_answer FROM cards LIMIT 1");
-    if column_check.is_err() {
-      return Err("Cards table missing required columns".to_string());
+    // For legacy format, verify the schema
+    if has_cards {
+      let column_check = conn.prepare("SELECT id, front, main_answer FROM cards LIMIT 1");
+      if column_check.is_err() {
+        return Err("Cards table missing required columns".to_string());
+      }
     }
 
     Ok(())
