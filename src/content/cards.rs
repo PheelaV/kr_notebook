@@ -1,5 +1,12 @@
-//! Card pack loading - reads card definitions from pack JSON files.
+//! Card pack loading and enabling - reads card definitions from pack JSON files.
+//!
+//! Card packs contain card definitions that can be enabled by users. When enabled:
+//! - Cards are inserted into shared `card_definitions` table (app.db)
+//! - User's `enabled_packs` table (learning.db) tracks pack enablement
+//! - All users can see cards once any user has enabled the pack
 
+use chrono::Utc;
+use rusqlite::{params, Connection};
 use serde::Deserialize;
 use std::fs;
 use std::path::Path;
@@ -17,6 +24,8 @@ pub struct CardDefinition {
     pub tier: u8,
     #[serde(default)]
     pub is_reverse: bool,
+    #[serde(default)]
+    pub audio_hint: Option<String>,
 }
 
 /// Container for cards in a pack's cards.json file.
@@ -81,6 +90,180 @@ impl std::fmt::Display for CardLoadError {
 
 impl std::error::Error for CardLoadError {}
 
+// ==================== Pack Enable/Disable Operations ====================
+
+/// Result of enabling a card pack
+#[derive(Debug)]
+pub struct EnablePackResult {
+    /// Number of new cards inserted
+    pub cards_inserted: usize,
+    /// Number of cards skipped (already existed)
+    pub cards_skipped: usize,
+}
+
+/// Enable a card pack for a user.
+///
+/// This function:
+/// 1. Loads cards from the pack's cards.json
+/// 2. Inserts new card_definitions into app.db (skipping duplicates)
+/// 3. Records pack as enabled in user's learning.db
+///
+/// # Arguments
+/// * `app_conn` - Connection to app.db (for card_definitions)
+/// * `user_conn` - Connection to user's learning.db (for enabled_packs)
+/// * `pack_id` - The pack identifier
+/// * `pack_dir` - Path to the pack directory
+/// * `cards_file` - Name of the cards JSON file (from pack manifest)
+///
+/// # Returns
+/// EnablePackResult with counts of inserted/skipped cards
+pub fn enable_card_pack(
+    app_conn: &Connection,
+    user_conn: &Connection,
+    pack_id: &str,
+    pack_dir: &Path,
+    cards_file: &str,
+) -> Result<EnablePackResult, CardLoadError> {
+    // Load cards from pack
+    let cards = load_cards_from_pack(pack_dir, cards_file)?;
+
+    let mut inserted = 0;
+    let mut skipped = 0;
+
+    // Insert cards into shared card_definitions (skip if already exists)
+    for card in &cards {
+        let exists: bool = app_conn
+            .query_row(
+                r#"SELECT EXISTS(
+                    SELECT 1 FROM card_definitions
+                    WHERE front = ?1 AND main_answer = ?2 AND card_type = ?3
+                      AND tier = ?4 AND is_reverse = ?5
+                )"#,
+                params![
+                    card.front,
+                    card.main_answer,
+                    card.card_type.as_str(),
+                    card.tier,
+                    card.is_reverse,
+                ],
+                |row| row.get(0),
+            )
+            .unwrap_or(false);
+
+        if exists {
+            skipped += 1;
+            continue;
+        }
+
+        match app_conn.execute(
+            r#"INSERT INTO card_definitions
+               (front, main_answer, description, card_type, tier, audio_hint, is_reverse, pack_id)
+               VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)"#,
+            params![
+                card.front,
+                card.main_answer,
+                card.description,
+                card.card_type.as_str(),
+                card.tier,
+                card.audio_hint,
+                card.is_reverse,
+                pack_id,
+            ],
+        ) {
+            Ok(_) => inserted += 1,
+            Err(e) => {
+                tracing::warn!("Failed to insert card '{}': {}", card.front, e);
+                skipped += 1;
+            }
+        }
+    }
+
+    // Record in user's enabled_packs
+    let now = Utc::now().to_rfc3339();
+    user_conn
+        .execute(
+            r#"INSERT OR REPLACE INTO enabled_packs (pack_id, enabled_at, cards_created, config)
+               VALUES (?1, ?2, 1, NULL)"#,
+            params![pack_id, now],
+        )
+        .map_err(|e| CardLoadError::IoError("enabled_packs".to_string(), e.to_string()))?;
+
+    tracing::info!(
+        "Enabled card pack '{}': {} cards inserted, {} skipped",
+        pack_id,
+        inserted,
+        skipped
+    );
+
+    Ok(EnablePackResult {
+        cards_inserted: inserted,
+        cards_skipped: skipped,
+    })
+}
+
+/// Disable a pack for a user.
+///
+/// This removes the pack from the user's enabled_packs but does NOT delete
+/// card_definitions (other users may have them enabled).
+pub fn disable_pack(user_conn: &Connection, pack_id: &str) -> Result<bool, CardLoadError> {
+    let deleted = user_conn
+        .execute("DELETE FROM enabled_packs WHERE pack_id = ?1", params![pack_id])
+        .map_err(|e| CardLoadError::IoError("enabled_packs".to_string(), e.to_string()))?;
+
+    Ok(deleted > 0)
+}
+
+/// Check if a pack is enabled for a user.
+pub fn is_pack_enabled(user_conn: &Connection, pack_id: &str) -> bool {
+    user_conn
+        .query_row(
+            "SELECT 1 FROM enabled_packs WHERE pack_id = ?1",
+            params![pack_id],
+            |_| Ok(()),
+        )
+        .is_ok()
+}
+
+/// Get list of enabled pack IDs for a user.
+pub fn list_enabled_packs(user_conn: &Connection) -> Vec<String> {
+    let mut stmt = match user_conn.prepare("SELECT pack_id FROM enabled_packs") {
+        Ok(s) => s,
+        Err(_) => return Vec::new(),
+    };
+
+    stmt.query_map([], |row| row.get(0))
+        .map(|rows| rows.filter_map(|r| r.ok()).collect())
+        .unwrap_or_default()
+}
+
+/// Enabled pack info (for UI display)
+#[derive(Debug, Clone)]
+pub struct EnabledPackInfo {
+    pub pack_id: String,
+    pub enabled_at: String,
+    pub cards_created: bool,
+}
+
+/// Get detailed info about enabled packs for a user.
+pub fn get_enabled_packs_info(user_conn: &Connection) -> Vec<EnabledPackInfo> {
+    let mut stmt = match user_conn
+        .prepare("SELECT pack_id, enabled_at, cards_created FROM enabled_packs")
+    {
+        Ok(s) => s,
+        Err(_) => return Vec::new(),
+    };
+
+    stmt.query_map([], |row| {
+        Ok(EnabledPackInfo {
+            pack_id: row.get(0)?,
+            enabled_at: row.get(1)?,
+            cards_created: row.get::<_, i64>(2)? != 0,
+        })
+    })
+    .map(|rows| rows.filter_map(|r| r.ok()).collect())
+    .unwrap_or_default()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -126,5 +309,174 @@ mod tests {
         let temp = TempDir::new().unwrap();
         let result = load_cards_from_pack(temp.path(), "cards.json");
         assert!(matches!(result, Err(CardLoadError::FileNotFound(_))));
+    }
+
+    fn create_test_db() -> (TempDir, Connection, Connection) {
+        let temp = TempDir::new().unwrap();
+
+        // Create app.db with card_definitions table
+        let app_db_path = temp.path().join("app.db");
+        let app_conn = Connection::open(&app_db_path).unwrap();
+        app_conn
+            .execute_batch(
+                r#"
+                CREATE TABLE card_definitions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    front TEXT NOT NULL,
+                    main_answer TEXT NOT NULL,
+                    description TEXT,
+                    card_type TEXT NOT NULL,
+                    tier INTEGER NOT NULL,
+                    audio_hint TEXT,
+                    is_reverse INTEGER NOT NULL DEFAULT 0,
+                    pack_id TEXT
+                );
+            "#,
+            )
+            .unwrap();
+
+        // Create user learning.db with enabled_packs table
+        let user_db_path = temp.path().join("learning.db");
+        let user_conn = Connection::open(&user_db_path).unwrap();
+        user_conn
+            .execute_batch(
+                r#"
+                CREATE TABLE enabled_packs (
+                    pack_id TEXT PRIMARY KEY,
+                    enabled_at TEXT NOT NULL,
+                    cards_created INTEGER DEFAULT 0,
+                    config TEXT
+                );
+            "#,
+            )
+            .unwrap();
+
+        (temp, app_conn, user_conn)
+    }
+
+    fn create_test_pack(dir: &Path, cards_json: &str) {
+        fs::write(dir.join("cards.json"), cards_json).unwrap();
+    }
+
+    #[test]
+    fn test_enable_card_pack() {
+        let (temp, app_conn, user_conn) = create_test_db();
+        let pack_dir = temp.path().join("test-pack");
+        fs::create_dir(&pack_dir).unwrap();
+
+        let cards_json = r#"{
+            "cards": [
+                {"front": "A", "main_answer": "a", "card_type": "Vowel", "tier": 1, "is_reverse": false},
+                {"front": "a", "main_answer": "A", "card_type": "Vowel", "tier": 1, "is_reverse": true}
+            ]
+        }"#;
+        create_test_pack(&pack_dir, cards_json);
+
+        let result = enable_card_pack(&app_conn, &user_conn, "test-pack", &pack_dir, "cards.json").unwrap();
+
+        assert_eq!(result.cards_inserted, 2);
+        assert_eq!(result.cards_skipped, 0);
+
+        // Check cards were inserted
+        let count: i64 = app_conn
+            .query_row("SELECT COUNT(*) FROM card_definitions", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(count, 2);
+
+        // Check pack is recorded as enabled
+        assert!(is_pack_enabled(&user_conn, "test-pack"));
+    }
+
+    #[test]
+    fn test_enable_card_pack_skips_duplicates() {
+        let (temp, app_conn, user_conn) = create_test_db();
+        let pack_dir = temp.path().join("test-pack");
+        fs::create_dir(&pack_dir).unwrap();
+
+        let cards_json = r#"{
+            "cards": [
+                {"front": "A", "main_answer": "a", "card_type": "Vowel", "tier": 1, "is_reverse": false}
+            ]
+        }"#;
+        create_test_pack(&pack_dir, cards_json);
+
+        // First enable
+        let result1 = enable_card_pack(&app_conn, &user_conn, "test-pack", &pack_dir, "cards.json").unwrap();
+        assert_eq!(result1.cards_inserted, 1);
+
+        // Second enable should skip
+        let result2 = enable_card_pack(&app_conn, &user_conn, "test-pack", &pack_dir, "cards.json").unwrap();
+        assert_eq!(result2.cards_inserted, 0);
+        assert_eq!(result2.cards_skipped, 1);
+
+        // Should still only have 1 card
+        let count: i64 = app_conn
+            .query_row("SELECT COUNT(*) FROM card_definitions", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn test_disable_pack() {
+        let (temp, app_conn, user_conn) = create_test_db();
+        let pack_dir = temp.path().join("test-pack");
+        fs::create_dir(&pack_dir).unwrap();
+
+        let cards_json = r#"{"cards": [{"front": "A", "main_answer": "a", "card_type": "Vowel", "tier": 1, "is_reverse": false}]}"#;
+        create_test_pack(&pack_dir, cards_json);
+
+        // Enable then disable
+        enable_card_pack(&app_conn, &user_conn, "test-pack", &pack_dir, "cards.json").unwrap();
+        assert!(is_pack_enabled(&user_conn, "test-pack"));
+
+        let deleted = disable_pack(&user_conn, "test-pack").unwrap();
+        assert!(deleted);
+        assert!(!is_pack_enabled(&user_conn, "test-pack"));
+
+        // Cards should still exist in app.db
+        let count: i64 = app_conn
+            .query_row("SELECT COUNT(*) FROM card_definitions", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn test_list_enabled_packs() {
+        let (temp, app_conn, user_conn) = create_test_db();
+
+        // Create and enable two packs
+        for i in 1..=2 {
+            let pack_dir = temp.path().join(format!("pack{}", i));
+            fs::create_dir(&pack_dir).unwrap();
+            let cards_json = format!(
+                r#"{{"cards": [{{"front": "{}", "main_answer": "x", "card_type": "Vowel", "tier": 1, "is_reverse": false}}]}}"#,
+                i
+            );
+            create_test_pack(&pack_dir, &cards_json);
+            enable_card_pack(&app_conn, &user_conn, &format!("pack{}", i), &pack_dir, "cards.json").unwrap();
+        }
+
+        let enabled = list_enabled_packs(&user_conn);
+        assert_eq!(enabled.len(), 2);
+        assert!(enabled.contains(&"pack1".to_string()));
+        assert!(enabled.contains(&"pack2".to_string()));
+    }
+
+    #[test]
+    fn test_get_enabled_packs_info() {
+        let (temp, app_conn, user_conn) = create_test_db();
+        let pack_dir = temp.path().join("test-pack");
+        fs::create_dir(&pack_dir).unwrap();
+
+        let cards_json = r#"{"cards": [{"front": "A", "main_answer": "a", "card_type": "Vowel", "tier": 1, "is_reverse": false}]}"#;
+        create_test_pack(&pack_dir, cards_json);
+
+        enable_card_pack(&app_conn, &user_conn, "test-pack", &pack_dir, "cards.json").unwrap();
+
+        let info = get_enabled_packs_info(&user_conn);
+        assert_eq!(info.len(), 1);
+        assert_eq!(info[0].pack_id, "test-pack");
+        assert!(info[0].cards_created);
+        assert!(!info[0].enabled_at.is_empty());
     }
 }
