@@ -32,12 +32,14 @@ pub struct PackInfo {
   pub pack_type: String,
   pub version: Option<String>,
   pub is_enabled: bool,
-  pub cards_count: Option<usize>, // For card packs
+  pub is_baseline: bool,           // Baseline pack (always enabled, can't disable)
+  pub cards_count: Option<usize>,  // For card packs
 }
 
 impl PackInfo {
   /// Create PackInfo from a discovered pack
   fn from_location(loc: &PackLocation, enabled_packs: &[String]) -> Self {
+    let is_baseline = loc.manifest.id == "baseline";
     let cards_count = if loc.manifest.pack_type == PackType::Cards {
       // Try to count cards in the pack
       loc.manifest.cards.as_ref().and_then(|cfg| {
@@ -57,7 +59,8 @@ impl PackInfo {
       description: loc.manifest.description.clone(),
       pack_type: loc.manifest.pack_type.as_str().to_string(),
       version: loc.manifest.version.clone(),
-      is_enabled: enabled_packs.contains(&loc.manifest.id),
+      is_enabled: is_baseline || enabled_packs.contains(&loc.manifest.id),
+      is_baseline,
       cards_count,
     }
   }
@@ -148,10 +151,10 @@ pub async fn settings_page(auth: AuthContext) -> Html<String> {
   let shared_packs_path = Path::new(paths::SHARED_PACKS_DIR);
   let discovered = discover_packs(shared_packs_path, None, None);
 
-  // Filter to card packs only (baseline is handled separately)
+  // Filter to card packs only
   let card_packs: Vec<PackInfo> = discovered
     .iter()
-    .filter(|loc| loc.manifest.pack_type == PackType::Cards && loc.manifest.id != "baseline")
+    .filter(|loc| loc.manifest.pack_type == PackType::Cards)
     .map(|loc| PackInfo::from_location(loc, &enabled_packs))
     .collect();
 
