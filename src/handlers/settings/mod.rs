@@ -20,7 +20,8 @@ pub use audio::{
   TierGraduationStatus,
 };
 pub use user::{
-  export_data, import_data, settings_page, update_settings, SettingsForm, SettingsTemplate,
+  disable_pack, enable_pack, export_data, import_data, settings_page, update_settings, PackInfo,
+  SettingsForm, SettingsTemplate,
 };
 
 /// Check if lesson content exists for a given lesson ID

@@ -1,5 +1,7 @@
 //! User-facing settings page and preferences.
 
+use std::path::Path;
+
 use askama::Template;
 use axum::extract::{Multipart, State};
 use axum::http::{header, StatusCode};
@@ -10,14 +12,56 @@ use rusqlite::Connection;
 use serde::Deserialize;
 
 use crate::auth::AuthContext;
+use crate::content::{self, discover_packs, PackLocation, PackType};
 use crate::db::{self, run_migrations, LogOnError};
 use crate::filters;
+use crate::paths;
 use crate::state::AppState;
 #[cfg(feature = "profiling")]
 use crate::profiling::EventType;
 
 use super::audio::{get_lesson_audio, LessonAudio, TierGraduationStatus};
 use super::{count_syllables, has_lesson1, has_lesson2, has_lesson3};
+
+/// Pack info for UI display
+#[derive(Debug, Clone)]
+pub struct PackInfo {
+  pub id: String,
+  pub name: String,
+  pub description: Option<String>,
+  pub pack_type: String,
+  pub version: Option<String>,
+  pub is_enabled: bool,
+  pub cards_count: Option<usize>, // For card packs
+}
+
+impl PackInfo {
+  /// Create PackInfo from a discovered pack
+  fn from_location(loc: &PackLocation, enabled_packs: &[String]) -> Self {
+    let cards_count = if loc.manifest.pack_type == PackType::Cards {
+      // Try to count cards in the pack
+      loc.manifest.cards.as_ref().and_then(|cfg| {
+        let cards_path = loc.path.join(&cfg.file);
+        std::fs::read_to_string(&cards_path)
+          .ok()
+          .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+          .and_then(|v| v["cards"].as_array().map(|a| a.len()))
+      })
+    } else {
+      None
+    };
+
+    PackInfo {
+      id: loc.manifest.id.clone(),
+      name: loc.manifest.name.clone(),
+      description: loc.manifest.description.clone(),
+      pack_type: loc.manifest.pack_type.as_str().to_string(),
+      version: loc.manifest.version.clone(),
+      is_enabled: enabled_packs.contains(&loc.manifest.id),
+      cards_count,
+    }
+  }
+}
 
 #[derive(Template)]
 #[template(path = "settings.html")]
@@ -41,6 +85,8 @@ pub struct SettingsTemplate {
   pub lesson_audio: Vec<LessonAudio>,
   // Tier graduation status
   pub tier_graduation: Vec<TierGraduationStatus>,
+  // Content packs
+  pub card_packs: Vec<PackInfo>,
 }
 
 /// Error HTML for database unavailable
@@ -97,6 +143,18 @@ pub async fn settings_page(auth: AuthContext) -> Html<String> {
     })
     .collect();
 
+  // Discover content packs
+  let enabled_packs = content::list_enabled_packs(&conn);
+  let shared_packs_path = Path::new(paths::SHARED_PACKS_DIR);
+  let discovered = discover_packs(shared_packs_path, None, None);
+
+  // Filter to card packs only (baseline is handled separately)
+  let card_packs: Vec<PackInfo> = discovered
+    .iter()
+    .filter(|loc| loc.manifest.pack_type == PackType::Cards && loc.manifest.id != "baseline")
+    .map(|loc| PackInfo::from_location(loc, &enabled_packs))
+    .collect();
+
   let template = SettingsTemplate {
     is_admin: auth.is_admin,
     all_tiers_unlocked,
@@ -114,6 +172,7 @@ pub async fn settings_page(auth: AuthContext) -> Html<String> {
     lesson3_syllables: if has_l3 { count_syllables("lesson3") } else { 0 },
     lesson_audio,
     tier_graduation,
+    card_packs,
   };
   Html(template.render().unwrap_or_default())
 }
@@ -422,4 +481,116 @@ fn validate_imported_database(bytes: &[u8]) -> Result<(), String> {
 fn import_error_redirect(error: &str) -> Response {
   let encoded = urlencoding::encode(error);
   Redirect::to(&format!("/settings?import=error&message={}", encoded)).into_response()
+}
+
+// ==================== Pack Enable/Disable ====================
+
+use axum::extract::Path as AxumPath;
+
+/// Enable a card pack for the current user
+pub async fn enable_pack(
+  auth: AuthContext,
+  State(state): State<AppState>,
+  AxumPath(pack_id): AxumPath<String>,
+) -> Response {
+  #[cfg(feature = "profiling")]
+  crate::profile_log!(EventType::HandlerStart {
+    route: format!("/settings/pack/{}/enable", pack_id),
+    method: "POST".into(),
+    username: Some(auth.username.clone()),
+  });
+
+  // Find the pack
+  let shared_packs_path = Path::new(paths::SHARED_PACKS_DIR);
+  let discovered = discover_packs(shared_packs_path, None, None);
+
+  let pack_loc = match discovered.iter().find(|loc| loc.manifest.id == pack_id) {
+    Some(loc) => loc,
+    None => {
+      tracing::warn!("Pack not found: {}", pack_id);
+      return Redirect::to("/settings?pack=notfound").into_response();
+    }
+  };
+
+  // Only allow enabling card packs
+  if pack_loc.manifest.pack_type != PackType::Cards {
+    tracing::warn!("Cannot enable non-card pack: {}", pack_id);
+    return Redirect::to("/settings?pack=invalid").into_response();
+  }
+
+  let cards_config = match &pack_loc.manifest.cards {
+    Some(cfg) => cfg,
+    None => {
+      tracing::warn!("Card pack missing cards config: {}", pack_id);
+      return Redirect::to("/settings?pack=invalid").into_response();
+    }
+  };
+
+  // Get connections (auth_db is the shared app.db with card_definitions)
+  let user_conn = match auth.user_db.lock() {
+    Ok(conn) => conn,
+    Err(_) => return Redirect::to("/settings?pack=error").into_response(),
+  };
+
+  let app_conn = match state.auth_db.lock() {
+    Ok(conn) => conn,
+    Err(_) => return Redirect::to("/settings?pack=error").into_response(),
+  };
+
+  // Enable the pack
+  match content::enable_card_pack(
+    &app_conn,
+    &user_conn,
+    &pack_id,
+    &pack_loc.path,
+    &cards_config.file,
+  ) {
+    Ok(result) => {
+      tracing::info!(
+        "User {} enabled pack {}: {} cards inserted, {} skipped",
+        auth.username,
+        pack_id,
+        result.cards_inserted,
+        result.cards_skipped
+      );
+      Redirect::to(&format!("/settings?pack=enabled&id={}", pack_id)).into_response()
+    }
+    Err(e) => {
+      tracing::error!("Failed to enable pack {}: {}", pack_id, e);
+      Redirect::to("/settings?pack=error").into_response()
+    }
+  }
+}
+
+/// Disable a pack for the current user
+pub async fn disable_pack(
+  auth: AuthContext,
+  AxumPath(pack_id): AxumPath<String>,
+) -> Redirect {
+  #[cfg(feature = "profiling")]
+  crate::profile_log!(EventType::HandlerStart {
+    route: format!("/settings/pack/{}/disable", pack_id),
+    method: "POST".into(),
+    username: Some(auth.username.clone()),
+  });
+
+  let conn = match auth.user_db.lock() {
+    Ok(conn) => conn,
+    Err(_) => return Redirect::to("/settings?pack=error"),
+  };
+
+  match content::disable_pack(&conn, &pack_id) {
+    Ok(true) => {
+      tracing::info!("User {} disabled pack {}", auth.username, pack_id);
+      Redirect::to(&format!("/settings?pack=disabled&id={}", pack_id))
+    }
+    Ok(false) => {
+      tracing::warn!("Pack {} was not enabled for user {}", pack_id, auth.username);
+      Redirect::to("/settings")
+    }
+    Err(e) => {
+      tracing::error!("Failed to disable pack {}: {}", pack_id, e);
+      Redirect::to("/settings?pack=error")
+    }
+  }
 }

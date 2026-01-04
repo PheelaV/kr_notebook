@@ -136,6 +136,8 @@ async fn main() {
         )
         .route("/settings/export", get(handlers::export_data))
         .route("/settings/import", post(handlers::import_data))
+        .route("/settings/pack/{pack_id}/enable", post(handlers::enable_pack))
+        .route("/settings/pack/{pack_id}/disable", post(handlers::disable_pack))
         .route("/settings/cleanup-guests", post(handlers::cleanup_guests))
         .route(
             "/settings/delete-all-guests",

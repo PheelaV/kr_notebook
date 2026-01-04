@@ -288,6 +288,63 @@
   </div>
   {% endif %}
 
+  <!-- Content Packs Section -->
+  {% if !card_packs.is_empty() %}
+  <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6">
+    <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+      Content Packs
+    </h2>
+    <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">
+      Enable additional card packs to expand your learning content.
+    </p>
+
+    <div class="space-y-3">
+      {% for pack in card_packs %}
+      <div class="p-4 rounded-lg border {% if pack.is_enabled %}bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800{% else %}bg-gray-50 dark:bg-gray-700/50 border-gray-200 dark:border-gray-600{% endif %}">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <div>
+            <div class="flex items-center gap-2">
+              {% if pack.is_enabled %}
+              <iconify-icon icon="heroicons:check-circle" class="text-green-600 dark:text-green-400 flex-shrink-0" width="20" height="20"></iconify-icon>
+              {% else %}
+              <iconify-icon icon="heroicons:plus-circle" class="text-gray-400" width="20" height="20"></iconify-icon>
+              {% endif %}
+              <span class="font-medium text-gray-900 dark:text-white">{{ pack.name }}</span>
+              {% if let Some(version) = &pack.version %}
+              <span class="text-xs text-gray-400">v{{ version }}</span>
+              {% endif %}
+            </div>
+            {% if let Some(desc) = &pack.description %}
+            <p class="text-sm text-gray-500 dark:text-gray-400 mt-1 ml-7">{{ desc }}</p>
+            {% endif %}
+            {% if let Some(count) = pack.cards_count %}
+            <p class="text-xs text-gray-400 mt-1 ml-7">{{ count }} cards</p>
+            {% endif %}
+          </div>
+          <div class="flex gap-2 ml-7 sm:ml-0">
+            {% if pack.is_enabled %}
+            <form method="POST" action="/settings/pack/{{ pack.id }}/disable" class="inline">
+              <button type="button" onclick="if(confirm('Disable {{ pack.name }}? Your progress will be kept.')) this.form.submit();"
+                      class="px-3 py-1.5 text-sm bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-200 rounded hover:bg-gray-300 dark:hover:bg-gray-500">
+                Disable
+              </button>
+            </form>
+            {% else %}
+            <form method="POST" action="/settings/pack/{{ pack.id }}/enable" class="inline">
+              <button type="submit"
+                      class="px-3 py-1.5 text-sm bg-indigo-600 text-white rounded hover:bg-indigo-700">
+                Enable
+              </button>
+            </form>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
   <!-- External Content Section -->
   <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6">
     <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">
