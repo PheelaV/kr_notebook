@@ -34,12 +34,13 @@ data/scraped/**/*.mp3
 !data/scraped/**/manifest.json
 !data/reference/
 !data/reference/*
-# Content packs - allow baseline pack (shipped with app)
+# Content packs - allow baseline and htsk-scraper packs (shipped with app)
 !data/content/
 data/content/*
 !data/content/packs/
 data/content/packs/*
 !data/content/packs/baseline/
+!data/content/packs/htsk-scraper/
 
 # Local/personal directories
 MY_LOCAL*/

@@ -21,6 +21,7 @@
 pub mod audio;
 pub mod cards;
 pub mod discovery;
+pub mod generator;
 pub mod packs;
 
 pub use cards::{load_baseline_cards, load_cards_from_pack, CardDefinition};
