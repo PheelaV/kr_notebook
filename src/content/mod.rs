@@ -18,6 +18,7 @@
 //! 3. **Enable**: User enables pack, creating entries in `enabled_packs`
 //! 4. **Activation**: For card packs, cards are created on enable
 
+pub mod audio;
 pub mod cards;
 pub mod discovery;
 pub mod packs;
