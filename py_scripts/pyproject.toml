@@ -14,6 +14,7 @@ dependencies = [
     "pydub>=0.25.0",
     "pyrootutils>=1.0.4",
     "tomlkit>=0.13.3",
+    "argon2-cffi>=23.1.0",
 ]
 
 [project.scripts]
