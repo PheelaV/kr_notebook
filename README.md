@@ -159,13 +159,16 @@ cp config.toml.example config.toml
 
 ```
 data/
-├── app.db               # Shared auth database (users, sessions)
-└── users/
-    └── <username>/
-        └── learning.db  # Per-user learning database
+├── app.db                 # Shared database (users, sessions, card definitions)
+├── content/
+│   └── packs/             # Content pack definitions
+│       ├── baseline/      # Built-in Hangul characters
+│       └── htsk-scraper/  # HTSK audio generator pack
+└── users/<username>/
+    └── learning.db        # Per-user progress database
 ```
 
-Each user gets an isolated database with their own SRS state, progress, and settings.
+Each user gets an isolated database with their own SRS state, progress, and settings. Card definitions are shared in `app.db`, while user progress is stored per-user.
 
 ## Authentication
 
@@ -270,6 +273,24 @@ kr_notebook/
     │   └── learning.db     # User's learning database
     └── scraped/htsk/       # Scraped audio + manifests
 ```
+
+## Content Packs
+
+The app uses a modular content pack system to organize learning content:
+
+- **Baseline Pack**: Built-in Hangul characters (consonants, vowels, compound vowels). Always enabled, cannot be disabled.
+- **Card Packs**: Additional card sets that can be enabled/disabled per user.
+- **Audio Packs**: Pronunciation audio for characters and syllables.
+- **Generator Packs**: Scripts that create content (e.g., HTSK audio scraper).
+
+### Managing Packs
+
+View and manage content packs in **Settings → Content Packs**:
+- See all available packs with descriptions
+- Enable/disable packs (except baseline)
+- Enabled packs add their cards to your study queue
+
+Pack definitions are stored in `data/content/packs/` with a `pack.json` manifest describing the pack type, content, and metadata.
 
 ## Algorithms
 
