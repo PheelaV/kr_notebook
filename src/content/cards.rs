@@ -104,14 +104,18 @@ pub struct EnablePackResult {
 /// Enable a card pack for a user.
 ///
 /// This function:
-/// 1. Loads cards from the pack's cards.json
-/// 2. Inserts new card_definitions into app.db (skipping duplicates)
-/// 3. Records pack as enabled in user's learning.db
+/// 1. Registers the pack in content_packs table (required for FK constraint)
+/// 2. Loads cards from the pack's cards.json
+/// 3. Inserts new card_definitions into app.db (skipping duplicates)
+/// 4. Records pack as enabled in user's learning.db
 ///
 /// # Arguments
-/// * `app_conn` - Connection to app.db (for card_definitions)
+/// * `app_conn` - Connection to app.db (for card_definitions and content_packs)
 /// * `user_conn` - Connection to user's learning.db (for enabled_packs)
 /// * `pack_id` - The pack identifier
+/// * `pack_name` - Human-readable pack name
+/// * `pack_version` - Pack version string
+/// * `pack_description` - Optional pack description
 /// * `pack_dir` - Path to the pack directory
 /// * `cards_file` - Name of the cards JSON file (from pack manifest)
 ///
@@ -121,9 +125,24 @@ pub fn enable_card_pack(
     app_conn: &Connection,
     user_conn: &Connection,
     pack_id: &str,
+    pack_name: &str,
+    pack_version: &str,
+    pack_description: Option<&str>,
     pack_dir: &Path,
     cards_file: &str,
 ) -> Result<EnablePackResult, CardLoadError> {
+    // First, register the pack in content_packs (required for FK constraint)
+    let now = Utc::now().to_rfc3339();
+    let source_path = pack_dir.to_string_lossy();
+    app_conn
+        .execute(
+            r#"INSERT OR IGNORE INTO content_packs
+               (id, name, version, description, pack_type, scope, source_path, installed_at)
+               VALUES (?1, ?2, ?3, ?4, 'cards', 'shared', ?5, ?6)"#,
+            params![pack_id, pack_name, pack_version, pack_description, source_path, now],
+        )
+        .map_err(|e| CardLoadError::IoError("content_packs".to_string(), e.to_string()))?;
+
     // Load cards from pack
     let cards = load_cards_from_pack(pack_dir, cards_file)?;
 
@@ -151,6 +170,14 @@ pub fn enable_card_pack(
             .unwrap_or(false);
 
         if exists {
+            #[cfg(feature = "profiling")]
+            crate::profile_log!(crate::profiling::EventType::PackCardSkipped {
+                pack_id: pack_id.to_string(),
+                front: card.front.clone(),
+                main_answer: card.main_answer.clone(),
+                card_type: card.card_type.as_str().to_string(),
+                reason: "duplicate".to_string(),
+            });
             skipped += 1;
             continue;
         }
@@ -314,12 +341,22 @@ mod tests {
     fn create_test_db() -> (TempDir, Connection, Connection) {
         let temp = TempDir::new().unwrap();
 
-        // Create app.db with card_definitions table
+        // Create app.db with content_packs and card_definitions tables
         let app_db_path = temp.path().join("app.db");
         let app_conn = Connection::open(&app_db_path).unwrap();
         app_conn
             .execute_batch(
                 r#"
+                CREATE TABLE content_packs (
+                    id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    version TEXT NOT NULL,
+                    description TEXT,
+                    pack_type TEXT NOT NULL,
+                    scope TEXT NOT NULL,
+                    source_path TEXT NOT NULL,
+                    installed_at TEXT NOT NULL
+                );
                 CREATE TABLE card_definitions (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     front TEXT NOT NULL,
@@ -329,7 +366,8 @@ mod tests {
                     tier INTEGER NOT NULL,
                     audio_hint TEXT,
                     is_reverse INTEGER NOT NULL DEFAULT 0,
-                    pack_id TEXT
+                    pack_id TEXT,
+                    FOREIGN KEY (pack_id) REFERENCES content_packs(id)
                 );
             "#,
             )
@@ -372,7 +410,7 @@ mod tests {
         }"#;
         create_test_pack(&pack_dir, cards_json);
 
-        let result = enable_card_pack(&app_conn, &user_conn, "test-pack", &pack_dir, "cards.json").unwrap();
+        let result = enable_card_pack(&app_conn, &user_conn, "test-pack", "Test Pack", "1.0.0", None, &pack_dir, "cards.json").unwrap();
 
         assert_eq!(result.cards_inserted, 2);
         assert_eq!(result.cards_skipped, 0);
@@ -401,11 +439,11 @@ mod tests {
         create_test_pack(&pack_dir, cards_json);
 
         // First enable
-        let result1 = enable_card_pack(&app_conn, &user_conn, "test-pack", &pack_dir, "cards.json").unwrap();
+        let result1 = enable_card_pack(&app_conn, &user_conn, "test-pack", "Test Pack", "1.0.0", None, &pack_dir, "cards.json").unwrap();
         assert_eq!(result1.cards_inserted, 1);
 
         // Second enable should skip
-        let result2 = enable_card_pack(&app_conn, &user_conn, "test-pack", &pack_dir, "cards.json").unwrap();
+        let result2 = enable_card_pack(&app_conn, &user_conn, "test-pack", "Test Pack", "1.0.0", None, &pack_dir, "cards.json").unwrap();
         assert_eq!(result2.cards_inserted, 0);
         assert_eq!(result2.cards_skipped, 1);
 
@@ -426,7 +464,7 @@ mod tests {
         create_test_pack(&pack_dir, cards_json);
 
         // Enable then disable
-        enable_card_pack(&app_conn, &user_conn, "test-pack", &pack_dir, "cards.json").unwrap();
+        enable_card_pack(&app_conn, &user_conn, "test-pack", "Test Pack", "1.0.0", None, &pack_dir, "cards.json").unwrap();
         assert!(is_pack_enabled(&user_conn, "test-pack"));
 
         let deleted = disable_pack(&user_conn, "test-pack").unwrap();
@@ -453,7 +491,7 @@ mod tests {
                 i
             );
             create_test_pack(&pack_dir, &cards_json);
-            enable_card_pack(&app_conn, &user_conn, &format!("pack{}", i), &pack_dir, "cards.json").unwrap();
+            enable_card_pack(&app_conn, &user_conn, &format!("pack{}", i), &format!("Pack {}", i), "1.0.0", None, &pack_dir, "cards.json").unwrap();
         }
 
         let enabled = list_enabled_packs(&user_conn);
@@ -471,7 +509,7 @@ mod tests {
         let cards_json = r#"{"cards": [{"front": "A", "main_answer": "a", "card_type": "Vowel", "tier": 1, "is_reverse": false}]}"#;
         create_test_pack(&pack_dir, cards_json);
 
-        enable_card_pack(&app_conn, &user_conn, "test-pack", &pack_dir, "cards.json").unwrap();
+        enable_card_pack(&app_conn, &user_conn, "test-pack", "Test Pack", "1.0.0", None, &pack_dir, "cards.json").unwrap();
 
         let info = get_enabled_packs_info(&user_conn);
         assert_eq!(info.len(), 1);

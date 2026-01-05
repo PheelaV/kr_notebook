@@ -7,6 +7,7 @@ pub mod pronunciation;
 pub mod reference;
 pub mod settings;
 pub mod study;
+pub mod vocabulary;
 
 use askama::Template;
 use axum::response::Html;
@@ -118,7 +119,7 @@ pub async fn index(auth: AuthContext) -> Html<String> {
 
 pub use diagnostic::log_diagnostic;
 pub use guide::guide;
-pub use library::library;
+pub use library::{library_characters, library_index};
 pub use progress::{progress, unlock_tier};
 pub use reference::{
   reference_basics, reference_index, reference_tier1, reference_tier2, reference_tier3,
@@ -136,3 +137,4 @@ pub use study::{
   next_card_interactive, practice_next, practice_start, practice_validate, study_start,
   submit_review, study_start_interactive, submit_review_interactive, validate_answer_handler,
 };
+pub use vocabulary::vocabulary_library;

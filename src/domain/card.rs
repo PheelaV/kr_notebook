@@ -9,6 +9,7 @@ pub enum CardType {
   AspiratedConsonant,
   CompoundVowel,
   Syllable,
+  Vocabulary,
 }
 
 impl CardType {
@@ -20,6 +21,7 @@ impl CardType {
       "aspirated_consonant" => Some(Self::AspiratedConsonant),
       "compound_vowel" => Some(Self::CompoundVowel),
       "syllable" => Some(Self::Syllable),
+      "Vocabulary" | "vocabulary" => Some(Self::Vocabulary),
       _ => None,
     }
   }
@@ -32,6 +34,7 @@ impl CardType {
       Self::AspiratedConsonant => "aspirated_consonant",
       Self::CompoundVowel => "compound_vowel",
       Self::Syllable => "syllable",
+      Self::Vocabulary => "vocabulary",
     }
   }
 }

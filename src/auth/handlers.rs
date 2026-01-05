@@ -30,6 +30,7 @@ const SESSION_DURATION_HOURS: i64 = 24 * 7;
 #[template(path = "auth/login.html")]
 pub struct LoginTemplate {
     pub error: Option<String>,
+    pub version: &'static str,
 }
 
 #[derive(Template)]
@@ -67,7 +68,10 @@ pub struct GuestForm {
 
 /// GET /login - Show login page
 pub async fn login_page() -> Html<String> {
-    let template = LoginTemplate { error: None };
+    let template = LoginTemplate {
+        error: None,
+        version: env!("CARGO_PKG_VERSION"),
+    };
     Html(template.render().unwrap_or_default())
 }
 
@@ -81,6 +85,7 @@ pub async fn login_submit(
     if form.username.is_empty() || form.password_hash.is_empty() {
         let template = LoginTemplate {
             error: Some("Username and password are required".to_string()),
+            version: env!("CARGO_PKG_VERSION"),
         };
         return (jar, Html(template.render().unwrap_or_default())).into_response();
     }
@@ -90,6 +95,7 @@ pub async fn login_submit(
         Err(_) => {
             let template = LoginTemplate {
                 error: Some("Database error".to_string()),
+                version: env!("CARGO_PKG_VERSION"),
             };
             return (jar, Html(template.render().unwrap_or_default())).into_response();
         }
@@ -101,12 +107,14 @@ pub async fn login_submit(
         Ok(None) => {
             let template = LoginTemplate {
                 error: Some("Invalid username or password".to_string()),
+                version: env!("CARGO_PKG_VERSION"),
             };
             return (jar, Html(template.render().unwrap_or_default())).into_response();
         }
         Err(_) => {
             let template = LoginTemplate {
                 error: Some("Database error".to_string()),
+                version: env!("CARGO_PKG_VERSION"),
             };
             return (jar, Html(template.render().unwrap_or_default())).into_response();
         }
@@ -122,6 +130,7 @@ pub async fn login_submit(
 
         let template = LoginTemplate {
             error: Some("Invalid username or password".to_string()),
+            version: env!("CARGO_PKG_VERSION"),
         };
         return (jar, Html(template.render().unwrap_or_default())).into_response();
     }
@@ -134,6 +143,7 @@ pub async fn login_submit(
     if auth_db::create_session(&auth_db, user_id, &session_id, SESSION_DURATION_HOURS).is_err() {
         let template = LoginTemplate {
             error: Some("Failed to create session".to_string()),
+            version: env!("CARGO_PKG_VERSION"),
         };
         return (jar, Html(template.render().unwrap_or_default())).into_response();
     }

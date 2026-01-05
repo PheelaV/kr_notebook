@@ -76,9 +76,24 @@
             <a href="/listen" id="nav-listen" class="hidden text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 px-3 py-2 rounded-md text-sm font-medium">
               Listen
             </a>
-            <a href="/library" class="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 px-3 py-2 rounded-md text-sm font-medium">
-              Library
-            </a>
+            <!-- Library Dropdown -->
+            <div class="relative group">
+              <a href="/library" class="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 px-3 py-2 rounded-md text-sm font-medium inline-flex items-center gap-1">
+                Library
+                <iconify-icon icon="heroicons:chevron-down" width="14" height="14" class="transition-transform group-hover:rotate-180"></iconify-icon>
+              </a>
+              <!-- Dropdown menu -->
+              <div class="absolute left-0 top-full pt-1 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-150 z-50">
+                <div class="bg-white dark:bg-gray-800 shadow-lg rounded-lg border border-gray-200 dark:border-gray-700 py-1 min-w-[160px]">
+                  <a href="/library/characters" class="block px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700">
+                    Characters
+                  </a>
+                  <a href="/library/vocabulary" class="block px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700">
+                    Vocabulary
+                  </a>
+                </div>
+              </div>
+            </div>
             <a href="/guide" class="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 px-3 py-2 rounded-md text-sm font-medium">
               Guide
             </a>
@@ -130,9 +145,21 @@
           <a href="/listen" id="nav-listen-mobile" class="hidden block text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 px-3 py-2 rounded-md text-base font-medium">
             Listen
           </a>
-          <a href="/library" class="block text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 px-3 py-2 rounded-md text-base font-medium">
-            Library
-          </a>
+          <!-- Library expandable section (mobile) -->
+          <div class="library-mobile-section">
+            <button type="button" onclick="toggleLibrarySubmenu(event)" class="w-full flex items-center justify-between text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 px-3 py-2 rounded-md text-base font-medium">
+              <span>Library</span>
+              <iconify-icon id="library-chevron" icon="heroicons:chevron-down" width="16" height="16" class="transition-transform"></iconify-icon>
+            </button>
+            <div id="library-submenu" class="hidden pl-4 space-y-1">
+              <a href="/library/characters" class="block text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 px-3 py-2 rounded-md text-sm">
+                Characters
+              </a>
+              <a href="/library/vocabulary" class="block text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 px-3 py-2 rounded-md text-sm">
+                Vocabulary
+              </a>
+            </div>
+          </div>
           <a href="/guide" class="block text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 px-3 py-2 rounded-md text-base font-medium">
             Guide
           </a>
@@ -169,15 +196,30 @@
       iconOpen.classList.toggle('hidden');
     }
 
+    // Library submenu toggle (mobile)
+    function toggleLibrarySubmenu(event) {
+      event.stopPropagation();
+      const submenu = document.getElementById('library-submenu');
+      const chevron = document.getElementById('library-chevron');
+
+      submenu.classList.toggle('hidden');
+      chevron.style.transform = submenu.classList.contains('hidden') ? '' : 'rotate(180deg)';
+    }
+
     function closeMobileMenu() {
       const menu = document.getElementById('mobile-menu');
       const iconClosed = document.getElementById('menu-icon-closed');
       const iconOpen = document.getElementById('menu-icon-open');
+      const librarySubmenu = document.getElementById('library-submenu');
+      const libraryChevron = document.getElementById('library-chevron');
 
       if (!menu.classList.contains('hidden')) {
         menu.classList.add('hidden');
         iconClosed.classList.remove('hidden');
         iconOpen.classList.add('hidden');
+        // Reset library submenu state
+        if (librarySubmenu) librarySubmenu.classList.add('hidden');
+        if (libraryChevron) libraryChevron.style.transform = '';
       }
     }
 

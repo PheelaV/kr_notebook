@@ -3,6 +3,7 @@ use axum::response::Html;
 
 use crate::auth::AuthContext;
 use crate::config;
+use crate::content::is_pack_enabled;
 use crate::db::{self, LogOnError};
 use crate::filters;
 #[cfg(feature = "profiling")]
@@ -22,17 +23,71 @@ pub struct TierGroup {
   pub entries: Vec<LibraryEntry>,
 }
 
+/// Library section for the index page
+pub struct LibrarySection {
+  pub id: String,
+  pub name: String,
+  pub description: String,
+  pub href: String,
+  pub count: Option<usize>,
+  pub enabled: bool,
+}
+
 #[derive(Template)]
-#[template(path = "library.html")]
-pub struct LibraryTemplate {
+#[template(path = "library/index.html")]
+pub struct LibraryIndexTemplate {
+  pub sections: Vec<LibrarySection>,
+}
+
+#[derive(Template)]
+#[template(path = "library/characters.html")]
+pub struct LibraryCharactersTemplate {
   pub tiers: Vec<TierGroup>,
   pub max_unlocked_tier: u8,
 }
 
-pub async fn library(auth: AuthContext) -> Html<String> {
+/// Library index/landing page
+pub async fn library_index(auth: AuthContext) -> Html<String> {
+  let conn = match auth.user_db.lock() {
+    Ok(conn) => conn,
+    Err(_) => return Html("<h1>Database Error</h1><p>Please refresh the page.</p>".to_string()),
+  };
+
+  // Get character count
+  let cards = db::get_all_unlocked_cards(&conn).log_warn_default("Failed to get unlocked cards");
+  let char_count = cards.iter().filter(|c| !c.is_reverse).count();
+
+  // Check if vocabulary pack is enabled
+  let vocab_enabled = is_pack_enabled(&conn, "htsk-vocabulary");
+
+  let sections = vec![
+    LibrarySection {
+      id: "characters".to_string(),
+      name: "Characters".to_string(),
+      description: "Hangul consonants, vowels, and compound characters organized by tier".to_string(),
+      href: "/library/characters".to_string(),
+      count: Some(char_count),
+      enabled: true,
+    },
+    LibrarySection {
+      id: "vocabulary".to_string(),
+      name: "Vocabulary".to_string(),
+      description: "HTSK vocabulary words with examples and usage notes".to_string(),
+      href: "/library/vocabulary".to_string(),
+      count: if vocab_enabled { Some(333) } else { None },
+      enabled: vocab_enabled,
+    },
+  ];
+
+  let template = LibraryIndexTemplate { sections };
+  Html(template.render().unwrap_or_default())
+}
+
+/// Character library page (formerly /library)
+pub async fn library_characters(auth: AuthContext) -> Html<String> {
   #[cfg(feature = "profiling")]
   crate::profile_log!(EventType::HandlerStart {
-    route: "/library".into(),
+    route: "/library/characters".into(),
     method: "GET".into(),
     username: Some(auth.username.clone()),
   });
@@ -72,7 +127,7 @@ pub async fn library(auth: AuthContext) -> Html<String> {
     })
     .collect();
 
-  let template = LibraryTemplate {
+  let template = LibraryCharactersTemplate {
     tiers,
     max_unlocked_tier,
   };

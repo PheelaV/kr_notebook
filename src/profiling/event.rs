@@ -265,6 +265,21 @@ pub enum EventType {
         username: String,
     },
 
+    // === Content pack operations ===
+    /// Card skipped during pack enable (duplicate detected)
+    PackCardSkipped {
+        /// Pack being enabled
+        pack_id: String,
+        /// Card front text
+        front: String,
+        /// Card answer
+        main_answer: String,
+        /// Card type
+        card_type: String,
+        /// Reason for skip
+        reason: String,
+    },
+
     // === Errors ===
     /// Error occurred
     Error {

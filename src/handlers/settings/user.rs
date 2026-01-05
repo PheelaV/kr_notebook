@@ -90,6 +90,8 @@ pub struct SettingsTemplate {
   pub tier_graduation: Vec<TierGraduationStatus>,
   // Content packs
   pub card_packs: Vec<PackInfo>,
+  // App version
+  pub version: &'static str,
 }
 
 /// Error HTML for database unavailable
@@ -176,6 +178,7 @@ pub async fn settings_page(auth: AuthContext) -> Html<String> {
     lesson_audio,
     tier_graduation,
     card_packs,
+    version: env!("CARGO_PKG_VERSION"),
   };
   Html(template.render().unwrap_or_default())
 }
@@ -545,6 +548,9 @@ pub async fn enable_pack(
     &app_conn,
     &user_conn,
     &pack_id,
+    &pack_loc.manifest.name,
+    pack_loc.manifest.version.as_deref().unwrap_or("1.0.0"),
+    pack_loc.manifest.description.as_deref(),
     &pack_loc.path,
     &cards_config.file,
   ) {
