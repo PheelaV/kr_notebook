@@ -92,11 +92,13 @@ impl FromRequestParts<AppState> for AuthContext {
                 .into_response()
         })?;
 
-        // Admin check: Currently based on username matching "admin" (case-insensitive).
-        // This is intentional for this single-admin learning app where the first user
-        // is always "admin" (created during migration). For multi-admin scenarios,
-        // consider adding an is_admin or role column to the users table.
-        let is_admin = username.eq_ignore_ascii_case("admin");
+        // Check admin status (by role or legacy username='admin')
+        // Uses proper error handling instead of .unwrap() to avoid panics
+        let is_admin = match state.auth_db.lock() {
+            Ok(db) => auth_db::is_user_admin(&db, user_id)
+                .unwrap_or_else(|_| username.eq_ignore_ascii_case("admin")),
+            Err(_) => username.eq_ignore_ascii_case("admin"),
+        };
 
         Ok(AuthContext {
             user_id,

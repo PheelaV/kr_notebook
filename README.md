@@ -183,27 +183,16 @@ All routes except `/login` and `/register` require authentication.
 
 ## Usage
 
+Start at the home page (`/`) to see due cards and begin studying. Key pages:
+
 | Route | Description |
 |-------|-------------|
-| `/` | Home - cards due, stats, countdown |
-| `/study` | Interactive study (type/select) |
-| `/study-classic` | Classic reveal-and-rate mode |
-| `/practice` | Untracked practice |
-| `/listen` | Listening practice (audio) |
-| `/progress` | Progress by tier, problem areas |
-| `/settings` | Algorithm, tiers, audio config |
-| `/library` | Browse unlocked characters |
-| `/reference` | Hangul reference charts |
-| `/pronunciation` | Syllable audio matrix |
-| `/guide` | How to use the app |
+| `/study` | Interactive study with typed/selected answers |
+| `/practice` | Untracked practice mode |
+| `/progress` | View learning progress and statistics |
+| `/settings` | Configure tiers, algorithm, and preferences |
 
-### Study Flow
-
-1. See a Korean character (e.g., ㄱ)
-2. Type the romanization (e.g., "g" or "k") or select from choices
-3. Use hints if stuck (counts as "Hard")
-4. System auto-rates based on correctness
-5. FSRS schedules next review optimally
+See [`doc/07_endpoints.md`](doc/07_endpoints.md) for complete API documentation (67 endpoints).
 
 ## Project Structure
 
@@ -395,6 +384,8 @@ Outputs:
 
 - [`doc/01_learning_fsa.md`](doc/01_learning_fsa.md) - Learning mode state machine (normal vs accelerated)
 - [`doc/02_responsiveness_guidance.md`](doc/02_responsiveness_guidance.md) - Mobile responsiveness patterns
+- [`doc/04_database.md`](doc/04_database.md) - Database schema (app.db + learning.db)
+- [`doc/07_endpoints.md`](doc/07_endpoints.md) - Complete API endpoint reference
 
 ## Attribution
 
