@@ -38,20 +38,40 @@ pub async fn trigger_scrape(auth: AuthContext) -> Redirect {
     username: Some(auth.username.clone()),
   });
 
-  // Run the scraper commands for all lessons
-  let cmd = format!(
-    "cd {} && uv run kr-scraper lesson1 && uv run kr-scraper lesson2 && uv run kr-scraper lesson3 && uv run kr-scraper segment --padding 75",
-    paths::PY_SCRIPTS_DIR
-  );
-  match Command::new("sh").args(["-c", &cmd]).output() {
+  // Run the scraper commands for all lessons using argument arrays (no shell injection risk)
+  for lesson in ["lesson1", "lesson2", "lesson3"] {
+    match Command::new("uv")
+      .current_dir(paths::PY_SCRIPTS_DIR)
+      .args(["run", "kr-scraper", lesson])
+      .output()
+    {
+      Ok(output) if !output.status.success() => {
+        tracing::warn!(
+          "Scrape {} failed with status {}: {}",
+          lesson,
+          output.status,
+          String::from_utf8_lossy(&output.stderr)
+        );
+      }
+      Err(e) => tracing::warn!("Failed to run scrape command for {}: {}", lesson, e),
+      _ => {}
+    }
+  }
+
+  // Run segment with padding
+  match Command::new("uv")
+    .current_dir(paths::PY_SCRIPTS_DIR)
+    .args(["run", "kr-scraper", "segment", "--padding", "75"])
+    .output()
+  {
     Ok(output) if !output.status.success() => {
       tracing::warn!(
-        "Scrape command failed with status {}: {}",
+        "Segment command failed with status {}: {}",
         output.status,
         String::from_utf8_lossy(&output.stderr)
       );
     }
-    Err(e) => tracing::warn!("Failed to run scrape command: {}", e),
+    Err(e) => tracing::warn!("Failed to run segment command: {}", e),
     _ => {}
   }
 
@@ -71,23 +91,20 @@ pub async fn trigger_scrape_lesson(auth: AuthContext, Path(lesson): Path<String>
     username: Some(auth.username.clone()),
   });
 
-  let cmd = match lesson.as_str() {
-    "1" => format!(
-      "cd {} && uv run kr-scraper lesson1 && uv run kr-scraper segment -l 1 --padding 75",
-      paths::PY_SCRIPTS_DIR
-    ),
-    "2" => format!(
-      "cd {} && uv run kr-scraper lesson2 && uv run kr-scraper segment -l 2 --padding 75",
-      paths::PY_SCRIPTS_DIR
-    ),
-    "3" => format!(
-      "cd {} && uv run kr-scraper lesson3 && uv run kr-scraper segment -l 3 --padding 75",
-      paths::PY_SCRIPTS_DIR
-    ),
+  // Validate lesson input and map to scraper args (no shell injection risk)
+  let (lesson_cmd, lesson_num) = match lesson.as_str() {
+    "1" => ("lesson1", "1"),
+    "2" => ("lesson2", "2"),
+    "3" => ("lesson3", "3"),
     _ => return Redirect::to("/settings"),
   };
 
-  match Command::new("sh").args(["-c", &cmd]).output() {
+  // Run scraper for this lesson
+  match Command::new("uv")
+    .current_dir(paths::PY_SCRIPTS_DIR)
+    .args(["run", "kr-scraper", lesson_cmd])
+    .output()
+  {
     Ok(output) if !output.status.success() => {
       tracing::warn!(
         "Scrape lesson {} failed with status {}: {}",
@@ -97,6 +114,24 @@ pub async fn trigger_scrape_lesson(auth: AuthContext, Path(lesson): Path<String>
       );
     }
     Err(e) => tracing::warn!("Failed to run scrape command for lesson {}: {}", lesson, e),
+    _ => {}
+  }
+
+  // Run segment for this lesson
+  match Command::new("uv")
+    .current_dir(paths::PY_SCRIPTS_DIR)
+    .args(["run", "kr-scraper", "segment", "-l", lesson_num, "--padding", "75"])
+    .output()
+  {
+    Ok(output) if !output.status.success() => {
+      tracing::warn!(
+        "Segment lesson {} failed with status {}: {}",
+        lesson,
+        output.status,
+        String::from_utf8_lossy(&output.stderr)
+      );
+    }
+    Err(e) => tracing::warn!("Failed to run segment command for lesson {}: {}", lesson, e),
     _ => {}
   }
 
@@ -116,9 +151,12 @@ pub async fn delete_scraped(auth: AuthContext) -> Redirect {
     username: Some(auth.username.clone()),
   });
 
-  // Run the clean command
-  let cmd = format!("cd {} && uv run kr-scraper clean --yes", paths::PY_SCRIPTS_DIR);
-  match Command::new("sh").args(["-c", &cmd]).output() {
+  // Run the clean command using argument array (no shell injection risk)
+  match Command::new("uv")
+    .current_dir(paths::PY_SCRIPTS_DIR)
+    .args(["run", "kr-scraper", "clean", "--yes"])
+    .output()
+  {
     Ok(output) if !output.status.success() => {
       tracing::warn!(
         "Clean command failed with status {}: {}",
