@@ -73,7 +73,22 @@ Every pack requires a `pack.json` manifest in its root directory.
 |-------|------|-------------|
 | `version` | string | Semver version (e.g., `1.0.0`) |
 | `description` | string | Brief description |
+| `provides` | string[] | Content types this pack provides (e.g., `["vocabulary"]`) |
 | `source` | object | Attribution and source info |
+
+### The `provides` Field
+
+The `provides` field declares what content types a pack offers. This enables dynamic UI features based on available content rather than hardcoded pack IDs.
+
+**Current content types:**
+- `vocabulary` - Enables the vocabulary library page (`/library/vocabulary`)
+
+**How it works:**
+1. Pack discovery scans for packs with matching `provides` values
+2. UI features are shown/hidden based on available content types
+3. Users only see features for content they can actually access
+
+**Example:** A vocabulary pack declares `"provides": ["vocabulary"]`. The vocabulary library link only appears if at least one installed pack provides vocabulary content.
 
 ### Type-Specific Configuration
 
@@ -86,6 +101,7 @@ Every pack requires a `pack.json` manifest in its root directory.
   "version": "1.0.0",
   "type": "cards",
   "description": "Custom vocabulary flashcards",
+  "provides": ["vocabulary"],
   "cards": {
     "file": "cards.json",
     "tier": 5,
@@ -362,6 +378,7 @@ mkdir -p data/content/packs/my-pack
   "version": "1.0.0",
   "type": "cards",
   "description": "Custom flashcards",
+  "provides": [],
   "cards": {
     "file": "cards.json",
     "tier": 3,
@@ -370,6 +387,8 @@ mkdir -p data/content/packs/my-pack
   }
 }
 ```
+
+Note: Add `"provides": ["vocabulary"]` if your pack includes a `vocabulary.json` file for the vocabulary library.
 
 ### 3. Create cards.json
 
@@ -490,7 +509,7 @@ User role for admin determination.
 
 | File | Purpose |
 |------|---------|
-| `src/content/discovery.rs` | Pack scanning and discovery |
+| `src/content/discovery.rs` | Pack scanning, discovery, and content type queries (`any_pack_provides`, `find_packs_providing`) |
 | `src/content/packs.rs` | PackManifest structures and parsing |
 | `src/content/cards.rs` | Card pack enable/disable logic |
 | `src/content/audio.rs` | Audio pack resolution |
