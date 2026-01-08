@@ -130,6 +130,28 @@ pub fn pack_exists(pack_dir: &Path) -> bool {
     pack_dir.join("pack.json").exists()
 }
 
+/// Check if any available pack provides a specific content type.
+///
+/// Scans shared packs directory for packs with matching `provides` field.
+pub fn any_pack_provides(shared_packs_dir: &Path, content_type: &str) -> bool {
+    let packs = scan_pack_directory(shared_packs_dir, PackScope::Shared, None);
+    packs
+        .iter()
+        .any(|p| p.manifest.provides.iter().any(|t| t == content_type))
+}
+
+/// Find all packs that provide a specific content type.
+///
+/// Returns pack IDs of packs with matching `provides` field.
+pub fn find_packs_providing(shared_packs_dir: &Path, content_type: &str) -> Vec<String> {
+    let packs = scan_pack_directory(shared_packs_dir, PackScope::Shared, None);
+    packs
+        .into_iter()
+        .filter(|p| p.manifest.provides.iter().any(|t| t == content_type))
+        .map(|p| p.manifest.id)
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

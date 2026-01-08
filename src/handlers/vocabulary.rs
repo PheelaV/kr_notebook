@@ -1,17 +1,17 @@
 //! Vocabulary library handler for passive vocabulary browsing.
 //!
-//! Displays the HTSK vocabulary organized by lesson with collapsible entries
+//! Displays vocabulary content organized by lesson with collapsible entries
 //! showing rich metadata (common usages, notes, examples).
 
 use askama::Template;
-use axum::response::Html;
+use axum::response::{Html, IntoResponse, Redirect, Response};
 use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
 
 use crate::auth::AuthContext;
-use crate::content::is_pack_enabled;
+use crate::content::{any_pack_provides, find_packs_providing, is_pack_enabled};
 use crate::filters;
 use crate::paths;
 
@@ -69,10 +69,20 @@ pub struct VocabularyTemplate {
     pub total_count: usize,
 }
 
-/// Load vocabulary from pack directory
-fn load_vocabulary() -> Option<Vec<VocabularyEntry>> {
+/// Check if any vocabulary pack is available on disk
+fn is_vocabulary_available() -> bool {
+    any_pack_provides(Path::new(paths::SHARED_PACKS_DIR), "vocabulary")
+}
+
+/// Get pack IDs that provide vocabulary content
+fn get_vocabulary_pack_ids() -> Vec<String> {
+    find_packs_providing(Path::new(paths::SHARED_PACKS_DIR), "vocabulary")
+}
+
+/// Load vocabulary from an enabled pack's vocabulary.json
+fn load_vocabulary(pack_id: &str) -> Option<Vec<VocabularyEntry>> {
     let vocab_path = Path::new(paths::SHARED_PACKS_DIR)
-        .join("htsk-vocabulary")
+        .join(pack_id)
         .join("vocabulary.json");
 
     let content = fs::read_to_string(&vocab_path).ok()?;
@@ -80,29 +90,40 @@ fn load_vocabulary() -> Option<Vec<VocabularyEntry>> {
 }
 
 /// Vocabulary library page handler
-pub async fn vocabulary_library(auth: AuthContext) -> Html<String> {
+pub async fn vocabulary_library(auth: AuthContext) -> Response {
+    // First check if any vocabulary pack is available
+    if !is_vocabulary_available() {
+        // No vocabulary packs installed - redirect to library
+        return Redirect::to("/library").into_response();
+    }
+
     let conn = match auth.user_db.lock() {
         Ok(conn) => conn,
         Err(_) => {
             return Html("<h1>Database Error</h1><p>Please refresh the page.</p>".to_string())
+                .into_response()
         }
     };
 
-    // Check if pack is enabled
-    let pack_enabled = is_pack_enabled(&conn, "htsk-vocabulary");
+    // Find vocabulary packs and check if any are enabled
+    let vocab_pack_ids = get_vocabulary_pack_ids();
+    let enabled_pack = vocab_pack_ids
+        .iter()
+        .find(|id| is_pack_enabled(&conn, id));
 
-    if !pack_enabled {
+    let Some(pack_id) = enabled_pack else {
+        // Packs available but none enabled
         let template = VocabularyTemplate {
             pack_enabled: false,
             lessons: vec![],
             toc_items: vec![],
             total_count: 0,
         };
-        return Html(template.render().unwrap_or_default());
-    }
+        return Html(template.render().unwrap_or_default()).into_response();
+    };
 
     // Load and group vocabulary
-    let vocabulary = load_vocabulary().unwrap_or_default();
+    let vocabulary = load_vocabulary(pack_id).unwrap_or_default();
     let total_count = vocabulary.len();
 
     // Group by lesson number
@@ -135,5 +156,5 @@ pub async fn vocabulary_library(auth: AuthContext) -> Html<String> {
         total_count,
     };
 
-    Html(template.render().unwrap_or_default())
+    Html(template.render().unwrap_or_default()).into_response()
 }

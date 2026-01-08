@@ -1,11 +1,13 @@
 use askama::Template;
 use axum::response::Html;
+use std::path::Path;
 
 use crate::auth::AuthContext;
 use crate::config;
-use crate::content::is_pack_enabled;
+use crate::content::{any_pack_provides, find_packs_providing, is_pack_enabled};
 use crate::db::{self, LogOnError};
 use crate::filters;
+use crate::paths;
 #[cfg(feature = "profiling")]
 use crate::profiling::EventType;
 
@@ -57,10 +59,8 @@ pub async fn library_index(auth: AuthContext) -> Html<String> {
   let cards = db::get_all_unlocked_cards(&conn).log_warn_default("Failed to get unlocked cards");
   let char_count = cards.iter().filter(|c| !c.is_reverse).count();
 
-  // Check if vocabulary pack is enabled
-  let vocab_enabled = is_pack_enabled(&conn, "htsk-vocabulary");
-
-  let sections = vec![
+  // Start with characters section (always available)
+  let mut sections = vec![
     LibrarySection {
       id: "characters".to_string(),
       name: "Characters".to_string(),
@@ -69,15 +69,22 @@ pub async fn library_index(auth: AuthContext) -> Html<String> {
       count: Some(char_count),
       enabled: true,
     },
-    LibrarySection {
+  ];
+
+  // Only show vocabulary section if any pack provides "vocabulary"
+  let packs_dir = Path::new(paths::SHARED_PACKS_DIR);
+  if any_pack_provides(packs_dir, "vocabulary") {
+    let vocab_pack_ids = find_packs_providing(packs_dir, "vocabulary");
+    let vocab_enabled = vocab_pack_ids.iter().any(|id| is_pack_enabled(&conn, id));
+    sections.push(LibrarySection {
       id: "vocabulary".to_string(),
       name: "Vocabulary".to_string(),
-      description: "HTSK vocabulary words with examples and usage notes".to_string(),
+      description: "Vocabulary words with examples and usage notes".to_string(),
       href: "/library/vocabulary".to_string(),
-      count: if vocab_enabled { Some(333) } else { None },
+      count: None,
       enabled: vocab_enabled,
-    },
-  ];
+    });
+  }
 
   let template = LibraryIndexTemplate { sections };
   Html(template.render().unwrap_or_default())

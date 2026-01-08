@@ -157,6 +157,11 @@ pub struct PackManifest {
     #[serde(default)]
     pub description: Option<String>,
 
+    /// Content types this pack provides (e.g., ["vocabulary"])
+    /// Used to determine which UI features/pages to show
+    #[serde(default)]
+    pub provides: Vec<String>,
+
     /// Audio pack configuration (if type == audio)
     #[serde(default)]
     pub audio: Option<AudioConfig>,

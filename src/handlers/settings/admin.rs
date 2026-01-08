@@ -917,19 +917,6 @@ fn error_notification(message: &str) -> String {
   )
 }
 
-/// Helper to create a success notification HTML
-fn success_notification(message: &str) -> String {
-  format!(
-    r#"<div id="notifications" hx-swap-oob="innerHTML:#notifications">
-      <div class="p-4 mb-4 text-sm text-green-700 bg-green-100 dark:bg-green-900/30 dark:text-green-300 rounded-lg flex items-center justify-between" role="alert">
-        <span>{}</span>
-        <button type="button" onclick="this.parentElement.remove()" class="ml-4 text-green-700 dark:text-green-300 hover:text-green-900 dark:hover:text-green-100">&times;</button>
-      </div>
-    </div>"#,
-    message
-  )
-}
-
 /// Create a new user group (admin only)
 pub async fn create_group(
   auth: AuthContext,

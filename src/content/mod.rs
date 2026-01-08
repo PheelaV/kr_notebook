@@ -28,7 +28,10 @@ pub use cards::{
     disable_pack, enable_card_pack, get_enabled_packs_info, is_pack_enabled, list_enabled_packs,
     load_baseline_cards, load_cards_from_pack, CardDefinition, EnablePackResult, EnabledPackInfo,
 };
-pub use discovery::{count_packs_in_directory, discover_packs, discover_packs_with_external, PackLocation};
+pub use discovery::{
+    any_pack_provides, count_packs_in_directory, discover_packs, discover_packs_with_external,
+    find_packs_providing, PackLocation,
+};
 pub use packs::{AudioConfig, CardConfig, GeneratorConfig, PackManifest, PackType};
 
 use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ToSql, ToSqlOutput, ValueRef};
