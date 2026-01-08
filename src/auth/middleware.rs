@@ -92,6 +92,10 @@ impl FromRequestParts<AppState> for AuthContext {
                 .into_response()
         })?;
 
+        // Admin check: Currently based on username matching "admin" (case-insensitive).
+        // This is intentional for this single-admin learning app where the first user
+        // is always "admin" (created during migration). For multi-admin scenarios,
+        // consider adding an is_admin or role column to the users table.
         let is_admin = username.eq_ignore_ascii_case("admin");
 
         Ok(AuthContext {

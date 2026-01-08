@@ -97,8 +97,8 @@
       </div>
 
       <script>
-        // Initialize hints for this card
-        CardInteractions.initHints("{{ hint_1|escape }}", "{{ hint_2|escape }}", "{{ hint_final|escape }}", {{ hints_used }});
+        // Initialize hints for this card (js_escape for proper JavaScript string escaping)
+        CardInteractions.initHints("{{ hint_1|js_escape }}", "{{ hint_2|js_escape }}", "{{ hint_final|js_escape }}", {{ hints_used }});
       </script>
       {% endif %}
       {% endif %}

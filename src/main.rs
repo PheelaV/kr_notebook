@@ -53,7 +53,13 @@ async fn main() {
     // Check for migration: old single-user database exists, no users yet
     if Path::new(OLD_DB_PATH).exists() {
         let should_migrate = {
-            let conn = auth_db.lock().expect("Auth DB lock failed");
+            let conn = match auth_db.lock() {
+                Ok(conn) => conn,
+                Err(_) => {
+                    tracing::error!("Auth DB lock poisoned during migration check");
+                    panic!("Fatal: Auth database lock poisoned at startup");
+                }
+            };
             auth::db::get_user_count(&conn).unwrap_or(0) == 0
         };
 
@@ -215,7 +221,13 @@ fn migrate_existing_database(auth_db: &Arc<Mutex<Connection>>) {
 
     // Create admin user
     {
-        let conn = auth_db.lock().expect("Auth DB lock failed");
+        let conn = match auth_db.lock() {
+            Ok(conn) => conn,
+            Err(_) => {
+                tracing::error!("Auth DB lock poisoned during admin creation");
+                panic!("Fatal: Auth database lock poisoned during migration");
+            }
+        };
         auth::db::create_user(&conn, "admin", &password_hash).expect("Failed to create admin user");
     }
 
