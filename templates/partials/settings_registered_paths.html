@@ -1,0 +1,48 @@
+<div id="registered-paths-list" class="space-y-2">
+  {% if paths.is_empty() %}
+    <p id="no-paths-msg" class="text-gray-500 dark:text-gray-400 text-sm">No external pack paths registered.</p>
+  {% else %}
+    {% for path in paths %}
+      <div class="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-2">
+            {% if let Some(name) = path.name %}
+              <span class="font-medium text-gray-900 dark:text-gray-100">{{ name }}</span>
+            {% endif %}
+            {% if path.is_active %}
+              <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300">
+                Active
+              </span>
+            {% else %}
+              <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600 dark:bg-gray-600 dark:text-gray-300">
+                Inactive
+              </span>
+            {% endif %}
+            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300">
+              {{ path.pack_count }} pack{% if path.pack_count != 1 %}s{% endif %}
+            </span>
+          </div>
+          <p class="text-sm text-gray-600 dark:text-gray-400 truncate mt-1" title="{{ path.path }}">{{ path.path }}</p>
+          <p class="text-xs text-gray-400 dark:text-gray-500">Registered by {{ path.registered_by }}</p>
+        </div>
+        <div class="flex items-center gap-2 ml-4">
+          <button type="button"
+                  hx-post="/settings/pack-paths/{{ path.id }}/toggle"
+                  hx-target="#registered-paths-list"
+                  hx-swap="outerHTML"
+                  class="text-sm px-3 py-1 rounded {% if path.is_active %}bg-yellow-100 text-yellow-700 hover:bg-yellow-200 dark:bg-yellow-900/30 dark:text-yellow-300 dark:hover:bg-yellow-900/50{% else %}bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-300 dark:hover:bg-green-900/50{% endif %}">
+            {% if path.is_active %}Disable{% else %}Enable{% endif %}
+          </button>
+          <button type="button"
+                  hx-delete="/settings/pack-paths/{{ path.id }}"
+                  hx-target="#registered-paths-list"
+                  hx-swap="outerHTML"
+                  hx-confirm="Remove this pack path?"
+                  class="text-sm px-3 py-1 rounded bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-300 dark:hover:bg-red-900/50">
+            Remove
+          </button>
+        </div>
+      </div>
+    {% endfor %}
+  {% endif %}
+</div>

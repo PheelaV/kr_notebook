@@ -3,13 +3,21 @@
 {% block title %}Settings - Hangul Learn{% endblock %}
 
 {% block content %}
-<div class="max-w-2xl mx-auto">
+<div class="lg:flex lg:gap-8">
+  <!-- TOC Component -->
+  {% include "partials/toc.html" %}
+
+  <!-- Main Content -->
+  <div class="flex-1 max-w-2xl">
   <h1 class="text-2xl font-bold text-gray-900 dark:text-white mb-6">
     Settings
   </h1>
 
+  <!-- Notification Area -->
+  <div id="notifications" class="mb-4"></div>
+
   <!-- Dark Mode - uses localStorage (client-side) -->
-  <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6">
+  <section id="appearance" class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6 scroll-mt-16">
     <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">
       Appearance
     </h2>
@@ -23,10 +31,10 @@
     <p class="text-sm text-gray-500 dark:text-gray-400 mt-1 ml-8">
       Use dark theme for the interface (saved in browser)
     </p>
-  </div>
+  </section>
 
   <!-- Learning Settings -->
-  <form method="POST" action="/settings" class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6">
+  <form id="learning" method="POST" action="/settings" class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6 scroll-mt-16">
     <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">
       Learning
     </h2>
@@ -159,8 +167,8 @@
     </button>
   </form>
 
-  <!-- Developer Tools -->
-  <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6">
+  <!-- Study Tools -->
+  <section id="study-tools" class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6 scroll-mt-16">
     <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">
       Study Tools
     </h2>
@@ -215,10 +223,10 @@
         </div>
       </div>
     </details>
-  </div>
+  </section>
 
   <!-- Data Management -->
-  <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6">
+  <section id="data" class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6 scroll-mt-16">
     <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">
       Data Management
     </h2>
@@ -257,11 +265,75 @@
         </p>
       </div>
     </div>
-  </div>
+  </section>
 
   {% if is_admin %}
+  <!-- User Management (Admin Only) -->
+  <section id="users" class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6 scroll-mt-16">
+    <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+      User Management
+      <span class="ml-2 text-xs font-normal text-gray-500 dark:text-gray-400">(admin only)</span>
+    </h2>
+
+    <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">
+      {{ users.len() }} registered users. Promote users to admin or manage their roles.
+    </p>
+
+    <!-- User Search -->
+    <div class="mb-4">
+      <input type="text" id="userSearchInput" placeholder="Search users..."
+             oninput="filterUsers(this.value)"
+             class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-600">
+    </div>
+
+    <div id="userList" class="space-y-2 max-h-64 overflow-y-auto">
+      {% for user in users %}
+      {% include "partials/settings_user_row.html" %}
+      {% endfor %}
+    </div>
+  </section>
+
+  <!-- User Groups (Admin Only) -->
+  <section id="groups" class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6 scroll-mt-16">
+    <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+      User Groups
+      <span class="ml-2 text-xs font-normal text-gray-500 dark:text-gray-400">(admin only)</span>
+    </h2>
+
+    <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">
+      Create groups to manage pack access. Groups can be used to restrict which users can enable specific packs.
+    </p>
+
+    <!-- Create Group Form -->
+    <form hx-post="/settings/group/create"
+          hx-target="#groups-list"
+          hx-swap="beforeend"
+          hx-on::after-request="if(event.detail.successful) this.reset()"
+          class="mb-4 p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+      <div class="flex flex-col sm:flex-row gap-3">
+        <input type="text" name="id" placeholder="Group ID (e.g., beta-testers)" required
+               class="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white flex-1">
+        <input type="text" name="name" placeholder="Display Name" required
+               class="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white flex-1">
+        <button type="submit" class="px-4 py-2 text-sm bg-green-600 text-white rounded hover:bg-green-700">
+          Create Group
+        </button>
+      </div>
+    </form>
+
+    <!-- Existing Groups -->
+    <div id="groups-list" class="space-y-3">
+      {% for group in groups %}
+      {% include "partials/settings_group_card.html" %}
+      {% endfor %}
+    </div>
+    {% if groups.is_empty() %}
+    <p id="no-groups-msg" class="text-sm text-gray-400 dark:text-gray-500 italic">No groups created yet.</p>
+    {% endif %}
+  </section>
+
   <!-- Guest Management (Admin Only) -->
-  <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6">
+  <section id="guests" class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6 scroll-mt-16">
     <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">
       Guest Management
       <span class="ml-2 text-xs font-normal text-gray-500 dark:text-gray-400">(admin only)</span>
@@ -285,12 +357,70 @@
         </button>
       </form>
     </div>
-  </div>
+  </section>
+
+  <!-- External Pack Paths (Admin Only) -->
+  <section id="pack-paths" class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6 scroll-mt-16">
+    <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+      External Pack Paths
+      <span class="ml-2 text-xs font-normal text-gray-500 dark:text-gray-400">(admin only)</span>
+    </h2>
+
+    <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">
+      Register directories containing content packs from arbitrary filesystem paths.
+    </p>
+
+    <!-- Register Path Form -->
+    <form hx-post="/settings/pack-paths/register"
+          hx-target="#registered-paths-list"
+          hx-swap="outerHTML"
+          hx-on::after-request="if(event.detail.successful) this.reset()"
+          class="mb-4 p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+      <div class="flex flex-col gap-3">
+        <div class="flex gap-2">
+          <input type="text" name="path" id="path-input" placeholder="/path/to/packs" required
+                 class="flex-1 px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white font-mono">
+          <button type="button" onclick="openDirectoryBrowser()"
+                  class="px-3 py-2 text-sm bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-200 rounded hover:bg-gray-300 dark:hover:bg-gray-500">
+            Browse...
+          </button>
+        </div>
+        <div class="flex flex-col sm:flex-row gap-3">
+          <input type="text" name="name" placeholder="Display name (optional)"
+                 class="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white flex-1">
+          <button type="submit" class="px-4 py-2 text-sm bg-green-600 text-white rounded hover:bg-green-700">
+            Register Path
+          </button>
+        </div>
+      </div>
+    </form>
+
+    <!-- Directory Browser Modal -->
+    <div id="directory-browser-modal" class="hidden fixed inset-0 z-50 overflow-y-auto">
+      <div class="flex items-center justify-center min-h-screen p-4">
+        <div class="fixed inset-0 bg-black/50" onclick="closeDirectoryBrowser()"></div>
+        <div class="relative bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-lg w-full p-4">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Select Directory</h3>
+            <button type="button" onclick="closeDirectoryBrowser()" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+              <iconify-icon icon="heroicons:x-mark" width="24" height="24"></iconify-icon>
+            </button>
+          </div>
+          <div id="directory-browser-content">
+            <p class="text-sm text-gray-500 dark:text-gray-400">Loading...</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Registered Paths List -->
+    {% include "partials/settings_registered_paths.html" %}
+  </section>
   {% endif %}
 
   <!-- Content Packs Section -->
   {% if !card_packs.is_empty() %}
-  <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6">
+  <section id="packs" class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6 scroll-mt-16">
     <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">
       Content Packs
     </h2>
@@ -312,6 +442,9 @@
               <span class="font-medium text-gray-900 dark:text-white">{{ pack.name }}</span>
               {% if let Some(version) = &pack.version %}
               <span class="text-xs text-gray-400">v{{ version }}</span>
+              {% endif %}
+              {% if pack.is_restricted %}
+              <span class="text-xs px-2 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300">restricted</span>
               {% endif %}
             </div>
             {% if let Some(desc) = &pack.description %}
@@ -343,14 +476,23 @@
             {% endif %}
           </div>
         </div>
+        {% if is_admin && !pack.is_baseline %}
+        <!-- Pack Permissions (Admin) -->
+        <details class="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
+          <summary class="text-sm text-indigo-600 dark:text-indigo-400 cursor-pointer hover:underline">
+            Manage access
+          </summary>
+          {% include "partials/settings_pack_permissions.html" %}
+        </details>
+        {% endif %}
       </div>
       {% endfor %}
     </div>
-  </div>
+  </section>
   {% endif %}
 
-  <!-- External Content Section -->
-  <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6">
+  <!-- Pronunciation Audio Section -->
+  <section id="audio" class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6 scroll-mt-16">
     <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">
       Pronunciation Audio
       {% if !is_admin %}
@@ -555,14 +697,15 @@
     </div>
     {% endif %}
     {% endif %}
-  </div>
+  </section>
 
   <!-- App Version -->
   <div class="text-center text-sm text-gray-400 dark:text-gray-500 pt-4">
     Hangul Learn v{{ version }}
   </div>
 
-</div>
+  </div><!-- end flex-1 max-w-2xl -->
+</div><!-- end lg:flex -->
 
 <script>
   // Initialize dark mode checkbox to match current state
@@ -580,6 +723,16 @@
     if (tierOptions) {
       tierOptions.classList.toggle('hidden', !allTiersToggle.checked);
     }
+  }
+
+  // Filter users by search term
+  function filterUsers(searchTerm) {
+    const term = searchTerm.toLowerCase().trim();
+    const rows = document.querySelectorAll('#userList .user-row');
+    rows.forEach(row => {
+      const username = row.getAttribute('data-username') || '';
+      row.style.display = username.includes(term) ? '' : 'none';
+    });
   }
 
   // Toggle lesson preview section
@@ -663,5 +816,31 @@
   document.body.addEventListener('htmx:afterSwap', function(evt) {
     audioCacheBust = Date.now();
   });
+
+  // Directory browser modal
+  function openDirectoryBrowser() {
+    const modal = document.getElementById('directory-browser-modal');
+    modal.classList.remove('hidden');
+    // Load initial directory listing
+    htmx.ajax('POST', '/settings/pack-paths/browse', {
+      target: '#directory-browser-content',
+      swap: 'outerHTML',
+      values: { path: '' }
+    });
+  }
+
+  function closeDirectoryBrowser() {
+    const modal = document.getElementById('directory-browser-modal');
+    modal.classList.add('hidden');
+  }
+
+  // Close modal on Escape key
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+      closeDirectoryBrowser();
+    }
+  });
 </script>
+
+{% include "partials/toc_script.html" %}
 {% endblock %}

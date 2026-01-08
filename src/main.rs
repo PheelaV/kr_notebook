@@ -1,4 +1,4 @@
-use axum::{routing::get, routing::post, Router};
+use axum::{routing::delete, routing::get, routing::post, Router};
 use rusqlite::Connection;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -145,6 +145,24 @@ async fn main() {
             "/settings/delete-all-guests",
             post(handlers::delete_all_guests),
         )
+        // User/group management (admin)
+        .route("/settings/user/role", post(handlers::set_user_role))
+        .route("/settings/group/create", post(handlers::create_group))
+        .route("/settings/group/{group_id}", delete(handlers::delete_group))
+        .route("/settings/group/add-member", post(handlers::add_to_group))
+        .route("/settings/group/remove-member", post(handlers::remove_from_group))
+        // Pack permissions (admin) - groups
+        .route("/settings/pack/permission/add", post(handlers::restrict_pack_to_group))
+        .route("/settings/pack/permission/remove", post(handlers::remove_pack_restriction))
+        .route("/settings/pack/{pack_id}/make-public", post(handlers::make_pack_public))
+        // Pack permissions (admin) - users
+        .route("/settings/pack/user-permission/add", post(handlers::restrict_pack_to_user))
+        .route("/settings/pack/user-permission/remove", post(handlers::remove_pack_user_restriction))
+        // External pack paths (admin)
+        .route("/settings/pack-paths/register", post(handlers::register_pack_path))
+        .route("/settings/pack-paths/{id}", delete(handlers::unregister_pack_path))
+        .route("/settings/pack-paths/{id}/toggle", post(handlers::toggle_pack_path))
+        .route("/settings/pack-paths/browse", post(handlers::browse_directories))
         .route("/diagnostic", post(handlers::log_diagnostic));
 
     let app = Router::new()

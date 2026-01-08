@@ -1,10 +1,10 @@
 //! Auth database operations (users, sessions, app_settings, card_definitions tables).
 
 use chrono::{Duration, Utc};
-use rusqlite::{params, Connection, Result};
+use rusqlite::{params, Connection, OptionalExtension, Result};
 
 /// Current schema version for app.db
-pub const AUTH_DB_VERSION: i32 = 3;
+pub const AUTH_DB_VERSION: i32 = 6;
 
 /// Initialize the auth database schema
 pub fn init_auth_schema(conn: &Connection) -> Result<()> {
@@ -29,7 +29,8 @@ pub fn init_auth_schema(conn: &Connection) -> Result<()> {
             created_at TEXT NOT NULL,
             last_login_at TEXT,
             is_guest INTEGER DEFAULT 0,
-            last_activity_at TEXT
+            last_activity_at TEXT,
+            role TEXT DEFAULT 'user'
         );
 
         CREATE TABLE IF NOT EXISTS sessions (
@@ -74,12 +75,62 @@ pub fn init_auth_schema(conn: &Connection) -> Result<()> {
             FOREIGN KEY (pack_id) REFERENCES content_packs(id)
         );
 
+        -- User groups for role-based access control
+        CREATE TABLE IF NOT EXISTS user_groups (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            description TEXT,
+            created_at TEXT NOT NULL
+        );
+
+        -- Group membership (many-to-many between users and groups)
+        CREATE TABLE IF NOT EXISTS user_group_members (
+            group_id TEXT NOT NULL,
+            user_id INTEGER NOT NULL,
+            added_at TEXT NOT NULL,
+            PRIMARY KEY (group_id, user_id),
+            FOREIGN KEY (group_id) REFERENCES user_groups(id) ON DELETE CASCADE,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+
+        -- Pack permissions per group (empty string group_id = all users)
+        CREATE TABLE IF NOT EXISTS pack_permissions (
+            pack_id TEXT NOT NULL,
+            group_id TEXT NOT NULL DEFAULT '',
+            allowed INTEGER NOT NULL DEFAULT 1,
+            PRIMARY KEY (pack_id, group_id),
+            FOREIGN KEY (pack_id) REFERENCES content_packs(id) ON DELETE CASCADE
+        );
+
+        -- Pack permissions per user (direct user access)
+        CREATE TABLE IF NOT EXISTS pack_user_permissions (
+            pack_id TEXT NOT NULL,
+            user_id INTEGER NOT NULL,
+            allowed INTEGER NOT NULL DEFAULT 1,
+            PRIMARY KEY (pack_id, user_id),
+            FOREIGN KEY (pack_id) REFERENCES content_packs(id) ON DELETE CASCADE,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+
+        -- Registered external pack paths (admin-configured)
+        CREATE TABLE IF NOT EXISTS registered_pack_paths (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            path TEXT NOT NULL UNIQUE,
+            name TEXT,
+            registered_by TEXT NOT NULL,
+            registered_at TEXT NOT NULL,
+            is_active INTEGER DEFAULT 1
+        );
+
         CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
         CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at);
         CREATE INDEX IF NOT EXISTS idx_content_packs_scope ON content_packs(scope);
         CREATE INDEX IF NOT EXISTS idx_content_packs_type ON content_packs(pack_type);
         CREATE INDEX IF NOT EXISTS idx_card_definitions_pack ON card_definitions(pack_id);
         CREATE INDEX IF NOT EXISTS idx_card_definitions_tier ON card_definitions(tier);
+        CREATE INDEX IF NOT EXISTS idx_user_group_members_user ON user_group_members(user_id);
+        CREATE INDEX IF NOT EXISTS idx_pack_permissions_group ON pack_permissions(group_id);
+        CREATE INDEX IF NOT EXISTS idx_pack_user_permissions_user ON pack_user_permissions(user_id);
     "#,
     )?;
 
@@ -126,6 +177,67 @@ pub fn init_auth_schema(conn: &Connection) -> Result<()> {
     "#,
     )?;
 
+    // Migration v3→v4: Add role column and user groups system
+    add_column_if_missing(conn, "users", "role", "TEXT DEFAULT 'user'")?;
+
+    // Create user groups tables (idempotent)
+    conn.execute_batch(
+        r#"
+        CREATE TABLE IF NOT EXISTS user_groups (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            description TEXT,
+            created_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS user_group_members (
+            group_id TEXT NOT NULL,
+            user_id INTEGER NOT NULL,
+            added_at TEXT NOT NULL,
+            PRIMARY KEY (group_id, user_id),
+            FOREIGN KEY (group_id) REFERENCES user_groups(id) ON DELETE CASCADE,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+        CREATE TABLE IF NOT EXISTS pack_permissions (
+            pack_id TEXT NOT NULL,
+            group_id TEXT NOT NULL DEFAULT '',
+            allowed INTEGER NOT NULL DEFAULT 1,
+            PRIMARY KEY (pack_id, group_id),
+            FOREIGN KEY (pack_id) REFERENCES content_packs(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_user_group_members_user ON user_group_members(user_id);
+        CREATE INDEX IF NOT EXISTS idx_pack_permissions_group ON pack_permissions(group_id);
+    "#,
+    )?;
+
+    // Migration v4→v5: Add pack_user_permissions table for direct user access
+    conn.execute_batch(
+        r#"
+        CREATE TABLE IF NOT EXISTS pack_user_permissions (
+            pack_id TEXT NOT NULL,
+            user_id INTEGER NOT NULL,
+            allowed INTEGER NOT NULL DEFAULT 1,
+            PRIMARY KEY (pack_id, user_id),
+            FOREIGN KEY (pack_id) REFERENCES content_packs(id) ON DELETE CASCADE,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_pack_user_permissions_user ON pack_user_permissions(user_id);
+    "#,
+    )?;
+
+    // Migration v5→v6: Add registered_pack_paths table for external pack directories
+    conn.execute_batch(
+        r#"
+        CREATE TABLE IF NOT EXISTS registered_pack_paths (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            path TEXT NOT NULL UNIQUE,
+            name TEXT,
+            registered_by TEXT NOT NULL,
+            registered_at TEXT NOT NULL,
+            is_active INTEGER DEFAULT 1
+        );
+    "#,
+    )?;
+
     // Create index on is_guest after migration ensures column exists
     conn.execute_batch(
         r#"
@@ -139,7 +251,7 @@ pub fn init_auth_schema(conn: &Connection) -> Result<()> {
     )?;
 
     // Record schema version
-    record_version(conn, AUTH_DB_VERSION, "Full schema with card_definitions")?;
+    record_version(conn, AUTH_DB_VERSION, "Add user roles and groups system")?;
 
     // Seed baseline cards if card_definitions is empty
     seed_baseline_cards(conn)?;
@@ -374,6 +486,39 @@ pub fn username_exists(conn: &Connection, username: &str) -> Result<bool> {
     Ok(count > 0)
 }
 
+/// Check if a user is an admin (by role or legacy username='admin')
+/// Backwards compatible: users named "admin" are always admins
+pub fn is_user_admin(conn: &Connection, user_id: i64) -> Result<bool> {
+    let is_admin: i64 = conn.query_row(
+        r#"SELECT CASE
+            WHEN COALESCE(role, 'user') = 'admin' THEN 1
+            WHEN LOWER(username) = 'admin' THEN 1
+            ELSE 0
+        END FROM users WHERE id = ?1"#,
+        params![user_id],
+        |row| row.get(0),
+    )?;
+    Ok(is_admin == 1)
+}
+
+/// Get user role (defaults to 'user' if NULL)
+pub fn get_user_role(conn: &Connection, user_id: i64) -> Result<String> {
+    conn.query_row(
+        "SELECT COALESCE(role, 'user') FROM users WHERE id = ?1",
+        params![user_id],
+        |row| row.get(0),
+    )
+}
+
+/// Set user role ('user' or 'admin')
+pub fn set_user_role(conn: &Connection, user_id: i64, role: &str) -> Result<()> {
+    conn.execute(
+        "UPDATE users SET role = ?1 WHERE id = ?2",
+        params![role, user_id],
+    )?;
+    Ok(())
+}
+
 /// Create a new session
 pub fn create_session(
     conn: &Connection,
@@ -454,6 +599,58 @@ pub fn update_last_login(conn: &Connection, user_id: i64) -> Result<()> {
 /// Get user count (for migration check)
 pub fn get_user_count(conn: &Connection) -> Result<i64> {
     conn.query_row("SELECT COUNT(*) FROM users", [], |row| row.get(0))
+}
+
+/// User info for admin display
+pub struct UserInfo {
+    pub id: i64,
+    pub username: String,
+    pub role: String,
+    pub is_guest: bool,
+    pub created_at: String,
+}
+
+/// Get all users for admin display
+pub fn get_all_users(conn: &Connection) -> Result<Vec<UserInfo>> {
+    let mut stmt = conn.prepare(
+        r#"SELECT id, username, COALESCE(role, 'user'), COALESCE(is_guest, 0), created_at
+           FROM users
+           ORDER BY created_at DESC"#
+    )?;
+    let users = stmt
+        .query_map([], |row| {
+            Ok(UserInfo {
+                id: row.get(0)?,
+                username: row.get(1)?,
+                role: row.get(2)?,
+                is_guest: row.get::<_, i64>(3)? == 1,
+                created_at: row.get(4)?,
+            })
+        })?
+        .filter_map(|r| r.ok())
+        .collect();
+    Ok(users)
+}
+
+/// Get a user by ID
+pub fn get_user_by_id(conn: &Connection, user_id: i64) -> Result<Option<UserInfo>> {
+    let mut stmt = conn.prepare(
+        r#"SELECT id, username, COALESCE(role, 'user'), COALESCE(is_guest, 0), created_at
+           FROM users
+           WHERE id = ?1"#
+    )?;
+    let user = stmt
+        .query_row([user_id], |row| {
+            Ok(UserInfo {
+                id: row.get(0)?,
+                username: row.get(1)?,
+                role: row.get(2)?,
+                is_guest: row.get::<_, i64>(3)? == 1,
+                created_at: row.get(4)?,
+            })
+        })
+        .optional()?;
+    Ok(user)
 }
 
 // ==================== Guest Operations ====================
@@ -633,4 +830,459 @@ pub fn can_create_guest(conn: &Connection) -> Result<bool> {
             Ok(count < max)
         }
     }
+}
+
+// ==================== User Groups ====================
+
+/// User group info
+pub struct UserGroup {
+    pub id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub created_at: String,
+}
+
+/// Create a new user group
+pub fn create_user_group(
+    conn: &Connection,
+    id: &str,
+    name: &str,
+    description: Option<&str>,
+) -> Result<()> {
+    let now = Utc::now().to_rfc3339();
+    conn.execute(
+        "INSERT INTO user_groups (id, name, description, created_at) VALUES (?1, ?2, ?3, ?4)",
+        params![id, name, description, now],
+    )?;
+    Ok(())
+}
+
+/// Get all user groups
+pub fn get_all_groups(conn: &Connection) -> Result<Vec<UserGroup>> {
+    let mut stmt = conn.prepare("SELECT id, name, description, created_at FROM user_groups ORDER BY name")?;
+    let groups = stmt
+        .query_map([], |row| {
+            Ok(UserGroup {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                description: row.get(2)?,
+                created_at: row.get(3)?,
+            })
+        })?
+        .filter_map(|r| r.ok())
+        .collect();
+    Ok(groups)
+}
+
+/// Get a user group by ID
+pub fn get_group(conn: &Connection, group_id: &str) -> Result<Option<UserGroup>> {
+    let result = conn.query_row(
+        "SELECT id, name, description, created_at FROM user_groups WHERE id = ?1",
+        params![group_id],
+        |row| {
+            Ok(UserGroup {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                description: row.get(2)?,
+                created_at: row.get(3)?,
+            })
+        },
+    );
+    match result {
+        Ok(group) => Ok(Some(group)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(e),
+    }
+}
+
+/// Delete a user group
+pub fn delete_group(conn: &Connection, group_id: &str) -> Result<()> {
+    conn.execute("DELETE FROM user_groups WHERE id = ?1", params![group_id])?;
+    Ok(())
+}
+
+/// Add a user to a group
+pub fn add_user_to_group(conn: &Connection, user_id: i64, group_id: &str) -> Result<()> {
+    let now = Utc::now().to_rfc3339();
+    conn.execute(
+        "INSERT OR IGNORE INTO user_group_members (group_id, user_id, added_at) VALUES (?1, ?2, ?3)",
+        params![group_id, user_id, now],
+    )?;
+    Ok(())
+}
+
+/// Remove a user from a group
+pub fn remove_user_from_group(conn: &Connection, user_id: i64, group_id: &str) -> Result<()> {
+    conn.execute(
+        "DELETE FROM user_group_members WHERE group_id = ?1 AND user_id = ?2",
+        params![group_id, user_id],
+    )?;
+    Ok(())
+}
+
+/// Get all groups a user belongs to
+pub fn get_user_groups(conn: &Connection, user_id: i64) -> Result<Vec<String>> {
+    let mut stmt = conn.prepare(
+        "SELECT group_id FROM user_group_members WHERE user_id = ?1",
+    )?;
+    let groups = stmt
+        .query_map(params![user_id], |row| row.get(0))?
+        .filter_map(|r| r.ok())
+        .collect();
+    Ok(groups)
+}
+
+/// Check if a user is in a specific group
+pub fn is_user_in_group(conn: &Connection, user_id: i64, group_id: &str) -> Result<bool> {
+    let count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM user_group_members WHERE group_id = ?1 AND user_id = ?2",
+        params![group_id, user_id],
+        |row| row.get(0),
+    )?;
+    Ok(count > 0)
+}
+
+/// Get all users in a group
+pub fn get_group_members(conn: &Connection, group_id: &str) -> Result<Vec<(i64, String)>> {
+    let mut stmt = conn.prepare(
+        r#"SELECT u.id, u.username
+           FROM users u
+           JOIN user_group_members m ON u.id = m.user_id
+           WHERE m.group_id = ?1
+           ORDER BY u.username"#,
+    )?;
+    let members = stmt
+        .query_map(params![group_id], |row| Ok((row.get(0)?, row.get(1)?)))?
+        .filter_map(|r| r.ok())
+        .collect();
+    Ok(members)
+}
+
+// ==================== Pack Permissions ====================
+
+/// Set pack permission for a group (or all users if group_id is empty string)
+pub fn set_pack_permission(
+    conn: &Connection,
+    pack_id: &str,
+    group_id: &str,  // Empty string "" = all users
+    allowed: bool,
+) -> Result<()> {
+    conn.execute(
+        r#"INSERT OR REPLACE INTO pack_permissions (pack_id, group_id, allowed)
+           VALUES (?1, ?2, ?3)"#,
+        params![pack_id, group_id, allowed as i32],
+    )?;
+    Ok(())
+}
+
+/// Remove pack permission entry
+pub fn remove_pack_permission(conn: &Connection, pack_id: &str, group_id: &str) -> Result<()> {
+    conn.execute(
+        "DELETE FROM pack_permissions WHERE pack_id = ?1 AND group_id = ?2",
+        params![pack_id, group_id],
+    )?;
+    Ok(())
+}
+
+/// Check if a user can access a pack
+/// Returns true if:
+/// - No permissions entries exist for the pack (available to all)
+/// - An entry with group_id='' and allowed=1 exists (available to all)
+/// - User is in an allowed group
+/// - User has direct access
+/// - User is an admin
+pub fn can_user_access_pack(conn: &Connection, user_id: i64, pack_id: &str) -> Result<bool> {
+    // Admins can access everything
+    if is_user_admin(conn, user_id)? {
+        return Ok(true);
+    }
+
+    // Check if any permissions exist for this pack (groups or users)
+    let group_perm_count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM pack_permissions WHERE pack_id = ?1",
+        params![pack_id],
+        |row| row.get(0),
+    )?;
+    let user_perm_count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM pack_user_permissions WHERE pack_id = ?1",
+        params![pack_id],
+        |row| row.get(0),
+    )?;
+
+    // No permissions = available to all
+    if group_perm_count == 0 && user_perm_count == 0 {
+        return Ok(true);
+    }
+
+    // Check for global allow (group_id = '', allowed = 1)
+    let global_allow: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM pack_permissions WHERE pack_id = ?1 AND group_id = '' AND allowed = 1",
+        params![pack_id],
+        |row| row.get(0),
+    )?;
+
+    if global_allow > 0 {
+        return Ok(true);
+    }
+
+    // Check if user has direct access
+    let has_direct_access: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM pack_user_permissions WHERE pack_id = ?1 AND user_id = ?2 AND allowed = 1",
+        params![pack_id, user_id],
+        |row| row.get(0),
+    )?;
+
+    if has_direct_access > 0 {
+        return Ok(true);
+    }
+
+    // Check if user is in any allowed group
+    let in_allowed_group: i64 = conn.query_row(
+        r#"SELECT COUNT(*) FROM pack_permissions p
+           JOIN user_group_members m ON p.group_id = m.group_id
+           WHERE p.pack_id = ?1 AND p.allowed = 1 AND m.user_id = ?2 AND p.group_id != ''"#,
+        params![pack_id, user_id],
+        |row| row.get(0),
+    )?;
+
+    Ok(in_allowed_group > 0)
+}
+
+/// Get the groups that have access to a specific pack
+/// Returns empty vec if pack is available to all (no restrictions)
+pub fn get_pack_allowed_groups(conn: &Connection, pack_id: &str) -> Result<Vec<String>> {
+    let mut stmt = conn.prepare(
+        "SELECT group_id FROM pack_permissions WHERE pack_id = ?1 AND allowed = 1 AND group_id != ''"
+    )?;
+    let groups = stmt
+        .query_map(params![pack_id], |row| row.get(0))?
+        .filter_map(|r| r.ok())
+        .collect();
+    Ok(groups)
+}
+
+/// Check if a pack has any restrictions (returns true if restricted)
+pub fn is_pack_restricted(conn: &Connection, pack_id: &str) -> Result<bool> {
+    let group_count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM pack_permissions WHERE pack_id = ?1",
+        params![pack_id],
+        |row| row.get(0),
+    )?;
+    let user_count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM pack_user_permissions WHERE pack_id = ?1",
+        params![pack_id],
+        |row| row.get(0),
+    )?;
+    Ok(group_count > 0 || user_count > 0)
+}
+
+// ==================== User-Level Pack Permissions ====================
+
+/// Set pack permission for a specific user
+pub fn set_pack_user_permission(
+    conn: &Connection,
+    pack_id: &str,
+    user_id: i64,
+    allowed: bool,
+) -> Result<()> {
+    conn.execute(
+        r#"INSERT OR REPLACE INTO pack_user_permissions (pack_id, user_id, allowed)
+           VALUES (?1, ?2, ?3)"#,
+        params![pack_id, user_id, allowed as i32],
+    )?;
+    Ok(())
+}
+
+/// Remove pack permission for a specific user
+pub fn remove_pack_user_permission(conn: &Connection, pack_id: &str, user_id: i64) -> Result<()> {
+    conn.execute(
+        "DELETE FROM pack_user_permissions WHERE pack_id = ?1 AND user_id = ?2",
+        params![pack_id, user_id],
+    )?;
+    Ok(())
+}
+
+/// Get the users that have direct access to a specific pack
+/// Returns vec of (user_id, username) tuples
+pub fn get_pack_allowed_users(conn: &Connection, pack_id: &str) -> Result<Vec<(i64, String)>> {
+    let mut stmt = conn.prepare(
+        r#"SELECT pup.user_id, u.username
+           FROM pack_user_permissions pup
+           JOIN users u ON pup.user_id = u.id
+           WHERE pup.pack_id = ?1 AND pup.allowed = 1"#
+    )?;
+    let users = stmt
+        .query_map(params![pack_id], |row| Ok((row.get(0)?, row.get(1)?)))?
+        .filter_map(|r| r.ok())
+        .collect();
+    Ok(users)
+}
+
+/// Clear all permissions for a pack (both groups and users)
+pub fn clear_pack_permissions(conn: &Connection, pack_id: &str) -> Result<()> {
+    conn.execute("DELETE FROM pack_permissions WHERE pack_id = ?1", params![pack_id])?;
+    conn.execute("DELETE FROM pack_user_permissions WHERE pack_id = ?1", params![pack_id])?;
+    Ok(())
+}
+
+/// Get all packs a user can access
+pub fn get_accessible_packs(conn: &Connection, user_id: i64) -> Result<Vec<String>> {
+    // If admin, return all packs
+    if is_user_admin(conn, user_id)? {
+        let mut stmt = conn.prepare("SELECT id FROM content_packs")?;
+        let packs = stmt
+            .query_map([], |row| row.get(0))?
+            .filter_map(|r| r.ok())
+            .collect();
+        return Ok(packs);
+    }
+
+    // Get all pack IDs
+    let mut stmt = conn.prepare("SELECT id FROM content_packs")?;
+    let all_packs: Vec<String> = stmt
+        .query_map([], |row| row.get(0))?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    // Filter by permission
+    let accessible: Vec<String> = all_packs
+        .into_iter()
+        .filter(|pack_id| can_user_access_pack(conn, user_id, pack_id).unwrap_or(false))
+        .collect();
+
+    Ok(accessible)
+}
+
+// ============================================================================
+// Registered Pack Paths (Admin-configured external directories)
+// ============================================================================
+
+/// A registered external pack path
+#[derive(Debug, Clone)]
+pub struct RegisteredPackPath {
+    pub id: i64,
+    pub path: String,
+    pub name: Option<String>,
+    pub registered_by: String,
+    pub registered_at: String,
+    pub is_active: bool,
+}
+
+/// Register a new external pack path
+pub fn register_pack_path(
+    conn: &Connection,
+    path: &str,
+    name: Option<&str>,
+    registered_by: &str,
+) -> Result<i64> {
+    let now = Utc::now().to_rfc3339();
+    conn.execute(
+        r#"INSERT INTO registered_pack_paths (path, name, registered_by, registered_at, is_active)
+           VALUES (?1, ?2, ?3, ?4, 1)"#,
+        params![path, name, registered_by, now],
+    )?;
+    Ok(conn.last_insert_rowid())
+}
+
+/// Unregister (delete) a pack path
+pub fn unregister_pack_path(conn: &Connection, id: i64) -> Result<()> {
+    conn.execute("DELETE FROM registered_pack_paths WHERE id = ?1", params![id])?;
+    Ok(())
+}
+
+/// Toggle a pack path's active status
+pub fn toggle_pack_path_active(conn: &Connection, id: i64) -> Result<bool> {
+    conn.execute(
+        "UPDATE registered_pack_paths SET is_active = NOT is_active WHERE id = ?1",
+        params![id],
+    )?;
+    // Return the new state
+    let is_active: bool = conn.query_row(
+        "SELECT is_active FROM registered_pack_paths WHERE id = ?1",
+        params![id],
+        |row| row.get(0),
+    )?;
+    Ok(is_active)
+}
+
+/// Get all registered pack paths
+pub fn get_all_registered_paths(conn: &Connection) -> Result<Vec<RegisteredPackPath>> {
+    let mut stmt = conn.prepare(
+        r#"SELECT id, path, name, registered_by, registered_at, is_active
+           FROM registered_pack_paths
+           ORDER BY registered_at DESC"#,
+    )?;
+    let paths = stmt
+        .query_map([], |row| {
+            Ok(RegisteredPackPath {
+                id: row.get(0)?,
+                path: row.get(1)?,
+                name: row.get(2)?,
+                registered_by: row.get(3)?,
+                registered_at: row.get(4)?,
+                is_active: row.get(5)?,
+            })
+        })?
+        .filter_map(|r| r.ok())
+        .collect();
+    Ok(paths)
+}
+
+/// Get only active registered pack paths
+pub fn get_active_registered_paths(conn: &Connection) -> Result<Vec<RegisteredPackPath>> {
+    let mut stmt = conn.prepare(
+        r#"SELECT id, path, name, registered_by, registered_at, is_active
+           FROM registered_pack_paths
+           WHERE is_active = 1
+           ORDER BY registered_at DESC"#,
+    )?;
+    let paths = stmt
+        .query_map([], |row| {
+            Ok(RegisteredPackPath {
+                id: row.get(0)?,
+                path: row.get(1)?,
+                name: row.get(2)?,
+                registered_by: row.get(3)?,
+                registered_at: row.get(4)?,
+                is_active: row.get(5)?,
+            })
+        })?
+        .filter_map(|r| r.ok())
+        .collect();
+    Ok(paths)
+}
+
+/// Get a single registered pack path by ID
+pub fn get_registered_path(conn: &Connection, id: i64) -> Result<Option<RegisteredPackPath>> {
+    let result = conn.query_row(
+        r#"SELECT id, path, name, registered_by, registered_at, is_active
+           FROM registered_pack_paths
+           WHERE id = ?1"#,
+        params![id],
+        |row| {
+            Ok(RegisteredPackPath {
+                id: row.get(0)?,
+                path: row.get(1)?,
+                name: row.get(2)?,
+                registered_by: row.get(3)?,
+                registered_at: row.get(4)?,
+                is_active: row.get(5)?,
+            })
+        },
+    );
+    match result {
+        Ok(path) => Ok(Some(path)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(e),
+    }
+}
+
+/// Check if a path is already registered
+pub fn is_path_registered(conn: &Connection, path: &str) -> Result<bool> {
+    let count: i32 = conn.query_row(
+        "SELECT COUNT(*) FROM registered_pack_paths WHERE path = ?1",
+        params![path],
+        |row| row.get(0),
+    )?;
+    Ok(count > 0)
 }

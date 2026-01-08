@@ -14,6 +14,16 @@ pub use admin::{
   make_all_due, restore_tier, trigger_manual_segment, trigger_reset_segment, trigger_row_segment,
   trigger_scrape, trigger_scrape_lesson, trigger_segment, AudioRowTemplate, ManualSegmentForm,
   ResetSegmentForm, RowSegmentForm, SegmentForm,
+  // User/group management
+  set_user_role, create_group, delete_group, add_to_group, remove_from_group,
+  SetRoleForm, CreateGroupForm, GroupMemberForm,
+  // Pack permissions (groups and users)
+  restrict_pack_to_group, remove_pack_restriction, make_pack_public, PackPermissionForm,
+  restrict_pack_to_user, remove_pack_user_restriction, PackUserPermissionForm,
+  // External pack paths (admin)
+  register_pack_path, unregister_pack_path, toggle_pack_path, browse_directories,
+  RegisterPackPathForm, RegisteredPathDisplay, RegisteredPathsTemplate, render_registered_paths,
+  DirectoryBrowserTemplate, DirectoryEntry, BrowseDirectoryForm,
 };
 pub use audio::{
   get_audio_row, get_lesson_audio, AudioRow, LessonAudio, SegmentParams, SyllablePreview,
@@ -21,7 +31,7 @@ pub use audio::{
 };
 pub use user::{
   disable_pack, enable_pack, export_data, import_data, settings_page, update_settings, PackInfo,
-  SettingsForm, SettingsTemplate,
+  SettingsForm, SettingsTemplate, UserDisplay, GroupDisplay,
 };
 
 /// Check if lesson content exists for a given lesson ID

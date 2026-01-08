@@ -11,8 +11,9 @@ use chrono::Utc;
 use rusqlite::Connection;
 use serde::Deserialize;
 
+use crate::auth::db as auth_db;
 use crate::auth::AuthContext;
-use crate::content::{self, discover_packs, PackLocation, PackType};
+use crate::content::{self, discover_packs_with_external, PackLocation, PackType};
 use crate::db::{self, run_migrations, LogOnError};
 use crate::filters;
 use crate::paths;
@@ -20,8 +21,48 @@ use crate::state::AppState;
 #[cfg(feature = "profiling")]
 use crate::profiling::EventType;
 
+use super::admin::RegisteredPathDisplay;
 use super::audio::{get_lesson_audio, LessonAudio, TierGraduationStatus};
 use super::{count_syllables, has_lesson1, has_lesson2, has_lesson3};
+
+/// TOC item for navigation
+pub struct TocItem {
+  pub id: String,
+  pub short_label: String,
+  pub full_label: String,
+}
+
+/// User info for admin display in templates
+#[derive(Debug, Clone)]
+pub struct UserDisplay {
+  pub id: i64,
+  pub username: String,
+  pub role: String,
+  pub is_guest: bool,
+}
+
+/// Group member info for display
+#[derive(Debug, Clone)]
+pub struct GroupMember {
+  pub id: i64,
+  pub username: String,
+}
+
+/// Group info for admin display
+#[derive(Debug, Clone)]
+pub struct GroupDisplay {
+  pub id: String,
+  pub name: String,
+  pub description: Option<String>,
+  pub members: Vec<GroupMember>,
+}
+
+/// Allowed user info for pack permissions
+#[derive(Debug, Clone)]
+pub struct AllowedUser {
+  pub id: i64,
+  pub username: String,
+}
 
 /// Pack info for UI display
 #[derive(Debug, Clone)]
@@ -32,13 +73,20 @@ pub struct PackInfo {
   pub pack_type: String,
   pub version: Option<String>,
   pub is_enabled: bool,
-  pub is_baseline: bool,           // Baseline pack (always enabled, can't disable)
-  pub cards_count: Option<usize>,  // For card packs
+  pub is_baseline: bool,             // Baseline pack (always enabled, can't disable)
+  pub cards_count: Option<usize>,    // For card packs
+  pub is_restricted: bool,           // Has any group or user restrictions
+  pub allowed_groups: Vec<String>,   // Group IDs that can access this pack
+  pub allowed_users: Vec<AllowedUser>, // Users that have direct access
 }
 
 impl PackInfo {
   /// Create PackInfo from a discovered pack
-  fn from_location(loc: &PackLocation, enabled_packs: &[String]) -> Self {
+  fn from_location(
+    loc: &PackLocation,
+    enabled_packs: &[String],
+    auth_conn: Option<&Connection>,
+  ) -> Self {
     let is_baseline = loc.manifest.id == "baseline";
     let cards_count = if loc.manifest.pack_type == PackType::Cards {
       // Try to count cards in the pack
@@ -53,6 +101,20 @@ impl PackInfo {
       None
     };
 
+    // Get pack permissions from auth_db
+    let (is_restricted, allowed_groups, allowed_users) = auth_conn
+      .map(|conn| {
+        let restricted = auth_db::is_pack_restricted(conn, &loc.manifest.id).unwrap_or(false);
+        let groups = auth_db::get_pack_allowed_groups(conn, &loc.manifest.id).unwrap_or_default();
+        let users = auth_db::get_pack_allowed_users(conn, &loc.manifest.id)
+          .unwrap_or_default()
+          .into_iter()
+          .map(|(id, username)| AllowedUser { id, username })
+          .collect();
+        (restricted, groups, users)
+      })
+      .unwrap_or((false, Vec::new(), Vec::new()));
+
     PackInfo {
       id: loc.manifest.id.clone(),
       name: loc.manifest.name.clone(),
@@ -62,6 +124,9 @@ impl PackInfo {
       is_enabled: is_baseline || enabled_packs.contains(&loc.manifest.id),
       is_baseline,
       cards_count,
+      is_restricted,
+      allowed_groups,
+      allowed_users,
     }
   }
 }
@@ -92,12 +157,20 @@ pub struct SettingsTemplate {
   pub card_packs: Vec<PackInfo>,
   // App version
   pub version: &'static str,
+  // Admin: users and groups
+  pub users: Vec<UserDisplay>,
+  pub groups: Vec<GroupDisplay>,
+  // Admin: external pack paths
+  pub paths: Vec<RegisteredPathDisplay>,
+  // TOC navigation
+  pub toc_items: Vec<TocItem>,
+  pub toc_title: String,
 }
 
 /// Error HTML for database unavailable
 const DB_ERROR_HTML: &str = r#"<!DOCTYPE html><html><head><title>Error</title></head><body><h1>Database Error</h1><p>Please refresh the page.</p></body></html>"#;
 
-pub async fn settings_page(auth: AuthContext) -> Html<String> {
+pub async fn settings_page(auth: AuthContext, State(state): State<AppState>) -> Html<String> {
   #[cfg(feature = "profiling")]
   crate::profile_log!(EventType::HandlerStart {
     route: "/settings".into(),
@@ -148,17 +221,104 @@ pub async fn settings_page(auth: AuthContext) -> Html<String> {
     })
     .collect();
 
-  // Discover content packs
+  // Get auth_db connection for pack permissions and external paths lookup
+  let auth_conn = state.auth_db.lock().ok();
+
+  // Discover content packs (including external registered paths)
   let enabled_packs = content::list_enabled_packs(&conn);
   let shared_packs_path = Path::new(paths::SHARED_PACKS_DIR);
-  let discovered = discover_packs(shared_packs_path, None, None);
+  let external_paths: Vec<std::path::PathBuf> = auth_conn.as_deref()
+    .and_then(|db| auth_db::get_active_registered_paths(db).ok())
+    .unwrap_or_default()
+    .into_iter()
+    .map(|p| std::path::PathBuf::from(p.path))
+    .collect();
+  let discovered = discover_packs_with_external(shared_packs_path, None, None, &external_paths);
 
   // Filter to card packs only
   let card_packs: Vec<PackInfo> = discovered
     .iter()
     .filter(|loc| loc.manifest.pack_type == PackType::Cards)
-    .map(|loc| PackInfo::from_location(loc, &enabled_packs))
+    .map(|loc| PackInfo::from_location(loc, &enabled_packs, auth_conn.as_deref()))
     .collect();
+
+  // Fetch users, groups, and registered paths for admin
+  let (users, groups, registered_paths) = if auth.is_admin {
+    let users = auth_conn.as_deref()
+      .and_then(|db| auth_db::get_all_users(db).ok())
+      .unwrap_or_default()
+      .into_iter()
+      .map(|u| UserDisplay {
+        id: u.id,
+        username: u.username,
+        role: u.role,
+        is_guest: u.is_guest,
+      })
+      .collect();
+
+    let groups = auth_conn.as_deref()
+      .and_then(|db| auth_db::get_all_groups(db).ok())
+      .unwrap_or_default()
+      .into_iter()
+      .map(|g| {
+        let members = auth_conn.as_deref()
+          .and_then(|db| auth_db::get_group_members(db, &g.id).ok())
+          .unwrap_or_default()
+          .into_iter()
+          .map(|(id, username)| GroupMember { id, username })
+          .collect();
+        GroupDisplay {
+          id: g.id,
+          name: g.name,
+          description: g.description,
+          members,
+        }
+      })
+      .collect();
+
+    // Fetch registered pack paths
+    let registered_paths = auth_conn.as_deref()
+      .and_then(|db| {
+        use crate::auth::db as auth_db;
+        use crate::content::count_packs_in_directory;
+        auth_db::get_all_registered_paths(db).ok().map(|db_paths| {
+          db_paths.into_iter().map(|p| {
+            let pack_count = count_packs_in_directory(std::path::Path::new(&p.path));
+            RegisteredPathDisplay {
+              id: p.id,
+              path: p.path,
+              name: p.name,
+              registered_by: p.registered_by,
+              is_active: p.is_active,
+              pack_count,
+            }
+          }).collect()
+        })
+      })
+      .unwrap_or_default();
+
+    (users, groups, registered_paths)
+  } else {
+    (Vec::new(), Vec::new(), Vec::new())
+  };
+
+  // Build TOC items based on available sections
+  let mut toc_items = vec![
+    TocItem { id: "appearance".into(), short_label: "Appearance".into(), full_label: "Appearance".into() },
+    TocItem { id: "learning".into(), short_label: "Learning".into(), full_label: "Learning".into() },
+    TocItem { id: "study-tools".into(), short_label: "Tools".into(), full_label: "Study Tools".into() },
+    TocItem { id: "data".into(), short_label: "Data".into(), full_label: "Data Management".into() },
+  ];
+  if auth.is_admin {
+    toc_items.push(TocItem { id: "users".into(), short_label: "Users".into(), full_label: "User Management".into() });
+    toc_items.push(TocItem { id: "groups".into(), short_label: "Groups".into(), full_label: "User Groups".into() });
+    toc_items.push(TocItem { id: "guests".into(), short_label: "Guests".into(), full_label: "Guest Management".into() });
+    toc_items.push(TocItem { id: "pack-paths".into(), short_label: "Pack Paths".into(), full_label: "External Pack Paths".into() });
+  }
+  if !card_packs.is_empty() {
+    toc_items.push(TocItem { id: "packs".into(), short_label: "Packs".into(), full_label: "Content Packs".into() });
+  }
+  toc_items.push(TocItem { id: "audio".into(), short_label: "Audio".into(), full_label: "Pronunciation Audio".into() });
 
   let template = SettingsTemplate {
     is_admin: auth.is_admin,
@@ -179,6 +339,11 @@ pub async fn settings_page(auth: AuthContext) -> Html<String> {
     tier_graduation,
     card_packs,
     version: env!("CARGO_PKG_VERSION"),
+    users,
+    groups,
+    paths: registered_paths,
+    toc_items,
+    toc_title: "Settings".to_string(),
   };
   Html(template.render().unwrap_or_default())
 }
@@ -506,9 +671,25 @@ pub async fn enable_pack(
     username: Some(auth.username.clone()),
   });
 
-  // Find the pack
+  // Get connections (auth_db is the shared app.db with card_definitions)
+  let user_conn = match auth.user_db.lock() {
+    Ok(conn) => conn,
+    Err(_) => return Redirect::to("/settings?pack=error").into_response(),
+  };
+
+  let app_conn = match state.auth_db.lock() {
+    Ok(conn) => conn,
+    Err(_) => return Redirect::to("/settings?pack=error").into_response(),
+  };
+
+  // Find the pack (including external registered paths)
   let shared_packs_path = Path::new(paths::SHARED_PACKS_DIR);
-  let discovered = discover_packs(shared_packs_path, None, None);
+  let external_paths: Vec<std::path::PathBuf> = auth_db::get_active_registered_paths(&app_conn)
+    .unwrap_or_default()
+    .into_iter()
+    .map(|p| std::path::PathBuf::from(p.path))
+    .collect();
+  let discovered = discover_packs_with_external(shared_packs_path, None, None, &external_paths);
 
   let pack_loc = match discovered.iter().find(|loc| loc.manifest.id == pack_id) {
     Some(loc) => loc,
@@ -530,17 +711,6 @@ pub async fn enable_pack(
       tracing::warn!("Card pack missing cards config: {}", pack_id);
       return Redirect::to("/settings?pack=invalid").into_response();
     }
-  };
-
-  // Get connections (auth_db is the shared app.db with card_definitions)
-  let user_conn = match auth.user_db.lock() {
-    Ok(conn) => conn,
-    Err(_) => return Redirect::to("/settings?pack=error").into_response(),
-  };
-
-  let app_conn = match state.auth_db.lock() {
-    Ok(conn) => conn,
-    Err(_) => return Redirect::to("/settings?pack=error").into_response(),
   };
 
   // Enable the pack

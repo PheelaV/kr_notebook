@@ -28,7 +28,7 @@ pub use cards::{
     disable_pack, enable_card_pack, get_enabled_packs_info, is_pack_enabled, list_enabled_packs,
     load_baseline_cards, load_cards_from_pack, CardDefinition, EnablePackResult, EnabledPackInfo,
 };
-pub use discovery::{discover_packs, PackLocation};
+pub use discovery::{count_packs_in_directory, discover_packs, discover_packs_with_external, PackLocation};
 pub use packs::{AudioConfig, CardConfig, GeneratorConfig, PackManifest, PackType};
 
 use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ToSql, ToSqlOutput, ValueRef};
@@ -42,6 +42,8 @@ pub enum PackScope {
     Shared,
     /// User-specific pack, only available to the installing user
     User,
+    /// External pack from admin-registered path
+    External,
 }
 
 impl PackScope {
@@ -49,6 +51,7 @@ impl PackScope {
         match self {
             PackScope::Shared => "shared",
             PackScope::User => "user",
+            PackScope::External => "external",
         }
     }
 }
@@ -66,6 +69,7 @@ impl std::str::FromStr for PackScope {
         match s.to_lowercase().as_str() {
             "shared" => Ok(PackScope::Shared),
             "user" => Ok(PackScope::User),
+            "external" => Ok(PackScope::External),
             _ => Err(format!("Invalid pack scope: {}", s)),
         }
     }

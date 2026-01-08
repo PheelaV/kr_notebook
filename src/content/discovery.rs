@@ -87,6 +87,44 @@ pub fn discover_packs(
     packs
 }
 
+/// Discover all packs including external registered paths.
+///
+/// # Arguments
+/// * `shared_packs_dir` - Path to shared packs (e.g., `data/content/packs`)
+/// * `user_packs_dir` - Optional path to user packs
+/// * `username` - Username for user packs
+/// * `external_paths` - List of admin-registered external pack paths
+pub fn discover_packs_with_external(
+    shared_packs_dir: &Path,
+    user_packs_dir: Option<&Path>,
+    username: Option<&str>,
+    external_paths: &[PathBuf],
+) -> Vec<PackLocation> {
+    // Start with standard discovery
+    let mut packs = discover_packs(shared_packs_dir, user_packs_dir, username);
+
+    // Add packs from external paths
+    for path in external_paths {
+        packs.extend(scan_pack_directory(path, PackScope::External, None));
+    }
+
+    packs
+}
+
+/// Count valid packs in a directory (for UI feedback).
+pub fn count_packs_in_directory(dir: &Path) -> usize {
+    let entries = match fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(_) => return 0,
+    };
+
+    entries
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().is_dir())
+        .filter(|e| e.path().join("pack.json").exists())
+        .count()
+}
+
 /// Check if a specific pack exists at a path.
 pub fn pack_exists(pack_dir: &Path) -> bool {
     pack_dir.join("pack.json").exists()
