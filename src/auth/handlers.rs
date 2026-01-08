@@ -135,8 +135,10 @@ pub async fn login_submit(
         return (jar, Html(template.render().unwrap_or_default())).into_response();
     }
 
-    // Update last login time
-    let _ = auth_db::update_last_login(&auth_db, user_id);
+    // Update last login time (log but don't fail on error)
+    if let Err(e) = auth_db::update_last_login(&auth_db, user_id) {
+        tracing::warn!("Failed to update last login for user {}: {}", user_id, e);
+    }
 
     // Create session
     let session_id = generate_session_id();
@@ -310,7 +312,17 @@ pub async fn register_submit(
 
     // Seed the database with hangul cards
     {
-        let conn = user_db.lock().expect("User DB lock failed");
+        let conn = match user_db.lock() {
+            Ok(conn) => conn,
+            Err(_) => {
+                tracing::error!("User DB lock poisoned during registration");
+                let _ = fs::remove_dir_all(&user_dir);
+                let template = RegisterTemplate {
+                    error: Some("Database error".to_string()),
+                };
+                return (jar, Html(template.render().unwrap_or_default())).into_response();
+            }
+        };
         if let Err(e) = db::seed_hangul_cards(&conn) {
             tracing::error!("Failed to seed user database: {}", e);
             drop(conn);
@@ -325,7 +337,17 @@ pub async fn register_submit(
 
     // Create session for auto-login
     let session_id = generate_session_id();
-    let auth_db = state.auth_db.lock().expect("Auth DB lock failed");
+    let auth_db = match state.auth_db.lock() {
+        Ok(conn) => conn,
+        Err(_) => {
+            tracing::error!("Auth DB lock poisoned during session creation");
+            // User was created but session failed - they can still log in manually
+            let template = RegisterTemplate {
+                error: Some("Account created but session failed. Please log in.".to_string()),
+            };
+            return (jar, Html(template.render().unwrap_or_default())).into_response();
+        }
+    };
     if let Err(e) = auth_db::create_session(&auth_db, user_id, &session_id, SESSION_DURATION_HOURS)
     {
         tracing::error!("Failed to create session after registration: {}", e);
@@ -372,7 +394,9 @@ pub async fn logout(State(state): State<AppState>, jar: CookieJar) -> impl IntoR
                     logged_out_username = Some(username);
                 }
             }
-            let _ = auth_db::delete_session(&auth_db, session_id);
+            if let Err(e) = auth_db::delete_session(&auth_db, session_id) {
+                tracing::warn!("Failed to delete session during logout: {}", e);
+            }
         }
     }
 
@@ -546,7 +570,17 @@ pub async fn guest_login(
 
     // Seed the database with hangul cards
     {
-        let conn = user_db.lock().expect("User DB lock failed");
+        let conn = match user_db.lock() {
+            Ok(conn) => conn,
+            Err(_) => {
+                tracing::error!("User DB lock poisoned during guest creation");
+                let _ = fs::remove_dir_all(&user_dir);
+                let template = GuestTemplate {
+                    error: Some("Database error".to_string()),
+                };
+                return (jar, Html(template.render().unwrap_or_default())).into_response();
+            }
+        };
         if let Err(e) = db::seed_hangul_cards(&conn) {
             tracing::error!("Failed to seed guest database: {}", e);
             drop(conn);
@@ -560,7 +594,16 @@ pub async fn guest_login(
 
     // Create session
     let session_id = generate_session_id();
-    let auth_db = state.auth_db.lock().expect("Auth DB lock failed");
+    let auth_db = match state.auth_db.lock() {
+        Ok(conn) => conn,
+        Err(_) => {
+            tracing::error!("Auth DB lock poisoned during guest session creation");
+            let template = GuestTemplate {
+                error: Some("Database error".to_string()),
+            };
+            return (jar, Html(template.render().unwrap_or_default())).into_response();
+        }
+    };
     if let Err(e) = auth_db::create_session(&auth_db, user_id, &session_id, SESSION_DURATION_HOURS) {
         tracing::error!("Failed to create session for guest: {}", e);
     }

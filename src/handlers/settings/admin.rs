@@ -5,6 +5,7 @@ use axum::extract::{Path, State};
 use axum::http::HeaderMap;
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum::Form;
+use html_escape::encode_text;
 use serde::Deserialize;
 use std::process::Command;
 
@@ -37,20 +38,40 @@ pub async fn trigger_scrape(auth: AuthContext) -> Redirect {
     username: Some(auth.username.clone()),
   });
 
-  // Run the scraper commands for all lessons
-  let cmd = format!(
-    "cd {} && uv run kr-scraper lesson1 && uv run kr-scraper lesson2 && uv run kr-scraper lesson3 && uv run kr-scraper segment --padding 75",
-    paths::PY_SCRIPTS_DIR
-  );
-  match Command::new("sh").args(["-c", &cmd]).output() {
+  // Run the scraper commands for all lessons using argument arrays (no shell injection risk)
+  for lesson in ["lesson1", "lesson2", "lesson3"] {
+    match Command::new("uv")
+      .current_dir(paths::PY_SCRIPTS_DIR)
+      .args(["run", "kr-scraper", lesson])
+      .output()
+    {
+      Ok(output) if !output.status.success() => {
+        tracing::warn!(
+          "Scrape {} failed with status {}: {}",
+          lesson,
+          output.status,
+          String::from_utf8_lossy(&output.stderr)
+        );
+      }
+      Err(e) => tracing::warn!("Failed to run scrape command for {}: {}", lesson, e),
+      _ => {}
+    }
+  }
+
+  // Run segment with padding
+  match Command::new("uv")
+    .current_dir(paths::PY_SCRIPTS_DIR)
+    .args(["run", "kr-scraper", "segment", "--padding", "75"])
+    .output()
+  {
     Ok(output) if !output.status.success() => {
       tracing::warn!(
-        "Scrape command failed with status {}: {}",
+        "Segment command failed with status {}: {}",
         output.status,
         String::from_utf8_lossy(&output.stderr)
       );
     }
-    Err(e) => tracing::warn!("Failed to run scrape command: {}", e),
+    Err(e) => tracing::warn!("Failed to run segment command: {}", e),
     _ => {}
   }
 
@@ -70,23 +91,20 @@ pub async fn trigger_scrape_lesson(auth: AuthContext, Path(lesson): Path<String>
     username: Some(auth.username.clone()),
   });
 
-  let cmd = match lesson.as_str() {
-    "1" => format!(
-      "cd {} && uv run kr-scraper lesson1 && uv run kr-scraper segment -l 1 --padding 75",
-      paths::PY_SCRIPTS_DIR
-    ),
-    "2" => format!(
-      "cd {} && uv run kr-scraper lesson2 && uv run kr-scraper segment -l 2 --padding 75",
-      paths::PY_SCRIPTS_DIR
-    ),
-    "3" => format!(
-      "cd {} && uv run kr-scraper lesson3 && uv run kr-scraper segment -l 3 --padding 75",
-      paths::PY_SCRIPTS_DIR
-    ),
+  // Validate lesson input and map to scraper args (no shell injection risk)
+  let (lesson_cmd, lesson_num) = match lesson.as_str() {
+    "1" => ("lesson1", "1"),
+    "2" => ("lesson2", "2"),
+    "3" => ("lesson3", "3"),
     _ => return Redirect::to("/settings"),
   };
 
-  match Command::new("sh").args(["-c", &cmd]).output() {
+  // Run scraper for this lesson
+  match Command::new("uv")
+    .current_dir(paths::PY_SCRIPTS_DIR)
+    .args(["run", "kr-scraper", lesson_cmd])
+    .output()
+  {
     Ok(output) if !output.status.success() => {
       tracing::warn!(
         "Scrape lesson {} failed with status {}: {}",
@@ -96,6 +114,24 @@ pub async fn trigger_scrape_lesson(auth: AuthContext, Path(lesson): Path<String>
       );
     }
     Err(e) => tracing::warn!("Failed to run scrape command for lesson {}: {}", lesson, e),
+    _ => {}
+  }
+
+  // Run segment for this lesson
+  match Command::new("uv")
+    .current_dir(paths::PY_SCRIPTS_DIR)
+    .args(["run", "kr-scraper", "segment", "-l", lesson_num, "--padding", "75"])
+    .output()
+  {
+    Ok(output) if !output.status.success() => {
+      tracing::warn!(
+        "Segment lesson {} failed with status {}: {}",
+        lesson,
+        output.status,
+        String::from_utf8_lossy(&output.stderr)
+      );
+    }
+    Err(e) => tracing::warn!("Failed to run segment command for lesson {}: {}", lesson, e),
     _ => {}
   }
 
@@ -115,9 +151,12 @@ pub async fn delete_scraped(auth: AuthContext) -> Redirect {
     username: Some(auth.username.clone()),
   });
 
-  // Run the clean command
-  let cmd = format!("cd {} && uv run kr-scraper clean --yes", paths::PY_SCRIPTS_DIR);
-  match Command::new("sh").args(["-c", &cmd]).output() {
+  // Run the clean command using argument array (no shell injection risk)
+  match Command::new("uv")
+    .current_dir(paths::PY_SCRIPTS_DIR)
+    .args(["run", "kr-scraper", "clean", "--yes"])
+    .output()
+  {
     Ok(output) if !output.status.success() => {
       tracing::warn!(
         "Clean command failed with status {}: {}",
@@ -201,14 +240,15 @@ pub async fn trigger_segment(auth: AuthContext, Form(form): Form<SegmentForm>) -
     }
   );
 
-  // Use --reset to ignore saved manifest params and apply CLI values
-  let cmd = format!(
-    "cd {} && uv run kr-scraper segment --padding {} --reset 2>&1",
-    paths::PY_SCRIPTS_DIR,
-    form.padding
-  );
-
-  match Command::new("sh").args(["-c", &cmd]).output() {
+  // Use argument array instead of shell string for consistency
+  match Command::new("uv")
+    .current_dir(paths::PY_SCRIPTS_DIR)
+    .args([
+      "run", "kr-scraper", "segment",
+      "--padding", &form.padding.to_string(),
+      "--reset",
+    ])
+    .output() {
     Ok(output) if output.status.success() => {
       let stdout = String::from_utf8_lossy(&output.stdout);
       // Count "OK" occurrences for a rough success count
@@ -250,12 +290,12 @@ pub async fn trigger_segment(auth: AuthContext, Form(form): Form<SegmentForm>) -
       let error = stderr.lines().chain(stdout.lines()).next().unwrap_or("unknown error");
       Html(format!(
         r#"<span class="text-red-600 dark:text-red-400">Failed: {}</span>"#,
-        error
+        encode_text(error)
       ))
     }
     Err(e) => Html(format!(
       r#"<span class="text-red-600 dark:text-red-400">Failed: {}</span>"#,
-      e
+      encode_text(&e.to_string())
     )),
   }
 }
@@ -311,20 +351,30 @@ pub async fn trigger_row_segment(auth: AuthContext, Form(form): Form<RowSegmentF
     }
   );
 
-  // Use the segment-row CLI command for cleaner invocation
-  let cmd = format!(
-    "cd {} && uv run kr-scraper segment-row {} {} -s {} -t {} -P {} --skip-first {} --skip-last {} --json",
-    paths::PY_SCRIPTS_DIR,
-    form.lesson,
-    form.row,
-    form.min_silence,
-    form.threshold,
-    form.padding,
-    form.skip_first,
-    form.skip_last
-  );
+  // Validate lesson format (only allow lesson1, lesson2, lesson3)
+  if !matches!(form.lesson.as_str(), "lesson1" | "lesson2" | "lesson3") {
+    return Html(r#"<span class="text-red-600 dark:text-red-400">Invalid lesson</span>"#.to_string());
+  }
 
-  let (status_message, status_success) = match Command::new("sh").args(["-c", &cmd]).output() {
+  // Validate row format (alphanumeric only, for romanization)
+  if !form.row.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+    return Html(r#"<span class="text-red-600 dark:text-red-400">Invalid row</span>"#.to_string());
+  }
+
+  // Use argument array instead of shell string to prevent command injection
+  let (status_message, status_success) = match Command::new("uv")
+    .current_dir(paths::PY_SCRIPTS_DIR)
+    .args([
+      "run", "kr-scraper", "segment-row",
+      &form.lesson, &form.row,
+      "-s", &form.min_silence.to_string(),
+      "-t", &form.threshold.to_string(),
+      "-P", &form.padding.to_string(),
+      "--skip-first", &form.skip_first.to_string(),
+      "--skip-last", &form.skip_last.to_string(),
+      "--json",
+    ])
+    .output() {
     Ok(output) if output.status.success() => {
       let stdout = String::from_utf8_lossy(&output.stdout);
       if let Ok(result) = serde_json::from_str::<serde_json::Value>(stdout.trim()) {
@@ -338,11 +388,11 @@ pub async fn trigger_row_segment(auth: AuthContext, Form(form): Form<RowSegmentF
     Ok(output) => {
       let stderr = String::from_utf8_lossy(&output.stderr);
       (
-        format!("Failed: {}", stderr.lines().next().unwrap_or("unknown error")),
+        format!("Failed: {}", encode_text(stderr.lines().next().unwrap_or("unknown error"))),
         false,
       )
     }
-    Err(e) => (format!("Failed: {}", e), false),
+    Err(e) => (format!("Failed: {}", encode_text(&e.to_string())), false),
   };
 
   // Re-read the updated row data from manifest
@@ -396,28 +446,37 @@ pub async fn trigger_manual_segment(auth: AuthContext, Form(form): Form<ManualSe
     }
   );
 
-  // Call Python apply-manual command
-  let cmd = format!(
-    "cd {} && uv run kr-scraper apply-manual {} {} --start {} --end {}",
-    paths::PY_SCRIPTS_DIR,
-    form.lesson,
-    form.syllable,
-    form.start_ms,
-    form.end_ms
-  );
+  // Validate lesson format (only allow lesson1, lesson2, lesson3)
+  if !matches!(form.lesson.as_str(), "lesson1" | "lesson2" | "lesson3") {
+    return Html(r#"<span class="text-red-600 dark:text-red-400">Invalid lesson</span>"#.to_string());
+  }
 
-  let (status_message, status_success) = match Command::new("sh").args(["-c", &cmd]).output() {
+  // Syllable is Korean text - only allow Hangul characters and basic punctuation
+  if form.syllable.chars().any(|c| c.is_ascii_punctuation() && !matches!(c, '-' | '_')) {
+    return Html(r#"<span class="text-red-600 dark:text-red-400">Invalid syllable</span>"#.to_string());
+  }
+
+  // Use argument array instead of shell string to prevent command injection
+  let (status_message, status_success) = match Command::new("uv")
+    .current_dir(paths::PY_SCRIPTS_DIR)
+    .args([
+      "run", "kr-scraper", "apply-manual",
+      &form.lesson, &form.syllable,
+      "--start", &form.start_ms.to_string(),
+      "--end", &form.end_ms.to_string(),
+    ])
+    .output() {
     Ok(output) if output.status.success() => {
       ("Manual applied".to_string(), true)
     }
     Ok(output) => {
       let stderr = String::from_utf8_lossy(&output.stderr);
       (
-        format!("Failed: {}", stderr.lines().next().unwrap_or("unknown error")),
+        format!("Failed: {}", encode_text(stderr.lines().next().unwrap_or("unknown error"))),
         false,
       )
     }
-    Err(e) => (format!("Failed: {}", e), false),
+    Err(e) => (format!("Failed: {}", encode_text(&e.to_string())), false),
   };
 
   // Re-read the updated row data from manifest
@@ -467,26 +526,35 @@ pub async fn trigger_reset_segment(auth: AuthContext, Form(form): Form<ResetSegm
     }
   );
 
-  // Call Python reset-manual command
-  let cmd = format!(
-    "cd {} && uv run kr-scraper reset-manual {} {}",
-    paths::PY_SCRIPTS_DIR,
-    form.lesson,
-    form.syllable
-  );
+  // Validate lesson format (only allow lesson1, lesson2, lesson3)
+  if !matches!(form.lesson.as_str(), "lesson1" | "lesson2" | "lesson3") {
+    return Html(r#"<span class="text-red-600 dark:text-red-400">Invalid lesson</span>"#.to_string());
+  }
 
-  let (status_message, status_success) = match Command::new("sh").args(["-c", &cmd]).output() {
+  // Syllable is Korean text - only allow Hangul characters and basic punctuation
+  if form.syllable.chars().any(|c| c.is_ascii_punctuation() && !matches!(c, '-' | '_')) {
+    return Html(r#"<span class="text-red-600 dark:text-red-400">Invalid syllable</span>"#.to_string());
+  }
+
+  // Use argument array instead of shell string to prevent command injection
+  let (status_message, status_success) = match Command::new("uv")
+    .current_dir(paths::PY_SCRIPTS_DIR)
+    .args([
+      "run", "kr-scraper", "reset-manual",
+      &form.lesson, &form.syllable,
+    ])
+    .output() {
     Ok(output) if output.status.success() => {
       ("Reset to baseline".to_string(), true)
     }
     Ok(output) => {
       let stderr = String::from_utf8_lossy(&output.stderr);
       (
-        format!("Failed: {}", stderr.lines().next().unwrap_or("unknown error")),
+        format!("Failed: {}", encode_text(stderr.lines().next().unwrap_or("unknown error"))),
         false,
       )
     }
-    Err(e) => (format!("Failed: {}", e), false),
+    Err(e) => (format!("Failed: {}", encode_text(&e.to_string())), false),
   };
 
   // Re-read the updated row data from manifest

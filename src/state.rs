@@ -20,6 +20,15 @@ pub struct AppState {
     pub users_data_dir: PathBuf,
 }
 
+/// Validate username is safe for path construction (no path traversal)
+fn is_safe_username(username: &str) -> bool {
+    !username.is_empty()
+        && !username.contains('/')
+        && !username.contains('\\')
+        && !username.contains("..")
+        && username != "."
+}
+
 impl AppState {
     pub fn new(auth_db: AuthDb, users_data_dir: PathBuf) -> Self {
         Self {
@@ -28,13 +37,25 @@ impl AppState {
         }
     }
 
-    /// Get path to a user's learning database
+    /// Get path to a user's learning database.
+    /// Returns None if username contains path traversal characters.
     pub fn user_db_path(&self, username: &str) -> PathBuf {
+        if !is_safe_username(username) {
+            tracing::warn!("Rejected unsafe username for path construction: {:?}", username);
+            // Return a safe fallback that won't resolve to anything valid
+            return self.users_data_dir.join("__invalid__").join("learning.db");
+        }
         self.users_data_dir.join(username).join("learning.db")
     }
 
-    /// Get path to a user's data directory
+    /// Get path to a user's data directory.
+    /// Returns a safe fallback if username contains path traversal characters.
     pub fn user_dir(&self, username: &str) -> PathBuf {
+        if !is_safe_username(username) {
+            tracing::warn!("Rejected unsafe username for path construction: {:?}", username);
+            // Return a safe fallback that won't resolve to anything valid
+            return self.users_data_dir.join("__invalid__");
+        }
         self.users_data_dir.join(username)
     }
 }
