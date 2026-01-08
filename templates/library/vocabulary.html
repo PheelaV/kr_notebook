@@ -11,6 +11,7 @@
       {% for item in toc_items %}
       <a href="#{{ item.id }}" class="toc-link shrink-0 px-3 py-1.5 text-xs font-medium rounded-full bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-indigo-100 dark:hover:bg-indigo-900 hover:text-indigo-700 dark:hover:text-indigo-300">{{ item.short_label }}</a>
       {% endfor %}
+      <a href="#" class="scroll-top shrink-0 px-3 py-1.5 text-xs font-medium rounded-full bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-indigo-100 dark:hover:bg-indigo-900 hover:text-indigo-700 dark:hover:text-indigo-300">&uarr; Top</a>
     </div>
   </nav>
 
@@ -28,6 +29,9 @@
           </a>
         </li>
         {% endfor %}
+        <li class="pt-2 border-t border-gray-200 dark:border-gray-700 mt-2">
+          <a href="#" class="scroll-top block py-1.5 px-2 rounded text-gray-600 dark:text-gray-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors">&uarr; Back to top</a>
+        </li>
       </ul>
     </nav>
   </aside>
