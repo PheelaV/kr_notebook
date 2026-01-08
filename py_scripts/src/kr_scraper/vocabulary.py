@@ -1,7 +1,18 @@
-"""Convert HTSK vocabulary.json to cards.json format.
+"""Convert vocabulary.json to cards.json format.
 
-This module converts vocabulary data extracted from the HTSK PDF
-into the flashcard format expected by the kr_notebook app.
+This module converts vocabulary data into the flashcard format
+expected by kr_notebook card packs.
+
+Expected vocabulary.json format:
+[
+  {
+    "term": "한국",
+    "romanization": "hanguk",
+    "translation": "Korea",
+    "word_type": "Noun"
+  },
+  ...
+]
 """
 
 import json

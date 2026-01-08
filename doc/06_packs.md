@@ -63,7 +63,7 @@ Every pack requires a `pack.json` manifest in its root directory.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `id` | string | Unique identifier (e.g., `htsk-vocabulary`) |
+| `id` | string | Unique identifier (e.g., `my-vocabulary`) |
 | `name` | string | Human-readable name |
 | `type` | string | Pack type: `cards`, `audio`, or `generator` |
 
@@ -81,15 +81,11 @@ Every pack requires a `pack.json` manifest in its root directory.
 
 ```json
 {
-  "id": "htsk-vocabulary",
-  "name": "HTSK Unit 1 Vocabulary",
+  "id": "my-vocabulary",
+  "name": "My Vocabulary Pack",
   "version": "1.0.0",
   "type": "cards",
-  "description": "350 vocabulary words from HowtoStudyKorean.com",
-  "source": {
-    "url": "https://www.howtostudykorean.com",
-    "attribution": "HowtoStudyKorean.com"
-  },
+  "description": "Custom vocabulary flashcards",
   "cards": {
     "file": "cards.json",
     "tier": 5,
@@ -163,11 +159,11 @@ data/
 │   │   ├── baseline/
 │   │   │   ├── pack.json
 │   │   │   └── cards.json
-│   │   ├── htsk-vocabulary/
+│   │   ├── my-vocabulary/          # Custom vocabulary pack
 │   │   │   ├── pack.json
-│   │   │   ├── vocabulary.json     # Source data
-│   │   │   └── cards.json          # Generated cards
-│   │   └── htsk-scraper/
+│   │   │   ├── vocabulary.json     # Source data (optional)
+│   │   │   └── cards.json          # Card definitions
+│   │   └── htsk-scraper/           # Pronunciation audio scraper
 │   │       └── pack.json
 │   └── generated/                  # Scraper output
 │       └── htsk/

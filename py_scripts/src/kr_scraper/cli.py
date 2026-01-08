@@ -11,9 +11,6 @@ from .paths import HTSK_DIR, PROJECT_ROOT
 # Default output directory for scraped content
 DEFAULT_OUTPUT = HTSK_DIR
 
-# Vocabulary pack directory
-VOCABULARY_PACK_DIR = PROJECT_ROOT / "data" / "content" / "packs" / "htsk-vocabulary"
-
 
 @click.group()
 @click.version_option()
@@ -708,13 +705,9 @@ def reset_manual(lesson: str, syllable: str) -> None:
 
 
 @cli.command()
-@click.option(
-    "--input",
-    "-i",
+@click.argument(
     "input_path",
     type=click.Path(path_type=Path, exists=True),
-    default=None,
-    help="Input vocabulary.json path.",
 )
 @click.option(
     "--output",
@@ -722,7 +715,7 @@ def reset_manual(lesson: str, syllable: str) -> None:
     "output_path",
     type=click.Path(path_type=Path),
     default=None,
-    help="Output cards.json path.",
+    help="Output cards.json path (default: same directory as input).",
 )
 @click.option(
     "--tier",
@@ -737,25 +730,27 @@ def reset_manual(lesson: str, syllable: str) -> None:
     help="Don't create reverse cards.",
 )
 def vocabulary(
-    input_path: Path | None,
+    input_path: Path,
     output_path: Path | None,
     tier: int,
     no_reverse: bool,
 ) -> None:
     """Convert vocabulary.json to cards.json format.
 
-    Creates flashcards from HTSK vocabulary data extracted from the PDF.
+    INPUT_PATH is a vocabulary.json file with entries containing:
+    term, romanization, translation, word_type.
+
+    Creates flashcards in the format expected by kr_notebook packs.
     By default, creates both forward (Korean -> English) and reverse
     (English -> Korean) cards.
+
+    Example:
+        kr-scraper vocabulary path/to/vocabulary.json
     """
     from .vocabulary import convert_vocabulary
 
-    # Default paths
-    vocab_path = input_path or VOCABULARY_PACK_DIR / "vocabulary.json"
-    cards_path = output_path or VOCABULARY_PACK_DIR / "cards.json"
-
-    if not vocab_path.exists():
-        raise click.ClickException(f"Vocabulary file not found: {vocab_path}")
+    vocab_path = input_path
+    cards_path = output_path or vocab_path.parent / "cards.json"
 
     click.echo("Converting vocabulary to cards...")
     click.echo(f"  Input: {vocab_path}")
