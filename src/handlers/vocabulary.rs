@@ -4,6 +4,7 @@
 //! showing rich metadata (common usages, notes, examples).
 
 use askama::Template;
+use axum::extract::State;
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use serde::Deserialize;
 use std::collections::BTreeMap;
@@ -11,9 +12,10 @@ use std::fs;
 use std::path::Path;
 
 use crate::auth::AuthContext;
-use crate::content::{any_pack_provides, find_packs_providing, is_pack_enabled};
 use crate::filters;
-use crate::paths;
+use crate::handlers::NavContext;
+use crate::services::pack_manager::{self, PackFilter};
+use crate::state::AppState;
 
 /// Vocabulary entry with full metadata from vocabulary.json
 #[derive(Debug, Clone, Deserialize)]
@@ -46,7 +48,30 @@ pub struct Example {
     pub english: String,
 }
 
-/// TOC item for lesson navigation
+/// Vocabulary entries grouped by lesson
+pub struct LessonGroup {
+    pub lesson: u8,
+    pub entries: Vec<VocabularyEntry>,
+}
+
+/// A pack with its vocabulary content grouped by lesson
+pub struct PackGroup {
+    pub pack_id: String,
+    pub pack_name: String,
+    pub pack_description: Option<String>,
+    pub lessons: Vec<LessonGroup>,
+    pub word_count: usize,
+}
+
+/// TOC item for pack navigation
+pub struct PackTocItem {
+    pub id: String,
+    pub name: String,
+    pub word_count: usize,
+    pub lessons: Vec<LessonTocItem>,
+}
+
+/// TOC item for lesson navigation within a pack
 pub struct LessonTocItem {
     pub id: String,
     pub short_label: String,
@@ -54,50 +79,29 @@ pub struct LessonTocItem {
     pub count: usize,
 }
 
-/// Vocabulary entries grouped by lesson
-pub struct LessonGroup {
-    pub lesson: u8,
-    pub entries: Vec<VocabularyEntry>,
-}
-
 #[derive(Template)]
 #[template(path = "library/vocabulary.html")]
 pub struct VocabularyTemplate {
     pub pack_enabled: bool,
-    pub lessons: Vec<LessonGroup>,
-    pub toc_items: Vec<LessonTocItem>,
+    pub packs: Vec<PackGroup>,
+    pub toc_items: Vec<PackTocItem>,
     pub total_count: usize,
+    pub nav: NavContext,
 }
 
-/// Check if any vocabulary pack is available on disk
-fn is_vocabulary_available() -> bool {
-    any_pack_provides(Path::new(paths::SHARED_PACKS_DIR), "vocabulary")
-}
-
-/// Get pack IDs that provide vocabulary content
-fn get_vocabulary_pack_ids() -> Vec<String> {
-    find_packs_providing(Path::new(paths::SHARED_PACKS_DIR), "vocabulary")
-}
-
-/// Load vocabulary from an enabled pack's vocabulary.json
-fn load_vocabulary(pack_id: &str) -> Option<Vec<VocabularyEntry>> {
-    let vocab_path = Path::new(paths::SHARED_PACKS_DIR)
-        .join(pack_id)
-        .join("vocabulary.json");
-
+/// Load vocabulary from a pack's vocabulary.json file
+fn load_vocabulary_from_path(pack_path: &Path) -> Option<Vec<VocabularyEntry>> {
+    let vocab_path = pack_path.join("vocabulary.json");
     let content = fs::read_to_string(&vocab_path).ok()?;
     serde_json::from_str(&content).ok()
 }
 
 /// Vocabulary library page handler
-pub async fn vocabulary_library(auth: AuthContext) -> Response {
-    // First check if any vocabulary pack is available
-    if !is_vocabulary_available() {
-        // No vocabulary packs installed - redirect to library
-        return Redirect::to("/library").into_response();
-    }
-
-    let conn = match auth.user_db.lock() {
+pub async fn vocabulary_library(
+    State(state): State<AppState>,
+    auth: AuthContext,
+) -> Response {
+    let app_conn = match state.auth_db.lock() {
         Ok(conn) => conn,
         Err(_) => {
             return Html("<h1>Database Error</h1><p>Please refresh the page.</p>".to_string())
@@ -105,55 +109,97 @@ pub async fn vocabulary_library(auth: AuthContext) -> Response {
         }
     };
 
-    // Find vocabulary packs and check if any are enabled
-    let vocab_pack_ids = get_vocabulary_pack_ids();
-    let enabled_pack = vocab_pack_ids
-        .iter()
-        .find(|id| is_pack_enabled(&conn, id));
+    // Check if any vocabulary packs exist at all (for redirect vs "not enabled")
+    if !pack_manager::any_accessible_pack_provides(&app_conn, auth.user_id, "vocabulary") {
+        // Check if vocabulary packs exist but user can't access them
+        let all_packs = pack_manager::discover_all_packs(&app_conn);
+        let vocab_exists = all_packs
+            .iter()
+            .any(|p| p.manifest.provides.iter().any(|t| t == "vocabulary"));
 
-    let Some(pack_id) = enabled_pack else {
-        // Packs available but none enabled
+        if !vocab_exists {
+            // No vocabulary packs installed at all - redirect to library
+            return Redirect::to("/library").into_response();
+        }
+
+        // Vocabulary packs exist but user can't access any
         let template = VocabularyTemplate {
             pack_enabled: false,
-            lessons: vec![],
+            packs: vec![],
             toc_items: vec![],
             total_count: 0,
+            nav: NavContext::from_auth(&auth),
         };
         return Html(template.render().unwrap_or_default()).into_response();
-    };
-
-    // Load and group vocabulary
-    let vocabulary = load_vocabulary(pack_id).unwrap_or_default();
-    let total_count = vocabulary.len();
-
-    // Group by lesson number
-    let mut lesson_map: BTreeMap<u8, Vec<VocabularyEntry>> = BTreeMap::new();
-    for entry in vocabulary {
-        lesson_map.entry(entry.lesson).or_default().push(entry);
     }
 
-    // Convert to Vec<LessonGroup>
-    let lessons: Vec<LessonGroup> = lesson_map
-        .into_iter()
-        .map(|(lesson, entries)| LessonGroup { lesson, entries })
-        .collect();
+    // Get accessible vocabulary packs using PackManager
+    let accessible_packs = pack_manager::get_accessible_packs(
+        &app_conn,
+        auth.user_id,
+        Some(PackFilter::provides("vocabulary")),
+    );
 
-    // Build TOC items
-    let toc_items: Vec<LessonTocItem> = lessons
-        .iter()
-        .map(|g| LessonTocItem {
-            id: format!("lesson-{}", g.lesson),
-            short_label: format!("L{}", g.lesson),
-            full_label: format!("Lesson {} ({})", g.lesson, g.entries.len()),
-            count: g.entries.len(),
-        })
-        .collect();
+    // Build pack groups with vocabulary content
+    let mut pack_groups: Vec<PackGroup> = Vec::new();
+    let mut toc_items: Vec<PackTocItem> = Vec::new();
+    let mut total_count = 0;
+
+    for pack in &accessible_packs {
+        if let Some(vocab_entries) = load_vocabulary_from_path(&pack.path) {
+            if vocab_entries.is_empty() {
+                continue;
+            }
+
+            let word_count = vocab_entries.len();
+            total_count += word_count;
+
+            // Group entries by lesson within this pack
+            let mut lesson_map: BTreeMap<u8, Vec<VocabularyEntry>> = BTreeMap::new();
+            for entry in vocab_entries {
+                lesson_map.entry(entry.lesson).or_default().push(entry);
+            }
+
+            // Convert to Vec<LessonGroup>
+            let lessons: Vec<LessonGroup> = lesson_map
+                .into_iter()
+                .map(|(lesson, entries)| LessonGroup { lesson, entries })
+                .collect();
+
+            // Build lesson TOC items for this pack
+            let lesson_toc_items: Vec<LessonTocItem> = lessons
+                .iter()
+                .map(|g| LessonTocItem {
+                    id: format!("{}-lesson-{}", pack.manifest.id, g.lesson),
+                    short_label: format!("L{}", g.lesson),
+                    full_label: format!("Lesson {} ({})", g.lesson, g.entries.len()),
+                    count: g.entries.len(),
+                })
+                .collect();
+
+            toc_items.push(PackTocItem {
+                id: pack.manifest.id.clone(),
+                name: pack.manifest.name.clone(),
+                word_count,
+                lessons: lesson_toc_items,
+            });
+
+            pack_groups.push(PackGroup {
+                pack_id: pack.manifest.id.clone(),
+                pack_name: pack.manifest.name.clone(),
+                pack_description: pack.manifest.description.clone(),
+                lessons,
+                word_count,
+            });
+        }
+    }
 
     let template = VocabularyTemplate {
-        pack_enabled: true,
-        lessons,
+        pack_enabled: !pack_groups.is_empty(),
+        packs: pack_groups,
         toc_items,
         total_count,
+        nav: NavContext::from_auth(&auth),
     };
 
     Html(template.render().unwrap_or_default()).into_response()

@@ -16,7 +16,7 @@
       <div class="card-front absolute inset-0 bg-white dark:bg-gray-800 shadow-lg rounded-xl flex flex-col items-center justify-center cursor-pointer p-6 sm:p-10">
         {% if is_reverse %}
         <div class="text-sm text-gray-500 dark:text-gray-400 mb-2">
-          Which letter sounds like
+          {% if is_vocabulary %}Which matches{% else %}Which letter sounds like{% endif %}
         </div>
         <div class="text-5xl sm:text-7xl font-bold text-gray-900 dark:text-white">
           {{ front }}

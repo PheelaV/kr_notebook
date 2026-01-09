@@ -1,4 +1,5 @@
 pub mod cards;
+pub mod lesson_progress;
 pub mod reviews;
 pub mod schema;
 pub mod stats;
@@ -12,6 +13,7 @@ use crate::domain::{Card, CardType};
 
 // Re-export all public items from submodules
 pub use cards::*;
+pub use lesson_progress::*;
 pub use reviews::*;
 pub use schema::{run_migrations, run_migrations_with_app_db};
 pub use stats::*;

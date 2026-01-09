@@ -13,13 +13,14 @@ use crate::domain::{Card, CardType, FsrsState};
 #[cfg(feature = "profiling")]
 use crate::profiling::EventType;
 
+use super::lesson_progress::{build_filter_where_clause, StudyFilterMode};
 use super::tiers::{get_all_tiers_unlocked, get_effective_tiers, get_enabled_tiers, get_max_unlocked_tier};
 
 /// SQL fragment for selecting card data from joined tables
 /// Uses app.card_definitions for content and card_progress for SRS state
 const CARD_SELECT: &str = r#"
   cd.id, cd.front, cd.main_answer, cd.description, cd.card_type, cd.tier,
-  cd.audio_hint, cd.is_reverse,
+  cd.audio_hint, cd.is_reverse, cd.pack_id, cd.lesson,
   COALESCE(cp.ease_factor, 2.5) as ease_factor,
   COALESCE(cp.interval_days, 0) as interval_days,
   COALESCE(cp.repetitions, 0) as repetitions,
@@ -420,6 +421,32 @@ pub fn get_all_unlocked_cards(conn: &Connection) -> Result<Vec<Card>> {
     Ok(cards)
 }
 
+/// Get cards from the same pack and lesson (for generating vocabulary choices)
+pub fn get_cards_from_same_lesson(
+    conn: &Connection,
+    pack_id: &str,
+    lesson: u8,
+) -> Result<Vec<Card>> {
+    #[cfg(feature = "profiling")]
+    crate::profile_log!(EventType::DbQuery {
+        operation: "select_same_lesson".into(),
+        table: "cards".into(),
+    });
+
+    let query = format!(
+        r#"SELECT {} {}
+        WHERE cd.pack_id = ?1 AND cd.lesson = ?2
+        ORDER BY cd.id ASC"#,
+        CARD_SELECT, CARD_FROM
+    );
+    let mut stmt = conn.prepare(&query)?;
+
+    let cards = stmt
+        .query_map(params![pack_id, lesson], |row| row_to_card(row))?
+        .collect::<Result<Vec<_>>>()?;
+    Ok(cards)
+}
+
 pub fn get_unreviewed_today(
     conn: &Connection,
     limit: usize,
@@ -631,11 +658,17 @@ pub fn update_card_after_fsrs_review(
 }
 
 /// Convert a database row to a Card struct
+/// Column order: id(0), front(1), main_answer(2), description(3), card_type(4), tier(5),
+///               audio_hint(6), is_reverse(7), pack_id(8), lesson(9),
+///               ease_factor(10), interval_days(11), repetitions(12), next_review(13),
+///               total_reviews(14), correct_reviews(15), learning_step(16),
+///               fsrs_stability(17), fsrs_difficulty(18), fsrs_state(19)
 pub(crate) fn row_to_card(row: &rusqlite::Row) -> Result<Card> {
     let card_type_str: String = row.get(4)?;
     let is_reverse_int: i64 = row.get(7)?;
-    let next_review_str: String = row.get(11)?;
-    let fsrs_state_str: Option<String> = row.get(17)?;
+    let lesson_int: Option<i64> = row.get(9)?;
+    let next_review_str: String = row.get(13)?;
+    let fsrs_state_str: Option<String> = row.get(19)?;
 
     Ok(Card {
         id: row.get(0)?,
@@ -646,17 +679,437 @@ pub(crate) fn row_to_card(row: &rusqlite::Row) -> Result<Card> {
         tier: row.get(5)?,
         audio_hint: row.get(6)?,
         is_reverse: is_reverse_int != 0,
-        ease_factor: row.get(8)?,
-        interval_days: row.get(9)?,
-        repetitions: row.get(10)?,
+        pack_id: row.get(8)?,
+        lesson: lesson_int.map(|l| l as u8),
+        ease_factor: row.get(10)?,
+        interval_days: row.get(11)?,
+        repetitions: row.get(12)?,
         next_review: DateTime::parse_from_rfc3339(&next_review_str)
             .map(|dt| dt.with_timezone(&Utc))
             .unwrap_or_else(|_| Utc::now()),
-        total_reviews: row.get(12)?,
-        correct_reviews: row.get(13)?,
-        learning_step: row.get(14)?,
-        fsrs_stability: row.get(15)?,
-        fsrs_difficulty: row.get(16)?,
+        total_reviews: row.get(14)?,
+        correct_reviews: row.get(15)?,
+        learning_step: row.get(16)?,
+        fsrs_stability: row.get(17)?,
+        fsrs_difficulty: row.get(18)?,
         fsrs_state: fsrs_state_str.map(|s| FsrsState::from_str(&s)),
     })
+}
+
+// ==================== Filtered Card Selection ====================
+// These functions accept a StudyFilterMode to filter cards by pack/lesson
+
+/// Get due cards with study filter applied
+pub fn get_due_cards_filtered(
+    conn: &Connection,
+    app_conn: &Connection,
+    user_id: i64,
+    limit: usize,
+    exclude_sibling_of: Option<i64>,
+    filter: &StudyFilterMode,
+) -> Result<Vec<Card>> {
+    #[cfg(feature = "profiling")]
+    crate::profile_log!(EventType::DbQuery {
+        operation: "select_filtered".into(),
+        table: "cards".into(),
+    });
+
+    let now = Utc::now().to_rfc3339();
+
+    // Build filter clause - returns (clause, params, skip_tier_filter)
+    let (filter_clause, _, skip_tier_filter) = build_filter_where_clause(conn, app_conn, user_id, filter)?;
+
+    // Build tier clause - only apply if not skipping
+    let tier_clause = if skip_tier_filter {
+        String::new()
+    } else {
+        let effective_tiers = get_effective_tiers(conn)?;
+        if effective_tiers.is_empty() {
+            return Ok(vec![]);
+        }
+        let tier_list = effective_tiers
+            .iter()
+            .map(|t| t.to_string())
+            .collect::<Vec<_>>()
+            .join(",");
+        format!("AND cd.tier IN ({})", tier_list)
+    };
+
+    if let Some(last_id) = exclude_sibling_of {
+        if let Ok(Some(last_card)) = get_card_by_id(conn, last_id) {
+            let query = format!(
+                r#"SELECT {} {}
+                WHERE COALESCE(cp.next_review, datetime('now')) <= ?1
+                  {}
+                  AND cd.id != ?2
+                  AND cd.main_answer != ?3
+                  AND cd.front NOT LIKE '%' || ?4 || '%'
+                  {}
+                ORDER BY cd.tier ASC, COALESCE(cp.next_review, datetime('now')) ASC
+                LIMIT ?5"#,
+                CARD_SELECT, CARD_FROM, tier_clause, filter_clause
+            );
+            let mut stmt = conn.prepare(&query)?;
+
+            let cards = stmt
+                .query_map(
+                    params![now, last_id, last_card.front, last_card.main_answer, limit as i64],
+                    |row| row_to_card(row),
+                )?
+                .collect::<Result<Vec<_>>>()?;
+            return Ok(cards);
+        }
+    }
+
+    let query = format!(
+        r#"SELECT {} {}
+        WHERE COALESCE(cp.next_review, datetime('now')) <= ?1
+        {} {}
+        ORDER BY cd.tier ASC, COALESCE(cp.next_review, datetime('now')) ASC
+        LIMIT ?2"#,
+        CARD_SELECT, CARD_FROM, tier_clause, filter_clause
+    );
+    let mut stmt = conn.prepare(&query)?;
+
+    let cards = stmt
+        .query_map(params![now, limit as i64], |row| row_to_card(row))?
+        .collect::<Result<Vec<_>>>()?;
+    Ok(cards)
+}
+
+/// Get due card count with study filter applied
+pub fn get_due_count_filtered(
+    conn: &Connection,
+    app_conn: &Connection,
+    user_id: i64,
+    filter: &StudyFilterMode,
+) -> Result<i64> {
+    #[cfg(feature = "profiling")]
+    crate::profile_log!(EventType::DbQuery {
+        operation: "count_filtered".into(),
+        table: "cards".into(),
+    });
+
+    let now = Utc::now().to_rfc3339();
+    let (filter_clause, _, skip_tier_filter) = build_filter_where_clause(conn, app_conn, user_id, filter)?;
+
+    let tier_clause = if skip_tier_filter {
+        String::new()
+    } else {
+        let effective_tiers = get_effective_tiers(conn)?;
+        if effective_tiers.is_empty() {
+            return Ok(0);
+        }
+        let tier_list = effective_tiers
+            .iter()
+            .map(|t| t.to_string())
+            .collect::<Vec<_>>()
+            .join(",");
+        format!("AND cd.tier IN ({})", tier_list)
+    };
+
+    let query = format!(
+        r#"SELECT COUNT(*) {}
+        WHERE COALESCE(cp.next_review, datetime('now')) <= ?1
+        {} {}"#,
+        CARD_FROM, tier_clause, filter_clause
+    );
+    conn.query_row(&query, params![now], |row| row.get(0))
+}
+
+/// Get due cards interleaved with study filter applied
+pub fn get_due_cards_interleaved_filtered(
+    conn: &Connection,
+    app_conn: &Connection,
+    user_id: i64,
+    limit: usize,
+    exclude_sibling_of: Option<i64>,
+    filter: &StudyFilterMode,
+) -> Result<Vec<Card>> {
+    #[cfg(feature = "profiling")]
+    crate::profile_log!(EventType::DbQuery {
+        operation: "select_interleaved_filtered".into(),
+        table: "cards".into(),
+    });
+
+    let now = Utc::now().to_rfc3339();
+    let (filter_clause, _, skip_tier_filter) = build_filter_where_clause(conn, app_conn, user_id, filter)?;
+
+    let tier_clause = if skip_tier_filter {
+        String::new()
+    } else {
+        let effective_tiers = get_effective_tiers(conn)?;
+        if effective_tiers.is_empty() {
+            return Ok(vec![]);
+        }
+        let tier_list = effective_tiers
+            .iter()
+            .map(|t| t.to_string())
+            .collect::<Vec<_>>()
+            .join(",");
+        format!("AND cd.tier IN ({})", tier_list)
+    };
+
+    let exclude_clause = if let Some(last_id) = exclude_sibling_of {
+        if let Ok(Some(last_card)) = get_card_by_id(conn, last_id) {
+            format!(
+                "AND cd.id != {} AND cd.main_answer != '{}' AND cd.front NOT LIKE '%{}%'",
+                last_id,
+                last_card.front.replace('\'', "''"),
+                last_card.main_answer.replace('\'', "''")
+            )
+        } else {
+            String::new()
+        }
+    } else {
+        String::new()
+    };
+
+    let query = format!(
+        r#"SELECT {} {}
+        WHERE COALESCE(cp.next_review, datetime('now')) <= ?1
+        {} {} {}
+        ORDER BY cd.card_type, RANDOM()
+        LIMIT ?2"#,
+        CARD_SELECT, CARD_FROM, tier_clause, filter_clause, exclude_clause
+    );
+    let mut stmt = conn.prepare(&query)?;
+
+    let cards = stmt
+        .query_map(params![now, limit as i64], |row| row_to_card(row))?
+        .collect::<Result<Vec<_>>>()?;
+    Ok(cards)
+}
+
+/// Get unreviewed today cards with study filter applied
+pub fn get_unreviewed_today_filtered(
+    conn: &Connection,
+    app_conn: &Connection,
+    user_id: i64,
+    limit: usize,
+    exclude_sibling_of: Option<i64>,
+    filter: &StudyFilterMode,
+) -> Result<Vec<Card>> {
+    #[cfg(feature = "profiling")]
+    crate::profile_log!(EventType::DbQuery {
+        operation: "select_unreviewed_filtered".into(),
+        table: "cards".into(),
+    });
+
+    let (filter_clause, _, skip_tier_filter) = build_filter_where_clause(conn, app_conn, user_id, filter)?;
+
+    let tier_clause = if skip_tier_filter {
+        String::new()
+    } else {
+        let effective_tiers = get_effective_tiers(conn)?;
+        if effective_tiers.is_empty() {
+            return Ok(vec![]);
+        }
+        let tier_list = effective_tiers
+            .iter()
+            .map(|t| t.to_string())
+            .collect::<Vec<_>>()
+            .join(",");
+        format!("AND cd.tier IN ({})", tier_list)
+    };
+
+    let today_start = Utc::now()
+        .date_naive()
+        .and_hms_opt(0, 0, 0)
+        .unwrap()
+        .and_utc()
+        .to_rfc3339();
+
+    let exclude_clause = if let Some(last_id) = exclude_sibling_of {
+        if let Ok(Some(last_card)) = get_card_by_id(conn, last_id) {
+            format!(
+                "AND cd.id != {} AND cd.main_answer != '{}' AND cd.front NOT LIKE '%{}%'",
+                last_id,
+                last_card.front.replace('\'', "''"),
+                last_card.main_answer.replace('\'', "''")
+            )
+        } else {
+            String::new()
+        }
+    } else {
+        String::new()
+    };
+
+    let query = format!(
+        r#"SELECT {} {}
+        WHERE 1=1
+          {}
+          AND NOT EXISTS (
+            SELECT 1 FROM review_logs r
+            WHERE r.card_id = cd.id AND r.reviewed_at >= ?1
+          )
+          {} {}
+        ORDER BY cd.tier ASC, RANDOM()
+        LIMIT ?2"#,
+        CARD_SELECT, CARD_FROM, tier_clause, filter_clause, exclude_clause
+    );
+    let mut stmt = conn.prepare(&query)?;
+
+    let cards = stmt
+        .query_map(params![today_start, limit as i64], |row| row_to_card(row))?
+        .collect::<Result<Vec<_>>>()?;
+    Ok(cards)
+}
+
+/// Get unreviewed today count with study filter applied
+pub fn get_unreviewed_today_count_filtered(
+    conn: &Connection,
+    app_conn: &Connection,
+    user_id: i64,
+    filter: &StudyFilterMode,
+) -> Result<i64> {
+    #[cfg(feature = "profiling")]
+    crate::profile_log!(EventType::DbQuery {
+        operation: "count_unreviewed_filtered".into(),
+        table: "cards".into(),
+    });
+
+    let (filter_clause, _, skip_tier_filter) = build_filter_where_clause(conn, app_conn, user_id, filter)?;
+
+    let tier_clause = if skip_tier_filter {
+        String::new()
+    } else {
+        let effective_tiers = get_effective_tiers(conn)?;
+        if effective_tiers.is_empty() {
+            return Ok(0);
+        }
+        let tier_list = effective_tiers
+            .iter()
+            .map(|t| t.to_string())
+            .collect::<Vec<_>>()
+            .join(",");
+        format!("AND cd.tier IN ({})", tier_list)
+    };
+
+    let today_start = Utc::now()
+        .date_naive()
+        .and_hms_opt(0, 0, 0)
+        .unwrap()
+        .and_utc()
+        .to_rfc3339();
+
+    let query = format!(
+        r#"SELECT COUNT(*) {}
+        WHERE 1=1
+          {}
+          AND NOT EXISTS (
+            SELECT 1 FROM review_logs r
+            WHERE r.card_id = cd.id AND r.reviewed_at >= ?1
+          )
+          {}"#,
+        CARD_FROM, tier_clause, filter_clause
+    );
+    conn.query_row(&query, params![today_start], |row| row.get(0))
+}
+
+/// Get practice cards with study filter applied
+pub fn get_practice_cards_filtered(
+    conn: &Connection,
+    app_conn: &Connection,
+    user_id: i64,
+    limit: usize,
+    exclude_id: Option<i64>,
+    filter: &StudyFilterMode,
+) -> Result<Vec<Card>> {
+    #[cfg(feature = "profiling")]
+    crate::profile_log!(EventType::DbQuery {
+        operation: "select_practice_filtered".into(),
+        table: "cards".into(),
+    });
+
+    let (filter_clause, _, skip_tier_filter) = build_filter_where_clause(conn, app_conn, user_id, filter)?;
+
+    // Build tier clause conditionally
+    let tier_clause = if skip_tier_filter {
+        String::new()
+    } else {
+        let effective_tiers = get_effective_tiers(conn)?;
+        if effective_tiers.is_empty() {
+            return Ok(vec![]);
+        }
+        let tier_list = effective_tiers
+            .iter()
+            .map(|t| t.to_string())
+            .collect::<Vec<_>>()
+            .join(",");
+        format!("AND cd.tier IN ({})", tier_list)
+    };
+
+    if let Some(last_id) = exclude_id {
+        if let Ok(Some(last_card)) = get_card_by_id(conn, last_id) {
+            let query = format!(
+                r#"SELECT {} {}
+                WHERE cd.id != ?1
+                  AND cd.main_answer != ?2
+                  AND cd.front NOT LIKE '%' || ?3 || '%'
+                  {} {}
+                ORDER BY RANDOM()
+                LIMIT ?4"#,
+                CARD_SELECT, CARD_FROM, tier_clause, filter_clause
+            );
+            let mut stmt = conn.prepare(&query)?;
+
+            let cards = stmt
+                .query_map(
+                    params![last_id, last_card.front, last_card.main_answer, limit as i64],
+                    |row| row_to_card(row),
+                )?
+                .collect::<Result<Vec<_>>>()?;
+            return Ok(cards);
+        }
+    }
+
+    let query = format!(
+        r#"SELECT {} {}
+        WHERE 1=1 {} {}
+        ORDER BY RANDOM()
+        LIMIT ?1"#,
+        CARD_SELECT, CARD_FROM, tier_clause, filter_clause
+    );
+    let mut stmt = conn.prepare(&query)?;
+
+    let cards = stmt
+        .query_map(params![limit as i64], |row| row_to_card(row))?
+        .collect::<Result<Vec<_>>>()?;
+    Ok(cards)
+}
+
+/// Get count of cards accessible to the user (Hangul + enabled packs with permission)
+pub fn get_accessible_card_count(
+    conn: &Connection,
+    app_conn: &Connection,
+    user_id: i64,
+) -> Result<(i64, i64)> {
+    #[cfg(feature = "profiling")]
+    crate::profile_log!(EventType::DbQuery {
+        operation: "count_accessible".into(),
+        table: "cards".into(),
+    });
+
+    // Use All mode to get accessible cards count
+    let filter = StudyFilterMode::All;
+    let (filter_clause, _, _) = build_filter_where_clause(conn, app_conn, user_id, &filter)?;
+
+    // Count total accessible cards
+    let query = format!(
+        r#"SELECT COUNT(*) {}
+        WHERE 1=1 {}"#,
+        CARD_FROM, filter_clause
+    );
+    let total_cards: i64 = conn.query_row(&query, [], |row| row.get(0))?;
+
+    // Count learned cards (repetitions >= 2)
+    let query_learned = format!(
+        r#"SELECT COUNT(*) {}
+        WHERE COALESCE(cp.repetitions, 0) >= 2 {}"#,
+        CARD_FROM, filter_clause
+    );
+    let cards_learned: i64 = conn.query_row(&query_learned, [], |row| row.get(0))?;
+
+    Ok((total_cards, cards_learned))
 }

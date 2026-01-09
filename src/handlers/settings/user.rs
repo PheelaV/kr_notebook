@@ -1,10 +1,8 @@
 //! User-facing settings page and preferences.
 
-use std::path::Path;
-
 use askama::Template;
 use axum::extract::{Multipart, State};
-use axum::http::{header, StatusCode};
+use axum::http::{header, HeaderMap, StatusCode};
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum::Form;
 use chrono::Utc;
@@ -13,10 +11,10 @@ use serde::Deserialize;
 
 use crate::auth::db as auth_db;
 use crate::auth::AuthContext;
-use crate::content::{self, discover_packs_with_external, PackLocation, PackType};
+use crate::content::{self, PackLocation, PackType};
 use crate::db::{self, run_migrations, LogOnError};
 use crate::filters;
-use crate::paths;
+use crate::services::pack_manager;
 use crate::state::AppState;
 #[cfg(feature = "profiling")]
 use crate::profiling::EventType;
@@ -24,6 +22,7 @@ use crate::profiling::EventType;
 use super::admin::RegisteredPathDisplay;
 use super::audio::{get_lesson_audio, LessonAudio, TierGraduationStatus};
 use super::{count_syllables, has_lesson1, has_lesson2, has_lesson3};
+use crate::handlers::NavContext;
 
 /// TOC item for navigation
 pub struct TocItem {
@@ -78,14 +77,16 @@ pub struct PackInfo {
   pub is_restricted: bool,           // Has any group or user restrictions
   pub allowed_groups: Vec<String>,   // Group IDs that can access this pack
   pub allowed_users: Vec<AllowedUser>, // Users that have direct access
+  pub can_manage: bool,              // User can enable/disable this pack
 }
 
 impl PackInfo {
   /// Create PackInfo from a discovered pack
-  fn from_location(
+  pub fn from_location(
     loc: &PackLocation,
-    enabled_packs: &[String],
+    _enabled_packs: &[String],
     auth_conn: Option<&Connection>,
+    is_admin: bool,
   ) -> Self {
     let is_baseline = loc.manifest.id == "baseline";
     let cards_count = if loc.manifest.pack_type == PackType::Cards {
@@ -101,19 +102,25 @@ impl PackInfo {
       None
     };
 
-    // Get pack permissions from auth_db
-    let (is_restricted, allowed_groups, allowed_users) = auth_conn
+    // Get pack permissions and global enabled state from auth_db
+    let (is_restricted, allowed_groups, allowed_users, is_globally_enabled) = auth_conn
       .map(|conn| {
-        let restricted = auth_db::is_pack_restricted(conn, &loc.manifest.id).unwrap_or(false);
+        let restricted = auth_db::is_pack_restricted_for_ui(conn, &loc.manifest.id).unwrap_or(false);
         let groups = auth_db::get_pack_allowed_groups(conn, &loc.manifest.id).unwrap_or_default();
         let users = auth_db::get_pack_allowed_users(conn, &loc.manifest.id)
           .unwrap_or_default()
           .into_iter()
           .map(|(id, username)| AllowedUser { id, username })
           .collect();
-        (restricted, groups, users)
+        let globally_enabled = auth_db::is_pack_globally_enabled(conn, &loc.manifest.id).unwrap_or(true);
+        (restricted, groups, users, globally_enabled)
       })
-      .unwrap_or((false, Vec::new(), Vec::new()));
+      .unwrap_or((false, Vec::new(), Vec::new(), true));
+
+    // Determine if user can manage (enable/disable) this pack:
+    // - Only admins can enable/disable packs
+    // - Baseline pack cannot be disabled by anyone
+    let can_manage = !is_baseline && is_admin;
 
     PackInfo {
       id: loc.manifest.id.clone(),
@@ -121,12 +128,13 @@ impl PackInfo {
       description: loc.manifest.description.clone(),
       pack_type: loc.manifest.pack_type.as_str().to_string(),
       version: loc.manifest.version.clone(),
-      is_enabled: is_baseline || enabled_packs.contains(&loc.manifest.id),
+      is_enabled: is_baseline || is_globally_enabled,
       is_baseline,
       cards_count,
       is_restricted,
       allowed_groups,
       allowed_users,
+      can_manage,
     }
   }
 }
@@ -165,6 +173,7 @@ pub struct SettingsTemplate {
   // TOC navigation
   pub toc_items: Vec<TocItem>,
   pub toc_title: String,
+  pub nav: NavContext,
 }
 
 /// Error HTML for database unavailable
@@ -226,20 +235,25 @@ pub async fn settings_page(auth: AuthContext, State(state): State<AppState>) -> 
 
   // Discover content packs (including external registered paths)
   let enabled_packs = content::list_enabled_packs(&conn);
-  let shared_packs_path = Path::new(paths::SHARED_PACKS_DIR);
-  let external_paths: Vec<std::path::PathBuf> = auth_conn.as_deref()
-    .and_then(|db| auth_db::get_active_registered_paths(db).ok())
-    .unwrap_or_default()
-    .into_iter()
-    .map(|p| std::path::PathBuf::from(p.path))
-    .collect();
-  let discovered = discover_packs_with_external(shared_packs_path, None, None, &external_paths);
+  let discovered = auth_conn.as_deref()
+    .map(|db| pack_manager::discover_all_packs(db))
+    .unwrap_or_default();
 
-  // Filter to card packs only
+  // Filter to card packs only, and for non-admin users, only show packs they can access
   let card_packs: Vec<PackInfo> = discovered
     .iter()
     .filter(|loc| loc.manifest.pack_type == PackType::Cards)
-    .map(|loc| PackInfo::from_location(loc, &enabled_packs, auth_conn.as_deref()))
+    .filter(|loc| {
+      // Admins can see all packs
+      if auth.is_admin {
+        return true;
+      }
+      // Non-admins only see packs they have permission to access
+      auth_conn.as_deref()
+        .map(|db| pack_manager::can_access(db, auth.user_id, &loc.manifest.id))
+        .unwrap_or(true) // If no auth_db, allow (shouldn't happen)
+    })
+    .map(|loc| PackInfo::from_location(loc, &enabled_packs, auth_conn.as_deref(), auth.is_admin))
     .collect();
 
   // Fetch users, groups, and registered paths for admin
@@ -344,6 +358,7 @@ pub async fn settings_page(auth: AuthContext, State(state): State<AppState>) -> 
     paths: registered_paths,
     toc_items,
     toc_title: "Settings".to_string(),
+    nav: NavContext::from_auth(&auth),
   };
   Html(template.render().unwrap_or_default())
 }
@@ -658,10 +673,39 @@ fn import_error_redirect(error: &str) -> Response {
 
 use axum::extract::Path as AxumPath;
 
+/// Check if request is from HTMX
+fn is_htmx_request(headers: &HeaderMap) -> bool {
+  headers.get("HX-Request").is_some()
+}
+
+/// Helper to create an error notification HTML (uses hx-swap-oob to update notifications area)
+fn error_notification(message: &str) -> String {
+  format!(
+    r#"<div id="notifications" hx-swap-oob="innerHTML:#notifications">
+      <div class="p-4 mb-4 text-sm text-red-700 bg-red-100 dark:bg-red-900/30 dark:text-red-300 rounded-lg flex items-center justify-between" role="alert">
+        <span>{}</span>
+        <button type="button" onclick="this.parentElement.remove()" class="ml-4 text-red-700 dark:text-red-300 hover:text-red-900 dark:hover:text-red-100">&times;</button>
+      </div>
+    </div>"#,
+    message
+  )
+}
+
+/// Template for pack card partial (for HTMX updates)
+#[derive(Template)]
+#[template(path = "partials/settings_pack_card.html")]
+struct PackCardTemplate {
+  pack: PackInfo,
+  is_admin: bool,
+  groups: Vec<GroupDisplay>,
+  users: Vec<UserDisplay>,
+}
+
 /// Enable a card pack for the current user
 pub async fn enable_pack(
   auth: AuthContext,
   State(state): State<AppState>,
+  headers: HeaderMap,
   AxumPath(pack_id): AxumPath<String>,
 ) -> Response {
   #[cfg(feature = "profiling")]
@@ -674,27 +718,32 @@ pub async fn enable_pack(
   // Get connections (auth_db is the shared app.db with card_definitions)
   let user_conn = match auth.user_db.lock() {
     Ok(conn) => conn,
-    Err(_) => return Redirect::to("/settings?pack=error").into_response(),
+    Err(_) => {
+      if is_htmx_request(&headers) {
+        return Html(error_notification("Database error")).into_response();
+      }
+      return Redirect::to("/settings?pack=error").into_response();
+    }
   };
 
   let app_conn = match state.auth_db.lock() {
     Ok(conn) => conn,
-    Err(_) => return Redirect::to("/settings?pack=error").into_response(),
+    Err(_) => {
+      if is_htmx_request(&headers) {
+        return Html(error_notification("Database error")).into_response();
+      }
+      return Redirect::to("/settings?pack=error").into_response();
+    }
   };
 
   // Find the pack (including external registered paths)
-  let shared_packs_path = Path::new(paths::SHARED_PACKS_DIR);
-  let external_paths: Vec<std::path::PathBuf> = auth_db::get_active_registered_paths(&app_conn)
-    .unwrap_or_default()
-    .into_iter()
-    .map(|p| std::path::PathBuf::from(p.path))
-    .collect();
-  let discovered = discover_packs_with_external(shared_packs_path, None, None, &external_paths);
-
-  let pack_loc = match discovered.iter().find(|loc| loc.manifest.id == pack_id) {
+  let pack_loc = match pack_manager::find_pack_by_id(&app_conn, &pack_id) {
     Some(loc) => loc,
     None => {
       tracing::warn!("Pack not found: {}", pack_id);
+      if is_htmx_request(&headers) {
+        return Html(error_notification("Pack not found")).into_response();
+      }
       return Redirect::to("/settings?pack=notfound").into_response();
     }
   };
@@ -702,13 +751,30 @@ pub async fn enable_pack(
   // Only allow enabling card packs
   if pack_loc.manifest.pack_type != PackType::Cards {
     tracing::warn!("Cannot enable non-card pack: {}", pack_id);
+    if is_htmx_request(&headers) {
+      return Html(error_notification("Cannot enable non-card pack")).into_response();
+    }
     return Redirect::to("/settings?pack=invalid").into_response();
+  }
+
+  // Check if user has permission to access this pack (non-admins only)
+  if !auth.is_admin {
+    if !pack_manager::can_access(&app_conn, auth.user_id, &pack_id) {
+      tracing::warn!("User {} tried to enable pack {} without permission", auth.username, pack_id);
+      if is_htmx_request(&headers) {
+        return Html(error_notification("You don't have permission to enable this pack")).into_response();
+      }
+      return Redirect::to("/settings?pack=noaccess").into_response();
+    }
   }
 
   let cards_config = match &pack_loc.manifest.cards {
     Some(cfg) => cfg,
     None => {
       tracing::warn!("Card pack missing cards config: {}", pack_id);
+      if is_htmx_request(&headers) {
+        return Html(error_notification("Pack configuration is invalid")).into_response();
+      }
       return Redirect::to("/settings?pack=invalid").into_response();
     }
   };
@@ -721,6 +787,7 @@ pub async fn enable_pack(
     &pack_loc.manifest.name,
     pack_loc.manifest.version.as_deref().unwrap_or("1.0.0"),
     pack_loc.manifest.description.as_deref(),
+    &pack_loc.manifest.scope,
     &pack_loc.path,
     &cards_config.file,
   ) {
@@ -732,20 +799,93 @@ pub async fn enable_pack(
         result.cards_inserted,
         result.cards_skipped
       );
+
+      // Store UI metadata if pack has it (for progress page display)
+      if let Some(ref ui) = pack_loc.manifest.ui {
+        let total_lessons = pack_loc.manifest.lessons.as_ref().map(|l| l.total);
+        if let Err(e) = db::store_pack_ui_metadata(&app_conn, &pack_id, ui, total_lessons) {
+          tracing::warn!("Failed to store UI metadata for pack {}: {}", pack_id, e);
+        }
+      }
+
+      // Set global enabled state (for global packs)
+      if let Err(e) = auth_db::set_pack_globally_enabled(&app_conn, &pack_id, true) {
+        tracing::warn!("Failed to set pack {} globally enabled: {}", pack_id, e);
+      }
+
+      // Return HTMX partial or redirect
+      if is_htmx_request(&headers) {
+        let enabled_packs = Vec::new(); // Not used since we use is_globally_enabled now
+        let pack_info = PackInfo::from_location(&pack_loc, &enabled_packs, Some(&app_conn), auth.is_admin);
+
+        // Fetch groups and users for permissions section
+        let (groups, users) = if auth.is_admin {
+          let groups = auth_db::get_all_groups(&app_conn)
+            .unwrap_or_default()
+            .into_iter()
+            .map(|g| {
+              let members = auth_db::get_group_members(&app_conn, &g.id)
+                .unwrap_or_default()
+                .into_iter()
+                .map(|(id, username)| GroupMember { id, username })
+                .collect();
+              GroupDisplay {
+                id: g.id,
+                name: g.name,
+                description: g.description,
+                members,
+              }
+            })
+            .collect();
+          let users = auth_db::get_all_users(&app_conn)
+            .unwrap_or_default()
+            .into_iter()
+            .map(|u| UserDisplay {
+              id: u.id,
+              username: u.username,
+              role: u.role,
+              is_guest: u.is_guest,
+            })
+            .collect();
+          (groups, users)
+        } else {
+          (Vec::new(), Vec::new())
+        };
+
+        let template = PackCardTemplate {
+          pack: pack_info,
+          is_admin: auth.is_admin,
+          groups,
+          users,
+        };
+        return match template.render() {
+          Ok(html) => Html(html).into_response(),
+          Err(e) => {
+            tracing::error!("Failed to render pack card template: {}", e);
+            Html(error_notification(&format!("Failed to render pack card: {}", e))).into_response()
+          }
+        };
+      }
+
       Redirect::to(&format!("/settings?pack=enabled&id={}", pack_id)).into_response()
     }
     Err(e) => {
       tracing::error!("Failed to enable pack {}: {}", pack_id, e);
+      if is_htmx_request(&headers) {
+        return Html(error_notification(&format!("Failed to enable pack: {}", e))).into_response();
+      }
       Redirect::to("/settings?pack=error").into_response()
     }
   }
 }
 
-/// Disable a pack for the current user
+/// Disable a pack globally (admin only for global packs)
 pub async fn disable_pack(
   auth: AuthContext,
+  State(state): State<AppState>,
+  headers: HeaderMap,
   AxumPath(pack_id): AxumPath<String>,
-) -> Redirect {
+) -> Response {
   #[cfg(feature = "profiling")]
   crate::profile_log!(EventType::HandlerStart {
     route: format!("/settings/pack/{}/disable", pack_id),
@@ -753,23 +893,89 @@ pub async fn disable_pack(
     username: Some(auth.username.clone()),
   });
 
-  let conn = match auth.user_db.lock() {
+  // Only admin can disable global packs
+  if !auth.is_admin {
+    tracing::warn!("Non-admin user {} tried to disable pack {}", auth.username, pack_id);
+    if is_htmx_request(&headers) {
+      return Html(error_notification("You don't have permission to disable this pack")).into_response();
+    }
+    return Redirect::to("/settings?pack=noaccess").into_response();
+  }
+
+  let app_conn = match state.auth_db.lock() {
     Ok(conn) => conn,
-    Err(_) => return Redirect::to("/settings?pack=error"),
+    Err(_) => {
+      if is_htmx_request(&headers) {
+        return Html(error_notification("Database error")).into_response();
+      }
+      return Redirect::to("/settings?pack=error").into_response();
+    }
   };
 
-  match content::disable_pack(&conn, &pack_id) {
-    Ok(true) => {
-      tracing::info!("User {} disabled pack {}", auth.username, pack_id);
-      Redirect::to(&format!("/settings?pack=disabled&id={}", pack_id))
+  // Set global enabled state to false
+  if let Err(e) = auth_db::set_pack_globally_enabled(&app_conn, &pack_id, false) {
+    tracing::error!("Failed to disable pack {} globally: {}", pack_id, e);
+    if is_htmx_request(&headers) {
+      return Html(error_notification(&format!("Failed to disable pack: {}", e))).into_response();
     }
-    Ok(false) => {
-      tracing::warn!("Pack {} was not enabled for user {}", pack_id, auth.username);
-      Redirect::to("/settings")
-    }
-    Err(e) => {
-      tracing::error!("Failed to disable pack {}: {}", pack_id, e);
-      Redirect::to("/settings?pack=error")
-    }
+    return Redirect::to("/settings?pack=error").into_response();
   }
+
+  tracing::info!("Admin {} disabled pack {} globally", auth.username, pack_id);
+
+  // Return HTMX partial or redirect
+  if is_htmx_request(&headers) {
+    // Find the pack and render updated card
+    if let Some(pack_loc) = pack_manager::find_pack_by_id(&app_conn, &pack_id) {
+      let enabled_packs = Vec::new(); // Not used since we use is_globally_enabled now
+      let pack_info = PackInfo::from_location(&pack_loc, &enabled_packs, Some(&app_conn), auth.is_admin);
+
+      // Fetch groups and users for permissions section (admin only)
+      let groups = auth_db::get_all_groups(&app_conn)
+        .unwrap_or_default()
+        .into_iter()
+        .map(|g| {
+          let members = auth_db::get_group_members(&app_conn, &g.id)
+            .unwrap_or_default()
+            .into_iter()
+            .map(|(id, username)| GroupMember { id, username })
+            .collect();
+          GroupDisplay {
+            id: g.id,
+            name: g.name,
+            description: g.description,
+            members,
+          }
+        })
+        .collect();
+      let users = auth_db::get_all_users(&app_conn)
+        .unwrap_or_default()
+        .into_iter()
+        .map(|u| UserDisplay {
+          id: u.id,
+          username: u.username,
+          role: u.role,
+          is_guest: u.is_guest,
+        })
+        .collect();
+
+      let template = PackCardTemplate {
+        pack: pack_info,
+        is_admin: auth.is_admin,
+        groups,
+        users,
+      };
+      return match template.render() {
+        Ok(html) => Html(html).into_response(),
+        Err(e) => {
+          tracing::error!("Failed to render pack card template: {}", e);
+          Html(error_notification(&format!("Failed to render pack card: {}", e))).into_response()
+        }
+      };
+    }
+
+    return Html(error_notification("Pack not found")).into_response();
+  }
+
+  Redirect::to(&format!("/settings?pack=disabled&id={}", pack_id)).into_response()
 }

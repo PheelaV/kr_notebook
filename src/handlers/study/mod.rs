@@ -14,7 +14,7 @@ use crate::domain::{Card, ReviewDirection};
 // Re-export public items
 pub use classic::{study_start, submit_review};
 pub use interactive::{
-  next_card_interactive, study_start_interactive, submit_review_interactive,
+  next_card_interactive, set_study_filter, study_start_interactive, submit_review_interactive,
   validate_answer_handler,
 };
 pub use practice::{practice_next, practice_start, practice_validate};
@@ -63,15 +63,32 @@ pub(crate) fn is_korean(s: &str) -> bool {
 }
 
 /// Generate multiple choice options for a card
+/// For vocabulary cards (with pack_id and lesson), gets distractors from the same lesson
+/// For Hangul cards, gets distractors from the same tier
 pub(crate) fn generate_choices(card: &Card, all_cards: &[Card]) -> Vec<String> {
   let correct = card.main_answer.clone();
 
-  // Get other cards from the same tier with Korean answers
-  let mut distractors: Vec<String> = all_cards
-    .iter()
-    .filter(|c| c.id != card.id && c.tier == card.tier && is_korean(&c.main_answer))
-    .map(|c| c.main_answer.clone())
-    .collect();
+  // For vocabulary cards, filter by lesson; for Hangul, filter by tier
+  let mut distractors: Vec<String> = if card.pack_id.is_some() && card.lesson.is_some() {
+    // Vocabulary card: get distractors from same pack/lesson
+    all_cards
+      .iter()
+      .filter(|c| {
+        c.id != card.id
+          && c.pack_id == card.pack_id
+          && c.lesson == card.lesson
+          && is_korean(&c.main_answer)
+      })
+      .map(|c| c.main_answer.clone())
+      .collect()
+  } else {
+    // Hangul card: get distractors from same tier
+    all_cards
+      .iter()
+      .filter(|c| c.id != card.id && c.tier == card.tier && is_korean(&c.main_answer))
+      .map(|c| c.main_answer.clone())
+      .collect()
+  };
 
   // Shuffle and take distractors
   let mut rng = rand::rng();
@@ -88,9 +105,42 @@ pub(crate) fn generate_choices(card: &Card, all_cards: &[Card]) -> Vec<String> {
   choices
 }
 
+/// Convert filter string to StudyFilterMode
+fn parse_filter_mode(filter: &str) -> db::StudyFilterMode {
+  match filter {
+    "all" => db::StudyFilterMode::All,
+    "hangul" => db::StudyFilterMode::HangulOnly,
+    s if s.starts_with("pack:") => {
+      let pack_id = s.strip_prefix("pack:").unwrap_or("").to_string();
+      db::StudyFilterMode::PackOnly(pack_id)
+    }
+    _ => db::StudyFilterMode::All,
+  }
+}
+
 /// Get all available cards for study (due + unreviewed in accelerated mode)
+/// Optionally filtered by content type
 pub(crate) fn get_available_study_cards(
   conn: &std::sync::MutexGuard<'_, rusqlite::Connection>,
+  app_conn: &std::sync::MutexGuard<'_, rusqlite::Connection>,
+  user_id: i64,
+) -> Vec<Card> {
+  // Get study filter from settings
+  let filter_str = db::get_setting(conn, "study_filter_mode")
+    .ok()
+    .flatten()
+    .unwrap_or_else(|| "all".to_string());
+  let filter = parse_filter_mode(&filter_str);
+
+  get_available_study_cards_filtered(conn, app_conn, user_id, &filter)
+}
+
+/// Get all available cards for study with explicit filter
+pub(crate) fn get_available_study_cards_filtered(
+  conn: &std::sync::MutexGuard<'_, rusqlite::Connection>,
+  app_conn: &std::sync::MutexGuard<'_, rusqlite::Connection>,
+  user_id: i64,
+  filter: &db::StudyFilterMode,
 ) -> Vec<Card> {
   let use_interleaving =
     db::get_use_interleaving(conn).log_warn_default("Failed to get interleaving setting");
@@ -99,19 +149,20 @@ pub(crate) fn get_available_study_cards(
 
   let mut cards = Vec::new();
 
-  // Get due cards
+  // Get due cards (filtered)
   let due = if use_interleaving {
-    db::get_due_cards_interleaved(conn, 50, None)
+    db::get_due_cards_interleaved_filtered(conn, app_conn, user_id, 50, None, filter)
       .log_warn_default("Failed to get interleaved due cards")
   } else {
-    db::get_due_cards(conn, 50, None).log_warn_default("Failed to get due cards")
+    db::get_due_cards_filtered(conn, app_conn, user_id, 50, None, filter)
+      .log_warn_default("Failed to get due cards")
   };
   cards.extend(due);
 
-  // In accelerated mode, also get unreviewed cards
+  // In accelerated mode, also get unreviewed cards (filtered)
   if accelerated {
-    let unreviewed =
-      db::get_unreviewed_today(conn, 50, None).log_warn_default("Failed to get unreviewed cards");
+    let unreviewed = db::get_unreviewed_today_filtered(conn, app_conn, user_id, 50, None, filter)
+      .log_warn_default("Failed to get unreviewed cards");
     // Avoid duplicates
     for card in unreviewed {
       if !cards.iter().any(|c| c.id == card.id) {

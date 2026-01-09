@@ -5,6 +5,7 @@ use std::path::Path;
 use super::settings::{has_lesson1, has_lesson2, has_lesson3};
 use crate::auth::AuthContext;
 use crate::filters;
+use super::NavContext;
 use crate::audio::{
     get_available_syllables, get_row_romanization, get_row_syllables, load_manifest,
     row_has_audio, vowel_romanization,
@@ -74,6 +75,7 @@ pub struct PronunciationTemplate {
     pub tables: Vec<PronunciationTable>,
     pub toc_items: Vec<TocItem>,
     pub toc_title: String,
+    pub nav: NavContext,
 }
 
 /// Build a pronunciation table from a manifest file using shared utilities
@@ -283,6 +285,7 @@ pub async fn pronunciation_page(auth: AuthContext) -> axum::response::Response {
         tables,
         toc_items,
         toc_title: "Lessons".to_string(),
+        nav: NavContext::from_auth(&auth),
     };
 
     Html(template.render().unwrap_or_default()).into_response()

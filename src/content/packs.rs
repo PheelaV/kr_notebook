@@ -4,6 +4,7 @@
 
 use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ToSql, ToSqlOutput, ValueRef};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
@@ -55,6 +56,59 @@ impl ToSql for PackType {
 }
 
 impl FromSql for PackType {
+    fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
+        value
+            .as_str()?
+            .parse()
+            .map_err(|e: String| FromSqlError::Other(e.into()))
+    }
+}
+
+/// Pack scope determines who manages the pack and how permissions work.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum PackScope {
+    /// Global pack - admin-managed, users see it automatically if they have permission
+    #[default]
+    Global,
+    /// User pack - user-managed, requires explicit enable in settings
+    User,
+}
+
+impl PackScope {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            PackScope::Global => "global",
+            PackScope::User => "user",
+        }
+    }
+}
+
+impl std::fmt::Display for PackScope {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
+impl std::str::FromStr for PackScope {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "global" => Ok(PackScope::Global),
+            "user" => Ok(PackScope::User),
+            _ => Err(format!("Invalid pack scope: {}", s)),
+        }
+    }
+}
+
+impl ToSql for PackScope {
+    fn to_sql(&self) -> rusqlite::Result<ToSqlOutput<'_>> {
+        Ok(ToSqlOutput::from(self.as_str()))
+    }
+}
+
+impl FromSql for PackScope {
     fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
         value
             .as_str()?
@@ -136,6 +190,65 @@ fn default_tier() -> u8 {
     5
 }
 
+/// UI configuration for generic progress/study display.
+/// Allows packs to customize how they appear in the app without hardcoded references.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PackUiConfig {
+    /// Display name shown on progress page (e.g., "Vocabulary Lessons 1-8")
+    pub display_name: String,
+
+    /// What to call the units (e.g., "Lessons", "Units", "Chapters")
+    #[serde(default = "default_unit_name")]
+    pub unit_name: String,
+
+    /// Prefix for individual sections (e.g., "Lesson", "Unit")
+    #[serde(default = "default_section_prefix")]
+    pub section_prefix: String,
+
+    /// Human-readable labels for each lesson (e.g., {"1": "Basic Nouns"})
+    #[serde(default)]
+    pub lesson_labels: HashMap<String, String>,
+
+    /// Percentage of lesson to complete before unlocking next (default 80)
+    #[serde(default = "default_unlock_threshold")]
+    pub unlock_threshold: u8,
+
+    /// Title for progress section (optional, uses display_name if not set)
+    #[serde(default)]
+    pub progress_section_title: Option<String>,
+
+    /// Label in study filter dropdown (optional, uses display_name if not set)
+    #[serde(default)]
+    pub study_filter_label: Option<String>,
+}
+
+fn default_unit_name() -> String {
+    "Lessons".to_string()
+}
+
+fn default_section_prefix() -> String {
+    "Lesson".to_string()
+}
+
+fn default_unlock_threshold() -> u8 {
+    80
+}
+
+/// Lesson structure configuration for packs with lesson-based progression.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LessonsConfig {
+    /// Total number of lessons
+    pub total: u8,
+
+    /// First lesson number (default 1)
+    #[serde(default = "default_first_lesson")]
+    pub first: u8,
+}
+
+fn default_first_lesson() -> u8 {
+    1
+}
+
 /// Pack manifest (pack.json).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PackManifest {
@@ -152,6 +265,11 @@ pub struct PackManifest {
     /// Pack type
     #[serde(rename = "type")]
     pub pack_type: PackType,
+
+    /// Pack scope - global (admin-managed) or user (user-managed)
+    /// Defaults to global if not specified
+    #[serde(default)]
+    pub scope: PackScope,
 
     /// Pack description
     #[serde(default)]
@@ -173,6 +291,14 @@ pub struct PackManifest {
     /// Card pack configuration (if type == cards)
     #[serde(default)]
     pub cards: Option<CardConfig>,
+
+    /// UI metadata for generic progress/study display
+    #[serde(default)]
+    pub ui: Option<PackUiConfig>,
+
+    /// Lesson structure (if pack uses lesson-based progression)
+    #[serde(default)]
+    pub lessons: Option<LessonsConfig>,
 }
 
 impl PackManifest {
@@ -285,6 +411,20 @@ mod tests {
     }
 
     #[test]
+    fn test_pack_scope_roundtrip() {
+        for scope in [PackScope::Global, PackScope::User] {
+            let s = scope.as_str();
+            let parsed: PackScope = s.parse().unwrap();
+            assert_eq!(scope, parsed);
+        }
+    }
+
+    #[test]
+    fn test_pack_scope_default() {
+        assert_eq!(PackScope::default(), PackScope::Global);
+    }
+
+    #[test]
     fn test_audio_manifest_parse() {
         let json = r#"{
             "id": "htsk-audio",
@@ -356,5 +496,81 @@ mod tests {
 
         let manifest: PackManifest = serde_json::from_str(json).unwrap();
         assert!(manifest.validate().is_err());
+    }
+
+    #[test]
+    fn test_manifest_scope_default_global() {
+        let json = r#"{
+            "id": "test-pack",
+            "name": "Test Pack",
+            "type": "cards",
+            "cards": {
+                "file": "cards.json"
+            }
+        }"#;
+
+        let manifest: PackManifest = serde_json::from_str(json).unwrap();
+        assert_eq!(manifest.scope, PackScope::Global);
+    }
+
+    #[test]
+    fn test_manifest_scope_explicit_user() {
+        let json = r#"{
+            "id": "user-pack",
+            "name": "User Pack",
+            "type": "cards",
+            "scope": "user",
+            "cards": {
+                "file": "cards.json"
+            }
+        }"#;
+
+        let manifest: PackManifest = serde_json::from_str(json).unwrap();
+        assert_eq!(manifest.scope, PackScope::User);
+    }
+
+    #[test]
+    fn test_card_manifest_with_lessons() {
+        let json = r#"{
+            "id": "vocab-lessons",
+            "name": "Vocabulary Lessons",
+            "type": "cards",
+            "provides": ["vocabulary"],
+            "cards": {
+                "file": "cards.json",
+                "tier": 5,
+                "create_reverse": true
+            },
+            "lessons": {
+                "total": 8,
+                "first": 1
+            },
+            "ui": {
+                "display_name": "Vocabulary Lessons 1-8",
+                "unit_name": "Lessons",
+                "section_prefix": "Lesson",
+                "unlock_threshold": 80,
+                "lesson_labels": {
+                    "1": "Basic Nouns",
+                    "2": "Verbs"
+                }
+            }
+        }"#;
+
+        let manifest: PackManifest = serde_json::from_str(json).unwrap();
+        assert_eq!(manifest.pack_type, PackType::Cards);
+        assert!(manifest.cards.is_some());
+        assert!(manifest.lessons.is_some());
+        assert!(manifest.ui.is_some());
+        assert!(manifest.validate().is_ok());
+
+        let lessons = manifest.lessons.unwrap();
+        assert_eq!(lessons.total, 8);
+        assert_eq!(lessons.first, 1);
+
+        let ui = manifest.ui.unwrap();
+        assert_eq!(ui.display_name, "Vocabulary Lessons 1-8");
+        assert_eq!(ui.unlock_threshold, 80);
+        assert_eq!(ui.lesson_labels.get("1"), Some(&"Basic Nouns".to_string()));
     }
 }

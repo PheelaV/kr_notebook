@@ -19,7 +19,8 @@ use crate::profiling::EventType;
 
 use super::audio::{get_audio_row, get_lesson_audio, AudioRow, SegmentParams};
 use super::user::{GroupDisplay, GroupMember, UserDisplay, AllowedUser, PackInfo};
-use crate::content::{discover_packs, PackType};
+use crate::content::PackType;
+use crate::services::pack_manager;
 
 // ============================================================================
 // Scraper Operations
@@ -750,12 +751,8 @@ pub struct PackPermissionsTemplate {
 
 /// Helper to render pack permissions partial for HTMX response
 fn render_pack_permissions(conn: &rusqlite::Connection, pack_id: &str) -> Option<String> {
-  use std::path::Path;
-
-  // Get all discovered packs to find this one
-  let shared_packs_dir = Path::new(paths::SHARED_PACKS_DIR);
-  let packs = discover_packs(shared_packs_dir, None, None);
-  let pack_loc = packs.iter().find(|p| p.manifest.id == pack_id)?;
+  // Find pack using PackManager (includes external paths)
+  let pack_loc = pack_manager::find_pack_by_id(conn, pack_id)?;
 
   // Build PackInfo
   let allowed_groups = auth_db::get_pack_allowed_groups(conn, pack_id).unwrap_or_default();
@@ -783,6 +780,7 @@ fn render_pack_permissions(conn: &rusqlite::Connection, pack_id: &str) -> Option
     is_restricted,
     allowed_groups,
     allowed_users,
+    can_manage: !is_baseline, // Admin-only function, so can manage all non-baseline packs
   };
 
   // Get groups for the dropdown
@@ -1074,8 +1072,12 @@ pub async fn add_to_group(
 
   // Return HTMX partial or redirect
   if is_htmx_request(&headers) {
-    if let Some(html) = render_group_card(&auth_db, &form.group_id) {
-      return Html(html).into_response();
+    match render_group_card(&auth_db, &form.group_id) {
+      Some(html) => return Html(html).into_response(),
+      None => {
+        tracing::warn!("Failed to render group card for {}", form.group_id);
+        return Html(error_notification("Failed to render group. Please refresh the page.")).into_response();
+      }
     }
   }
   Redirect::to("/settings").into_response()
@@ -1112,8 +1114,12 @@ pub async fn remove_from_group(
 
   // Return HTMX partial or redirect
   if is_htmx_request(&headers) {
-    if let Some(html) = render_group_card(&auth_db, &form.group_id) {
-      return Html(html).into_response();
+    match render_group_card(&auth_db, &form.group_id) {
+      Some(html) => return Html(html).into_response(),
+      None => {
+        tracing::warn!("Failed to render group card for {}", form.group_id);
+        return Html(error_notification("Failed to render group. Please refresh the page.")).into_response();
+      }
     }
   }
   Redirect::to("/settings").into_response()
@@ -1165,10 +1171,16 @@ pub async fn restrict_pack_to_group(
     return Redirect::to("/settings").into_response();
   }
 
+  tracing::info!("Added group {} access to pack {}", form.group_id, form.pack_id);
+
   // Return HTMX partial or redirect
   if is_htmx_request(&headers) {
-    if let Some(html) = render_pack_permissions(&auth_db, &form.pack_id) {
-      return Html(html).into_response();
+    match render_pack_permissions(&auth_db, &form.pack_id) {
+      Some(html) => return Html(html).into_response(),
+      None => {
+        tracing::warn!("Failed to render pack permissions for {}", form.pack_id);
+        return Html(error_notification("Failed to render permissions. Pack may not be found.")).into_response();
+      }
     }
   }
   Redirect::to("/settings").into_response()
@@ -1205,8 +1217,9 @@ pub async fn remove_pack_restriction(
 
   // Return HTMX partial or redirect
   if is_htmx_request(&headers) {
-    if let Some(html) = render_pack_permissions(&auth_db, &form.pack_id) {
-      return Html(html).into_response();
+    match render_pack_permissions(&auth_db, &form.pack_id) {
+      Some(html) => return Html(html).into_response(),
+      None => return Html(error_notification("Failed to render permissions.")).into_response(),
     }
   }
   Redirect::to("/settings").into_response()
@@ -1244,8 +1257,9 @@ pub async fn make_pack_public(
 
   // Return HTMX partial or redirect
   if is_htmx_request(&headers) {
-    if let Some(html) = render_pack_permissions(&auth_db, &pack_id) {
-      return Html(html).into_response();
+    match render_pack_permissions(&auth_db, &pack_id) {
+      Some(html) => return Html(html).into_response(),
+      None => return Html(error_notification("Failed to render permissions.")).into_response(),
     }
   }
   Redirect::to("/settings").into_response()
@@ -1281,10 +1295,13 @@ pub async fn restrict_pack_to_user(
     return Redirect::to("/settings").into_response();
   }
 
+  tracing::info!("Added user {} access to pack {}", form.user_id, form.pack_id);
+
   // Return HTMX partial or redirect
   if is_htmx_request(&headers) {
-    if let Some(html) = render_pack_permissions(&auth_db, &form.pack_id) {
-      return Html(html).into_response();
+    match render_pack_permissions(&auth_db, &form.pack_id) {
+      Some(html) => return Html(html).into_response(),
+      None => return Html(error_notification("Failed to render permissions.")).into_response(),
     }
   }
   Redirect::to("/settings").into_response()
@@ -1321,8 +1338,9 @@ pub async fn remove_pack_user_restriction(
 
   // Return HTMX partial or redirect
   if is_htmx_request(&headers) {
-    if let Some(html) = render_pack_permissions(&auth_db, &form.pack_id) {
-      return Html(html).into_response();
+    match render_pack_permissions(&auth_db, &form.pack_id) {
+      Some(html) => return Html(html).into_response(),
+      None => return Html(error_notification("Failed to render permissions.")).into_response(),
     }
   }
   Redirect::to("/settings").into_response()
@@ -1469,6 +1487,72 @@ pub fn render_registered_paths(conn: &rusqlite::Connection) -> Option<String> {
   template.render().ok()
 }
 
+/// Packs section partial template (for OOB swap when paths change)
+#[derive(Template)]
+#[template(path = "partials/settings_packs_section.html")]
+pub struct PacksSectionTemplate {
+  pub card_packs: Vec<PackInfo>,
+  pub groups: Vec<GroupDisplay>,
+  pub users: Vec<UserDisplay>,
+  pub is_admin: bool,
+}
+
+/// Helper to render packs section partial for OOB swap
+pub fn render_packs_section_oob(conn: &rusqlite::Connection, is_admin: bool) -> Option<String> {
+  // Discover all packs using PackManager (includes external paths)
+  let discovered = pack_manager::discover_all_packs(conn);
+
+  // Filter to card packs
+  let enabled_packs = Vec::new(); // Not used since we use is_globally_enabled now
+  let card_packs: Vec<PackInfo> = discovered
+    .iter()
+    .filter(|loc| loc.manifest.pack_type == PackType::Cards)
+    .map(|loc| PackInfo::from_location(loc, &enabled_packs, Some(conn), is_admin))
+    .collect();
+
+  // Fetch groups and users for permissions section
+  let groups = auth_db::get_all_groups(conn)
+    .unwrap_or_default()
+    .into_iter()
+    .map(|g| {
+      let members = auth_db::get_group_members(conn, &g.id)
+        .unwrap_or_default()
+        .into_iter()
+        .map(|(id, username)| GroupMember { id, username })
+        .collect();
+      GroupDisplay {
+        id: g.id,
+        name: g.name,
+        description: g.description,
+        members,
+      }
+    })
+    .collect();
+  let users = auth_db::get_all_users(conn)
+    .unwrap_or_default()
+    .into_iter()
+    .map(|u| UserDisplay {
+      id: u.id,
+      username: u.username,
+      role: u.role,
+      is_guest: u.is_guest,
+    })
+    .collect();
+
+  let template = PacksSectionTemplate {
+    card_packs,
+    groups,
+    users,
+    is_admin,
+  };
+
+  // Add OOB swap attribute to the section element
+  template.render().ok().map(|html| {
+    // The section has id="packs", add hx-swap-oob attribute to it
+    html.replace(r#"id="packs""#, r#"id="packs" hx-swap-oob="outerHTML""#)
+  })
+}
+
 /// Register a new external pack path (admin only)
 pub async fn register_pack_path(
   auth: AuthContext,
@@ -1542,8 +1626,10 @@ pub async fn register_pack_path(
 
   // Return HTMX partial or redirect
   if is_htmx_request(&headers) {
-    if let Some(html) = render_registered_paths(&auth_db) {
-      return Html(html).into_response();
+    if let Some(paths_html) = render_registered_paths(&auth_db) {
+      // Also include OOB swap for packs section since new packs may be available
+      let packs_oob = render_packs_section_oob(&auth_db, auth.is_admin).unwrap_or_default();
+      return Html(format!("{}{}", paths_html, packs_oob)).into_response();
     }
   }
   Redirect::to("/settings").into_response()
@@ -1580,8 +1666,10 @@ pub async fn unregister_pack_path(
 
   // Return HTMX partial or redirect
   if is_htmx_request(&headers) {
-    if let Some(html) = render_registered_paths(&auth_db) {
-      return Html(html).into_response();
+    if let Some(paths_html) = render_registered_paths(&auth_db) {
+      // Also include OOB swap for packs section since packs may have changed
+      let packs_oob = render_packs_section_oob(&auth_db, auth.is_admin).unwrap_or_default();
+      return Html(format!("{}{}", paths_html, packs_oob)).into_response();
     }
   }
   Redirect::to("/settings").into_response()
@@ -1618,8 +1706,10 @@ pub async fn toggle_pack_path(
 
   // Return HTMX partial or redirect
   if is_htmx_request(&headers) {
-    if let Some(html) = render_registered_paths(&auth_db) {
-      return Html(html).into_response();
+    if let Some(paths_html) = render_registered_paths(&auth_db) {
+      // Also include OOB swap for packs section since toggling active affects available packs
+      let packs_oob = render_packs_section_oob(&auth_db, auth.is_admin).unwrap_or_default();
+      return Html(format!("{}{}", paths_html, packs_oob)).into_response();
     }
   }
   Redirect::to("/settings").into_response()

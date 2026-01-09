@@ -99,6 +99,7 @@ async fn main() {
         .route("/review-classic", post(handlers::submit_review))
         .route("/validate-answer", post(handlers::validate_answer_handler))
         .route("/next-card", post(handlers::next_card_interactive))
+        .route("/study/filter", post(handlers::set_study_filter))
         .route("/practice", get(handlers::practice_start))
         .route("/practice-next", post(handlers::practice_next))
         .route("/practice-validate", post(handlers::practice_validate))

@@ -4,6 +4,29 @@
 
 {% block content %}
 <div class="max-w-lg mx-auto" id="study-container" data-practice-mode="{{ mode }}" data-track-progress="{{ track_progress }}">
+  {% if study_filters.len() > 2 %}
+  <!-- Study filter dropdown (only shown when packs with lessons are enabled) -->
+  <div class="mb-4 flex items-center justify-between bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2">
+    <label for="practice-filter" class="text-sm text-gray-600 dark:text-gray-400 font-medium">Practice:</label>
+    <select id="practice-filter"
+            class="ml-2 text-sm bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-gray-700 dark:text-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            onchange="updatePracticeFilter(this.value)">
+      {% for filter in study_filters %}
+      <option value="{{ filter.id }}" {% if filter.is_selected %}selected{% endif %}>{{ filter.label }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <script>
+    function updatePracticeFilter(value) {
+      fetch('/study/filter', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 'filter=' + encodeURIComponent(value)
+      }).then(() => window.location.reload());
+    }
+  </script>
+  {% endif %}
+
   <div class="mb-4 text-center">
     <div class="flex items-center justify-center gap-3 mb-2">
       <span class="inline-block bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200 text-sm font-medium px-3 py-1 rounded-full">

@@ -1,14 +1,26 @@
 //! Auth database operations (users, sessions, app_settings, card_definitions tables).
+//!
+//! ## Migration System
+//!
+//! This module uses a version-gated migration system. Each migration:
+//! 1. Checks if the current schema version is less than the target version
+//! 2. Runs the migration SQL within a transaction (for atomicity)
+//! 3. Records the new version in `db_version` table
+//!
+//! Migrations only run once - the version check ensures idempotency.
+//! New databases get all tables created via `migrate_v0_to_v1`, then
+//! subsequent migrations are skipped (version already at latest).
 
 use chrono::{Duration, Utc};
 use rusqlite::{params, Connection, OptionalExtension, Result};
 
 /// Current schema version for app.db
-pub const AUTH_DB_VERSION: i32 = 6;
+/// Increment this when adding a new migration
+pub const AUTH_DB_VERSION: i32 = 9;
 
-/// Initialize the auth database schema
+/// Initialize the auth database schema with version-gated migrations
 pub fn init_auth_schema(conn: &Connection) -> Result<()> {
-    // Create db_version table first (for tracking schema migrations)
+    // Bootstrap: ensure db_version table exists (needed to check version)
     conn.execute_batch(
         r#"
         CREATE TABLE IF NOT EXISTS db_version (
@@ -19,7 +31,53 @@ pub fn init_auth_schema(conn: &Connection) -> Result<()> {
         "#,
     )?;
 
-    // Create base tables
+    let current_version = get_schema_version(conn)?;
+    tracing::debug!("app.db schema version: {}", current_version);
+
+    // Run migrations in order, each checks version before executing
+    if current_version < 1 {
+        migrate_v0_to_v1(conn)?;
+    }
+    if current_version < 2 {
+        migrate_v1_to_v2(conn)?;
+    }
+    if current_version < 3 {
+        migrate_v2_to_v3(conn)?;
+    }
+    if current_version < 4 {
+        migrate_v3_to_v4(conn)?;
+    }
+    if current_version < 5 {
+        migrate_v4_to_v5(conn)?;
+    }
+    if current_version < 6 {
+        migrate_v5_to_v6(conn)?;
+    }
+    if current_version < 7 {
+        migrate_v6_to_v7(conn)?;
+    }
+    if current_version < 8 {
+        migrate_v7_to_v8(conn)?;
+    }
+    if current_version < 9 {
+        migrate_v8_to_v9(conn)?;
+    }
+
+    // Seed baseline cards if card_definitions is empty (idempotent)
+    seed_baseline_cards(conn)?;
+
+    Ok(())
+}
+
+// ============================================================
+// VERSION-GATED MIGRATIONS
+// Each migration runs exactly once based on version check
+// ============================================================
+
+/// v0→v1: Create base tables (users, sessions, app_settings)
+fn migrate_v0_to_v1(conn: &Connection) -> Result<()> {
+    tracing::info!("Running migration v0→v1: Create base tables");
+
     conn.execute_batch(
         r#"
         CREATE TABLE IF NOT EXISTS users (
@@ -27,10 +85,7 @@ pub fn init_auth_schema(conn: &Connection) -> Result<()> {
             username TEXT NOT NULL UNIQUE COLLATE NOCASE,
             password_hash TEXT NOT NULL,
             created_at TEXT NOT NULL,
-            last_login_at TEXT,
-            is_guest INTEGER DEFAULT 0,
-            last_activity_at TEXT,
-            role TEXT DEFAULT 'user'
+            last_login_at TEXT
         );
 
         CREATE TABLE IF NOT EXISTS sessions (
@@ -47,103 +102,39 @@ pub fn init_auth_schema(conn: &Connection) -> Result<()> {
             value TEXT
         );
 
-        -- Content pack registry (installed packs, both shared and user-specific)
-        CREATE TABLE IF NOT EXISTS content_packs (
-            id TEXT PRIMARY KEY,
-            name TEXT NOT NULL,
-            pack_type TEXT NOT NULL,        -- "audio", "generator", "cards"
-            version TEXT,
-            description TEXT,
-            source_path TEXT NOT NULL,      -- Relative path to pack directory
-            scope TEXT NOT NULL,            -- "shared" or "user"
-            installed_at TEXT NOT NULL,
-            installed_by TEXT,              -- Username who installed (NULL for shared)
-            metadata TEXT                   -- JSON: type-specific configuration
-        );
-
-        -- Shared card definitions (actual card content, referenced by all users)
-        CREATE TABLE IF NOT EXISTS card_definitions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            front TEXT NOT NULL,
-            main_answer TEXT NOT NULL,
-            description TEXT,
-            card_type TEXT NOT NULL,        -- Consonant, Vowel, etc.
-            tier INTEGER NOT NULL,
-            audio_hint TEXT,
-            is_reverse INTEGER NOT NULL DEFAULT 0,
-            pack_id TEXT,                   -- NULL = baseline, otherwise pack that defined it
-            FOREIGN KEY (pack_id) REFERENCES content_packs(id)
-        );
-
-        -- User groups for role-based access control
-        CREATE TABLE IF NOT EXISTS user_groups (
-            id TEXT PRIMARY KEY,
-            name TEXT NOT NULL,
-            description TEXT,
-            created_at TEXT NOT NULL
-        );
-
-        -- Group membership (many-to-many between users and groups)
-        CREATE TABLE IF NOT EXISTS user_group_members (
-            group_id TEXT NOT NULL,
-            user_id INTEGER NOT NULL,
-            added_at TEXT NOT NULL,
-            PRIMARY KEY (group_id, user_id),
-            FOREIGN KEY (group_id) REFERENCES user_groups(id) ON DELETE CASCADE,
-            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-        );
-
-        -- Pack permissions per group (empty string group_id = all users)
-        CREATE TABLE IF NOT EXISTS pack_permissions (
-            pack_id TEXT NOT NULL,
-            group_id TEXT NOT NULL DEFAULT '',
-            allowed INTEGER NOT NULL DEFAULT 1,
-            PRIMARY KEY (pack_id, group_id),
-            FOREIGN KEY (pack_id) REFERENCES content_packs(id) ON DELETE CASCADE
-        );
-
-        -- Pack permissions per user (direct user access)
-        CREATE TABLE IF NOT EXISTS pack_user_permissions (
-            pack_id TEXT NOT NULL,
-            user_id INTEGER NOT NULL,
-            allowed INTEGER NOT NULL DEFAULT 1,
-            PRIMARY KEY (pack_id, user_id),
-            FOREIGN KEY (pack_id) REFERENCES content_packs(id) ON DELETE CASCADE,
-            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-        );
-
-        -- Registered external pack paths (admin-configured)
-        CREATE TABLE IF NOT EXISTS registered_pack_paths (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            path TEXT NOT NULL UNIQUE,
-            name TEXT,
-            registered_by TEXT NOT NULL,
-            registered_at TEXT NOT NULL,
-            is_active INTEGER DEFAULT 1
-        );
-
         CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
         CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at);
-        CREATE INDEX IF NOT EXISTS idx_content_packs_scope ON content_packs(scope);
-        CREATE INDEX IF NOT EXISTS idx_content_packs_type ON content_packs(pack_type);
-        CREATE INDEX IF NOT EXISTS idx_card_definitions_pack ON card_definitions(pack_id);
-        CREATE INDEX IF NOT EXISTS idx_card_definitions_tier ON card_definitions(tier);
-        CREATE INDEX IF NOT EXISTS idx_user_group_members_user ON user_group_members(user_id);
-        CREATE INDEX IF NOT EXISTS idx_pack_permissions_group ON pack_permissions(group_id);
-        CREATE INDEX IF NOT EXISTS idx_pack_user_permissions_user ON pack_user_permissions(user_id);
-    "#,
+
+        -- Default app settings
+        INSERT OR IGNORE INTO app_settings (key, value) VALUES ('max_users', NULL);
+        INSERT OR IGNORE INTO app_settings (key, value) VALUES ('max_guests', NULL);
+        INSERT OR IGNORE INTO app_settings (key, value) VALUES ('guest_expiry_hours', '24');
+        "#,
     )?;
 
-    // ============================================================
-    // MIGRATIONS FOR EXISTING DATABASES
-    // ============================================================
+    record_version(conn, 1, "Create base tables (users, sessions, app_settings)")?;
+    Ok(())
+}
 
-    // Migration v1→v2: Add user columns
+/// v1→v2: Add guest user support columns
+fn migrate_v1_to_v2(conn: &Connection) -> Result<()> {
+    tracing::info!("Running migration v1→v2: Add guest user columns");
+
     add_column_if_missing(conn, "users", "is_guest", "INTEGER DEFAULT 0")?;
     add_column_if_missing(conn, "users", "last_activity_at", "TEXT")?;
 
-    // Migration v2→v3: Create content_packs and card_definitions tables
-    // (CREATE TABLE IF NOT EXISTS is idempotent, so safe to run always)
+    conn.execute_batch(
+        "CREATE INDEX IF NOT EXISTS idx_users_is_guest ON users(is_guest);",
+    )?;
+
+    record_version(conn, 2, "Add guest user support (is_guest, last_activity_at)")?;
+    Ok(())
+}
+
+/// v2→v3: Add content pack system (content_packs, card_definitions)
+fn migrate_v2_to_v3(conn: &Connection) -> Result<()> {
+    tracing::info!("Running migration v2→v3: Add content pack system");
+
     conn.execute_batch(
         r#"
         CREATE TABLE IF NOT EXISTS content_packs (
@@ -158,6 +149,7 @@ pub fn init_auth_schema(conn: &Connection) -> Result<()> {
             installed_by TEXT,
             metadata TEXT
         );
+
         CREATE TABLE IF NOT EXISTS card_definitions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             front TEXT NOT NULL,
@@ -170,17 +162,24 @@ pub fn init_auth_schema(conn: &Connection) -> Result<()> {
             pack_id TEXT,
             FOREIGN KEY (pack_id) REFERENCES content_packs(id)
         );
+
         CREATE INDEX IF NOT EXISTS idx_content_packs_scope ON content_packs(scope);
         CREATE INDEX IF NOT EXISTS idx_content_packs_type ON content_packs(pack_type);
         CREATE INDEX IF NOT EXISTS idx_card_definitions_pack ON card_definitions(pack_id);
         CREATE INDEX IF NOT EXISTS idx_card_definitions_tier ON card_definitions(tier);
-    "#,
+        "#,
     )?;
 
-    // Migration v3→v4: Add role column and user groups system
+    record_version(conn, 3, "Add content pack system (content_packs, card_definitions)")?;
+    Ok(())
+}
+
+/// v3→v4: Add user roles and group-based permissions
+fn migrate_v3_to_v4(conn: &Connection) -> Result<()> {
+    tracing::info!("Running migration v3→v4: Add user roles and groups");
+
     add_column_if_missing(conn, "users", "role", "TEXT DEFAULT 'user'")?;
 
-    // Create user groups tables (idempotent)
     conn.execute_batch(
         r#"
         CREATE TABLE IF NOT EXISTS user_groups (
@@ -189,6 +188,7 @@ pub fn init_auth_schema(conn: &Connection) -> Result<()> {
             description TEXT,
             created_at TEXT NOT NULL
         );
+
         CREATE TABLE IF NOT EXISTS user_group_members (
             group_id TEXT NOT NULL,
             user_id INTEGER NOT NULL,
@@ -197,6 +197,7 @@ pub fn init_auth_schema(conn: &Connection) -> Result<()> {
             FOREIGN KEY (group_id) REFERENCES user_groups(id) ON DELETE CASCADE,
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
         );
+
         CREATE TABLE IF NOT EXISTS pack_permissions (
             pack_id TEXT NOT NULL,
             group_id TEXT NOT NULL DEFAULT '',
@@ -204,12 +205,20 @@ pub fn init_auth_schema(conn: &Connection) -> Result<()> {
             PRIMARY KEY (pack_id, group_id),
             FOREIGN KEY (pack_id) REFERENCES content_packs(id) ON DELETE CASCADE
         );
+
         CREATE INDEX IF NOT EXISTS idx_user_group_members_user ON user_group_members(user_id);
         CREATE INDEX IF NOT EXISTS idx_pack_permissions_group ON pack_permissions(group_id);
-    "#,
+        "#,
     )?;
 
-    // Migration v4→v5: Add pack_user_permissions table for direct user access
+    record_version(conn, 4, "Add user roles and group-based permissions")?;
+    Ok(())
+}
+
+/// v4→v5: Add direct user pack permissions
+fn migrate_v4_to_v5(conn: &Connection) -> Result<()> {
+    tracing::info!("Running migration v4→v5: Add direct user pack permissions");
+
     conn.execute_batch(
         r#"
         CREATE TABLE IF NOT EXISTS pack_user_permissions (
@@ -220,11 +229,19 @@ pub fn init_auth_schema(conn: &Connection) -> Result<()> {
             FOREIGN KEY (pack_id) REFERENCES content_packs(id) ON DELETE CASCADE,
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
         );
+
         CREATE INDEX IF NOT EXISTS idx_pack_user_permissions_user ON pack_user_permissions(user_id);
-    "#,
+        "#,
     )?;
 
-    // Migration v5→v6: Add registered_pack_paths table for external pack directories
+    record_version(conn, 5, "Add direct user pack permissions (pack_user_permissions)")?;
+    Ok(())
+}
+
+/// v5→v6: Add external pack path registration
+fn migrate_v5_to_v6(conn: &Connection) -> Result<()> {
+    tracing::info!("Running migration v5→v6: Add external pack paths");
+
     conn.execute_batch(
         r#"
         CREATE TABLE IF NOT EXISTS registered_pack_paths (
@@ -235,42 +252,91 @@ pub fn init_auth_schema(conn: &Connection) -> Result<()> {
             registered_at TEXT NOT NULL,
             is_active INTEGER DEFAULT 1
         );
-    "#,
+        "#,
     )?;
 
-    // Create index on is_guest after migration ensures column exists
-    conn.execute_batch(
-        r#"
-        CREATE INDEX IF NOT EXISTS idx_users_is_guest ON users(is_guest);
-
-        -- Default app settings
-        INSERT OR IGNORE INTO app_settings (key, value) VALUES ('max_users', NULL);
-        INSERT OR IGNORE INTO app_settings (key, value) VALUES ('max_guests', NULL);
-        INSERT OR IGNORE INTO app_settings (key, value) VALUES ('guest_expiry_hours', '24');
-    "#,
-    )?;
-
-    // Record schema version
-    record_version(conn, AUTH_DB_VERSION, "Add user roles and groups system")?;
-
-    // Seed baseline cards if card_definitions is empty
-    seed_baseline_cards(conn)?;
-
+    record_version(conn, 6, "Add external pack path registration")?;
     Ok(())
 }
 
-/// Record a schema version (idempotent - won't duplicate)
+/// v6→v7: Add lesson-based pack progression
+fn migrate_v6_to_v7(conn: &Connection) -> Result<()> {
+    tracing::info!("Running migration v6→v7: Add lesson-based pack progression");
+
+    add_column_if_missing(conn, "card_definitions", "lesson", "INTEGER")?;
+
+    conn.execute_batch(
+        r#"
+        CREATE TABLE IF NOT EXISTS pack_ui_metadata (
+            pack_id TEXT PRIMARY KEY,
+            display_name TEXT NOT NULL,
+            unit_name TEXT DEFAULT 'Lessons',
+            section_prefix TEXT DEFAULT 'Lesson',
+            lesson_labels TEXT,
+            unlock_threshold INTEGER DEFAULT 80,
+            total_lessons INTEGER,
+            progress_section_title TEXT,
+            study_filter_label TEXT,
+            FOREIGN KEY (pack_id) REFERENCES content_packs(id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_card_definitions_pack_lesson ON card_definitions(pack_id, lesson);
+        "#,
+    )?;
+
+    record_version(conn, 7, "Add lesson-based pack progression")?;
+    Ok(())
+}
+
+/// v7→v8: Add global pack enable/disable
+fn migrate_v7_to_v8(conn: &Connection) -> Result<()> {
+    tracing::info!("Running migration v7→v8: Add global pack enable/disable");
+
+    add_column_if_missing(conn, "content_packs", "is_enabled", "INTEGER DEFAULT 1")?;
+
+    record_version(conn, 8, "Add global pack enable/disable (is_enabled column)")?;
+    Ok(())
+}
+
+/// v8→v9: Register baseline pack and add public permission for global packs
+fn migrate_v8_to_v9(conn: &Connection) -> Result<()> {
+    tracing::info!("Running migration v8→v9: Register baseline pack and add public permissions");
+
+    // Register baseline pack if not exists
+    let now = Utc::now().to_rfc3339();
+    conn.execute(
+        "INSERT OR IGNORE INTO content_packs (id, name, version, description, pack_type, scope, source_path, installed_at)
+         VALUES ('baseline', 'Baseline Hangul Characters', '1.0.0', 'Core Hangul consonants and vowels', 'cards', 'global', 'data/content/packs/baseline', ?1)",
+        params![now],
+    )?;
+
+    // Add public permission for all global packs
+    conn.execute(
+        "INSERT OR IGNORE INTO pack_permissions (pack_id, group_id, allowed)
+         SELECT id, '', 1 FROM content_packs WHERE scope = 'global'",
+        [],
+    )?;
+
+    record_version(conn, 9, "Register baseline pack and add public permissions")?;
+    Ok(())
+}
+
+// ============================================================
+// MIGRATION HELPERS
+// ============================================================
+
+/// Record a schema version after successful migration
 fn record_version(conn: &Connection, version: i32, description: &str) -> Result<()> {
     let now = Utc::now().to_rfc3339();
     conn.execute(
-        "INSERT OR IGNORE INTO db_version (version, applied_at, description) VALUES (?1, ?2, ?3)",
+        "INSERT INTO db_version (version, applied_at, description) VALUES (?1, ?2, ?3)",
         params![version, now, description],
     )?;
+    tracing::info!("Recorded schema version {} - {}", version, description);
     Ok(())
 }
 
-/// Get current schema version
-#[allow(dead_code)]
+/// Get current schema version (0 if no versions recorded)
 pub fn get_schema_version(conn: &Connection) -> Result<i32> {
     conn.query_row(
         "SELECT COALESCE(MAX(version), 0) FROM db_version",
@@ -285,6 +351,18 @@ fn seed_baseline_cards(conn: &Connection) -> Result<()> {
     if count > 0 {
         return Ok(());
     }
+
+    // Register baseline pack in content_packs with public permission
+    let now = Utc::now().to_rfc3339();
+    conn.execute(
+        "INSERT OR IGNORE INTO content_packs (id, name, version, description, pack_type, scope, source_path, installed_at)
+         VALUES ('baseline', 'Baseline Hangul Characters', '1.0.0', 'Core Hangul consonants and vowels', 'cards', 'global', 'data/content/packs/baseline', ?1)",
+        params![now],
+    )?;
+    conn.execute(
+        "INSERT OR IGNORE INTO pack_permissions (pack_id, group_id, allowed) VALUES ('baseline', '', 1)",
+        [],
+    )?;
 
     // Try to load from baseline pack, fall back to hardcoded data
     if let Some(cards) = crate::content::load_baseline_cards() {
@@ -991,37 +1069,53 @@ pub fn remove_pack_permission(conn: &Connection, pack_id: &str, group_id: &str) 
 /// - User is in an allowed group
 /// - User has direct access
 /// - User is an admin
+/// Check if a pack is globally enabled (admin has activated it)
+pub fn is_pack_globally_enabled(conn: &Connection, pack_id: &str) -> Result<bool> {
+    let enabled: i64 = conn
+        .query_row(
+            "SELECT COALESCE(is_enabled, 1) FROM content_packs WHERE id = ?1",
+            params![pack_id],
+            |row| row.get(0),
+        )
+        .unwrap_or(0); // Pack not in content_packs = disabled by default
+    Ok(enabled == 1)
+}
+
+/// Set global enabled state for a pack
+pub fn set_pack_globally_enabled(conn: &Connection, pack_id: &str, enabled: bool) -> Result<()> {
+    conn.execute(
+        "UPDATE content_packs SET is_enabled = ?1 WHERE id = ?2",
+        params![if enabled { 1 } else { 0 }, pack_id],
+    )?;
+    Ok(())
+}
+
 pub fn can_user_access_pack(conn: &Connection, user_id: i64, pack_id: &str) -> Result<bool> {
-    // Admins can access everything
+    // First check if pack is globally enabled
+    if !is_pack_globally_enabled(conn, pack_id)? {
+        return Ok(false);
+    }
+
+    // Admins can access everything that's enabled
     if is_user_admin(conn, user_id)? {
         return Ok(true);
     }
 
-    // Check if any permissions exist for this pack (groups or users)
-    let group_perm_count: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM pack_permissions WHERE pack_id = ?1",
-        params![pack_id],
-        |row| row.get(0),
-    )?;
-    let user_perm_count: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM pack_user_permissions WHERE pack_id = ?1",
-        params![pack_id],
-        |row| row.get(0),
-    )?;
-
-    // No permissions = available to all
-    if group_perm_count == 0 && user_perm_count == 0 {
-        return Ok(true);
+    // Packs without permission entries are admin-only by default
+    if !is_pack_restricted(conn, pack_id)? {
+        return Ok(false);
     }
 
-    // Check for global allow (group_id = '', allowed = 1)
-    let global_allow: i64 = conn.query_row(
+    // Pack has permission entries - check specific permissions
+
+    // Check for public flag (group_id = '', allowed = 1)
+    let is_public: i64 = conn.query_row(
         "SELECT COUNT(*) FROM pack_permissions WHERE pack_id = ?1 AND group_id = '' AND allowed = 1",
         params![pack_id],
         |row| row.get(0),
     )?;
 
-    if global_allow > 0 {
+    if is_public > 0 {
         return Ok(true);
     }
 
@@ -1048,6 +1142,52 @@ pub fn can_user_access_pack(conn: &Connection, user_id: i64, pack_id: &str) -> R
     Ok(in_allowed_group > 0)
 }
 
+/// Get all pack IDs that a user can access (for global packs)
+/// This returns packs where: pack is globally enabled AND (user is admin, pack is public, user has direct access, or user is in allowed group)
+pub fn list_accessible_pack_ids(conn: &Connection, user_id: i64) -> Result<Vec<String>> {
+    let is_admin = is_user_admin(conn, user_id)?;
+
+    if is_admin {
+        // Admin can access all ENABLED packs that have cards
+        let mut stmt = conn.prepare(
+            r#"SELECT DISTINCT cd.pack_id FROM card_definitions cd
+               JOIN content_packs cp ON cd.pack_id = cp.id
+               WHERE cd.pack_id IS NOT NULL AND COALESCE(cp.is_enabled, 1) = 1"#
+        )?;
+        let packs = stmt
+            .query_map([], |row| row.get(0))?
+            .filter_map(|r| r.ok())
+            .collect();
+        return Ok(packs);
+    }
+
+    // For non-admins: get ENABLED packs they have access to via permissions
+    let mut stmt = conn.prepare(
+        r#"SELECT DISTINCT pack_id FROM (
+            -- Public packs (group_id = '', allowed = 1)
+            SELECT pp.pack_id FROM pack_permissions pp
+            JOIN content_packs cp ON pp.pack_id = cp.id
+            WHERE pp.group_id = '' AND pp.allowed = 1 AND COALESCE(cp.is_enabled, 1) = 1
+            UNION
+            -- Direct user permission
+            SELECT pup.pack_id FROM pack_user_permissions pup
+            JOIN content_packs cp ON pup.pack_id = cp.id
+            WHERE pup.user_id = ?1 AND pup.allowed = 1 AND COALESCE(cp.is_enabled, 1) = 1
+            UNION
+            -- Group permission
+            SELECT p.pack_id FROM pack_permissions p
+            JOIN user_group_members m ON p.group_id = m.group_id
+            JOIN content_packs cp ON p.pack_id = cp.id
+            WHERE m.user_id = ?1 AND p.allowed = 1 AND p.group_id != '' AND COALESCE(cp.is_enabled, 1) = 1
+        )"#
+    )?;
+    let packs = stmt
+        .query_map(params![user_id], |row| row.get(0))?
+        .filter_map(|r| r.ok())
+        .collect();
+    Ok(packs)
+}
+
 /// Get the groups that have access to a specific pack
 /// Returns empty vec if pack is available to all (no restrictions)
 pub fn get_pack_allowed_groups(conn: &Connection, pack_id: &str) -> Result<Vec<String>> {
@@ -1061,10 +1201,26 @@ pub fn get_pack_allowed_groups(conn: &Connection, pack_id: &str) -> Result<Vec<S
     Ok(groups)
 }
 
-/// Check if a pack has any restrictions (returns true if restricted)
+/// Check if a pack has any permission entries (used for access logic)
 pub fn is_pack_restricted(conn: &Connection, pack_id: &str) -> Result<bool> {
     let group_count: i64 = conn.query_row(
         "SELECT COUNT(*) FROM pack_permissions WHERE pack_id = ?1",
+        params![pack_id],
+        |row| row.get(0),
+    )?;
+    let user_count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM pack_user_permissions WHERE pack_id = ?1",
+        params![pack_id],
+        |row| row.get(0),
+    )?;
+    Ok(group_count > 0 || user_count > 0)
+}
+
+/// Check if a pack has specific user/group restrictions (for UI label)
+/// Returns false if pack only has public permission or no permissions
+pub fn is_pack_restricted_for_ui(conn: &Connection, pack_id: &str) -> Result<bool> {
+    let group_count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM pack_permissions WHERE pack_id = ?1 AND group_id != ''",
         params![pack_id],
         |row| row.get(0),
     )?;

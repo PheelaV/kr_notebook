@@ -1,0 +1,27 @@
+[
+  {
+    "term": "테스트",
+    "romanization": "te-seu-teu",
+    "translation": "test",
+    "word_type": "noun",
+    "lesson": 1,
+    "page": 1,
+    "common_usages": [
+      {
+        "korean": "테스트하다",
+        "english": "to test"
+      }
+    ],
+    "notes": "A loanword from English, commonly used in technical and everyday contexts",
+    "examples": [
+      {
+        "korean": "이것은 테스트입니다",
+        "english": "This is a test"
+      },
+      {
+        "korean": "테스트를 통과했어요",
+        "english": "I passed the test"
+      }
+    ]
+  }
+]

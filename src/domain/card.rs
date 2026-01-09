@@ -79,6 +79,10 @@ pub struct Card {
   pub audio_hint: Option<String>,
   /// True if this is a reverse card (romanization->Korean, "Which letter sounds like...?")
   pub is_reverse: bool,
+  /// Pack ID if this card comes from a content pack (None for baseline Hangul)
+  pub pack_id: Option<String>,
+  /// Lesson number within the pack (None for baseline Hangul)
+  pub lesson: Option<u8>,
 
   // SM-2 fields (kept for backward compatibility and fallback)
   pub ease_factor: f64,
@@ -116,6 +120,8 @@ impl Card {
       tier,
       audio_hint: None,
       is_reverse: false,
+      pack_id: None,
+      lesson: None,
       ease_factor: 2.5,
       interval_days: 0,
       repetitions: 0,

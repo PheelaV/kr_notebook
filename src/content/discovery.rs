@@ -152,6 +152,50 @@ pub fn find_packs_providing(shared_packs_dir: &Path, content_type: &str) -> Vec<
         .collect()
 }
 
+/// Check if any pack provides a specific content type, including external paths.
+///
+/// Scans shared packs directory and any provided external paths.
+pub fn any_pack_provides_with_external(
+    shared_packs_dir: &Path,
+    external_paths: &[PathBuf],
+    content_type: &str,
+) -> bool {
+    // Check shared packs first
+    let mut packs = scan_pack_directory(shared_packs_dir, PackScope::Shared, None);
+
+    // Add external paths
+    for path in external_paths {
+        packs.extend(scan_pack_directory(path, PackScope::External, None));
+    }
+
+    packs
+        .iter()
+        .any(|p| p.manifest.provides.iter().any(|t| t == content_type))
+}
+
+/// Find all packs that provide a specific content type, including external paths.
+///
+/// Returns PackLocations (with paths) so caller knows where to load content from.
+pub fn find_packs_providing_with_external(
+    shared_packs_dir: &Path,
+    external_paths: &[PathBuf],
+    content_type: &str,
+) -> Vec<PackLocation> {
+    // Scan shared packs
+    let mut packs = scan_pack_directory(shared_packs_dir, PackScope::Shared, None);
+
+    // Add external paths
+    for path in external_paths {
+        packs.extend(scan_pack_directory(path, PackScope::External, None));
+    }
+
+    // Filter to those providing the requested content type
+    packs
+        .into_iter()
+        .filter(|p| p.manifest.provides.iter().any(|t| t == content_type))
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -1,0 +1,13 @@
+{
+  "id": "dummy_test_pack",
+  "name": "Dummy Test Pack",
+  "version": "1.0.0",
+  "type": "cards",
+  "description": "A simple test pack with one card for testing external pack paths",
+  "provides": ["vocabulary"],
+  "cards": {
+    "file": "cards.json",
+    "tier": 5,
+    "card_types": ["Vocabulary"]
+  }
+}

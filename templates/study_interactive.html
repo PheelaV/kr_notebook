@@ -4,6 +4,29 @@
 
 {% block content %}
 <div class="max-w-lg mx-auto" id="study-container">
+  {% if study_filters.len() > 2 %}
+  <!-- Study filter dropdown (only shown when packs with lessons are enabled) -->
+  <div class="mb-4 flex items-center justify-between bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2">
+    <label for="study-filter" class="text-sm text-gray-600 dark:text-gray-400 font-medium">Study:</label>
+    <select id="study-filter"
+            class="ml-2 text-sm bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-gray-700 dark:text-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            onchange="updateStudyFilter(this.value)">
+      {% for filter in study_filters %}
+      <option value="{{ filter.id }}" {% if filter.is_selected %}selected{% endif %}>{{ filter.label }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <script>
+    function updateStudyFilter(value) {
+      fetch('/study/filter', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 'filter=' + encodeURIComponent(value)
+      }).then(() => window.location.reload());
+    }
+  </script>
+  {% endif %}
+
   {% if show_exit_focus_recommendation %}
   <!-- Focus mode exit recommendation -->
   <div id="focus-recommendation" class="mb-4 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">

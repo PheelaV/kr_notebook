@@ -9,15 +9,16 @@
     Browse learning content for passive study and reference.
   </p>
 
+  <!-- Content Sections -->
   <div class="grid gap-4 sm:grid-cols-2">
     {% for section in sections %}
     <a href="{{ section.href }}"
-       class="block bg-white dark:bg-gray-800 rounded-lg shadow hover:shadow-md transition-shadow p-6 {% if !section.enabled %}opacity-60{% endif %}">
+       class="block bg-white dark:bg-gray-800 rounded-lg shadow hover:shadow-md transition-shadow p-6">
       <div class="flex items-start justify-between">
         <div>
-          <h2 class="text-xl font-semibold text-gray-900 dark:text-white mb-2">
+          <h3 class="text-xl font-semibold text-gray-900 dark:text-white mb-2">
             {{ section.name }}
-          </h2>
+          </h3>
           <p class="text-gray-600 dark:text-gray-400 text-sm">
             {{ section.description }}
           </p>
@@ -28,11 +29,6 @@
         </span>
         {% endif %}
       </div>
-      {% if !section.enabled %}
-      <div class="mt-4 text-sm text-amber-600 dark:text-amber-400">
-        Enable pack in Settings to access
-      </div>
-      {% endif %}
     </a>
     {% endfor %}
   </div>

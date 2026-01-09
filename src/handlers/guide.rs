@@ -1,6 +1,7 @@
 use askama::Template;
 use axum::response::Html;
 
+use super::NavContext;
 use crate::filters;
 
 /// TOC item for navigation
@@ -15,6 +16,7 @@ pub struct TocItem {
 pub struct GuideTemplate {
     pub toc_items: Vec<TocItem>,
     pub toc_title: String,
+    pub nav: NavContext,
 }
 
 pub async fn guide() -> Html<String> {
@@ -39,6 +41,7 @@ pub async fn guide() -> Html<String> {
     let template = GuideTemplate {
         toc_items,
         toc_title: "Contents".to_string(),
+        nav: NavContext::public(),
     };
     Html(template.render().unwrap_or_default())
 }

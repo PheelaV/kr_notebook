@@ -1,13 +1,10 @@
 use askama::Template;
 use axum::response::Html;
-use std::path::Path;
 
 use crate::auth::AuthContext;
 use crate::config;
-use crate::content::{any_pack_provides, find_packs_providing, is_pack_enabled};
 use crate::db::{self, LogOnError};
 use crate::filters;
-use crate::paths;
 #[cfg(feature = "profiling")]
 use crate::profiling::EventType;
 
@@ -35,10 +32,13 @@ pub struct LibrarySection {
   pub enabled: bool,
 }
 
+use super::NavContext;
+
 #[derive(Template)]
 #[template(path = "library/index.html")]
 pub struct LibraryIndexTemplate {
   pub sections: Vec<LibrarySection>,
+  pub nav: NavContext,
 }
 
 #[derive(Template)]
@@ -46,6 +46,7 @@ pub struct LibraryIndexTemplate {
 pub struct LibraryCharactersTemplate {
   pub tiers: Vec<TierGroup>,
   pub max_unlocked_tier: u8,
+  pub nav: NavContext,
 }
 
 /// Library index/landing page
@@ -71,22 +72,22 @@ pub async fn library_index(auth: AuthContext) -> Html<String> {
     },
   ];
 
-  // Only show vocabulary section if any pack provides "vocabulary"
-  let packs_dir = Path::new(paths::SHARED_PACKS_DIR);
-  if any_pack_provides(packs_dir, "vocabulary") {
-    let vocab_pack_ids = find_packs_providing(packs_dir, "vocabulary");
-    let vocab_enabled = vocab_pack_ids.iter().any(|id| is_pack_enabled(&conn, id));
+  // Only show vocabulary section if user has access to at least one vocab pack
+  if auth.has_vocab_access {
     sections.push(LibrarySection {
       id: "vocabulary".to_string(),
       name: "Vocabulary".to_string(),
       description: "Vocabulary words with examples and usage notes".to_string(),
       href: "/library/vocabulary".to_string(),
       count: None,
-      enabled: vocab_enabled,
+      enabled: true,
     });
   }
 
-  let template = LibraryIndexTemplate { sections };
+  let template = LibraryIndexTemplate {
+    sections,
+    nav: NavContext::from_auth(&auth),
+  };
   Html(template.render().unwrap_or_default())
 }
 
@@ -137,6 +138,7 @@ pub async fn library_characters(auth: AuthContext) -> Html<String> {
   let template = LibraryCharactersTemplate {
     tiers,
     max_unlocked_tier,
+    nav: NavContext::from_auth(&auth),
   };
 
   Html(template.render().unwrap_or_default())

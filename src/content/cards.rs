@@ -26,6 +26,9 @@ pub struct CardDefinition {
     pub is_reverse: bool,
     #[serde(default)]
     pub audio_hint: Option<String>,
+    /// Lesson number for lesson-based progression (None for baseline/non-lesson content)
+    #[serde(default)]
+    pub lesson: Option<u8>,
 }
 
 /// Container for cards in a pack's cards.json file.
@@ -116,6 +119,7 @@ pub struct EnablePackResult {
 /// * `pack_name` - Human-readable pack name
 /// * `pack_version` - Pack version string
 /// * `pack_description` - Optional pack description
+/// * `pack_scope` - Pack scope (global or user)
 /// * `pack_dir` - Path to the pack directory
 /// * `cards_file` - Name of the cards JSON file (from pack manifest)
 ///
@@ -128,6 +132,7 @@ pub fn enable_card_pack(
     pack_name: &str,
     pack_version: &str,
     pack_description: Option<&str>,
+    pack_scope: &super::packs::PackScope,
     pack_dir: &Path,
     cards_file: &str,
 ) -> Result<EnablePackResult, CardLoadError> {
@@ -138,10 +143,20 @@ pub fn enable_card_pack(
         .execute(
             r#"INSERT OR IGNORE INTO content_packs
                (id, name, version, description, pack_type, scope, source_path, installed_at)
-               VALUES (?1, ?2, ?3, ?4, 'cards', 'shared', ?5, ?6)"#,
-            params![pack_id, pack_name, pack_version, pack_description, source_path, now],
+               VALUES (?1, ?2, ?3, ?4, 'cards', ?5, ?6, ?7)"#,
+            params![pack_id, pack_name, pack_version, pack_description, pack_scope, source_path, now],
         )
         .map_err(|e| CardLoadError::IoError("content_packs".to_string(), e.to_string()))?;
+
+    // Global packs are public by default
+    if *pack_scope == super::packs::PackScope::Global {
+        app_conn
+            .execute(
+                "INSERT OR IGNORE INTO pack_permissions (pack_id, group_id, allowed) VALUES (?1, '', 1)",
+                params![pack_id],
+            )
+            .map_err(|e| CardLoadError::IoError("pack_permissions".to_string(), e.to_string()))?;
+    }
 
     // Load cards from pack
     let cards = load_cards_from_pack(pack_dir, cards_file)?;
@@ -184,8 +199,8 @@ pub fn enable_card_pack(
 
         match app_conn.execute(
             r#"INSERT INTO card_definitions
-               (front, main_answer, description, card_type, tier, audio_hint, is_reverse, pack_id)
-               VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)"#,
+               (front, main_answer, description, card_type, tier, audio_hint, is_reverse, pack_id, lesson)
+               VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)"#,
             params![
                 card.front,
                 card.main_answer,
@@ -195,6 +210,7 @@ pub fn enable_card_pack(
                 card.audio_hint,
                 card.is_reverse,
                 pack_id,
+                card.lesson,
             ],
         ) {
             Ok(_) => inserted += 1,
@@ -294,6 +310,7 @@ pub fn get_enabled_packs_info(user_conn: &Connection) -> Vec<EnabledPackInfo> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use super::super::packs::PackScope;
     use std::fs;
     use tempfile::TempDir;
 
@@ -367,6 +384,7 @@ mod tests {
                     audio_hint TEXT,
                     is_reverse INTEGER NOT NULL DEFAULT 0,
                     pack_id TEXT,
+                    lesson INTEGER,
                     FOREIGN KEY (pack_id) REFERENCES content_packs(id)
                 );
             "#,
@@ -410,7 +428,7 @@ mod tests {
         }"#;
         create_test_pack(&pack_dir, cards_json);
 
-        let result = enable_card_pack(&app_conn, &user_conn, "test-pack", "Test Pack", "1.0.0", None, &pack_dir, "cards.json").unwrap();
+        let result = enable_card_pack(&app_conn, &user_conn, "test-pack", "Test Pack", "1.0.0", None, &PackScope::Global, &pack_dir, "cards.json").unwrap();
 
         assert_eq!(result.cards_inserted, 2);
         assert_eq!(result.cards_skipped, 0);
@@ -439,11 +457,11 @@ mod tests {
         create_test_pack(&pack_dir, cards_json);
 
         // First enable
-        let result1 = enable_card_pack(&app_conn, &user_conn, "test-pack", "Test Pack", "1.0.0", None, &pack_dir, "cards.json").unwrap();
+        let result1 = enable_card_pack(&app_conn, &user_conn, "test-pack", "Test Pack", "1.0.0", None, &PackScope::Global, &pack_dir, "cards.json").unwrap();
         assert_eq!(result1.cards_inserted, 1);
 
         // Second enable should skip
-        let result2 = enable_card_pack(&app_conn, &user_conn, "test-pack", "Test Pack", "1.0.0", None, &pack_dir, "cards.json").unwrap();
+        let result2 = enable_card_pack(&app_conn, &user_conn, "test-pack", "Test Pack", "1.0.0", None, &PackScope::Global, &pack_dir, "cards.json").unwrap();
         assert_eq!(result2.cards_inserted, 0);
         assert_eq!(result2.cards_skipped, 1);
 
@@ -464,7 +482,7 @@ mod tests {
         create_test_pack(&pack_dir, cards_json);
 
         // Enable then disable
-        enable_card_pack(&app_conn, &user_conn, "test-pack", "Test Pack", "1.0.0", None, &pack_dir, "cards.json").unwrap();
+        enable_card_pack(&app_conn, &user_conn, "test-pack", "Test Pack", "1.0.0", None, &PackScope::Global, &pack_dir, "cards.json").unwrap();
         assert!(is_pack_enabled(&user_conn, "test-pack"));
 
         let deleted = disable_pack(&user_conn, "test-pack").unwrap();
@@ -491,7 +509,7 @@ mod tests {
                 i
             );
             create_test_pack(&pack_dir, &cards_json);
-            enable_card_pack(&app_conn, &user_conn, &format!("pack{}", i), &format!("Pack {}", i), "1.0.0", None, &pack_dir, "cards.json").unwrap();
+            enable_card_pack(&app_conn, &user_conn, &format!("pack{}", i), &format!("Pack {}", i), "1.0.0", None, &PackScope::Global, &pack_dir, "cards.json").unwrap();
         }
 
         let enabled = list_enabled_packs(&user_conn);
@@ -509,12 +527,73 @@ mod tests {
         let cards_json = r#"{"cards": [{"front": "A", "main_answer": "a", "card_type": "Vowel", "tier": 1, "is_reverse": false}]}"#;
         create_test_pack(&pack_dir, cards_json);
 
-        enable_card_pack(&app_conn, &user_conn, "test-pack", "Test Pack", "1.0.0", None, &pack_dir, "cards.json").unwrap();
+        enable_card_pack(&app_conn, &user_conn, "test-pack", "Test Pack", "1.0.0", None, &PackScope::Global, &pack_dir, "cards.json").unwrap();
 
         let info = get_enabled_packs_info(&user_conn);
         assert_eq!(info.len(), 1);
         assert_eq!(info[0].pack_id, "test-pack");
         assert!(info[0].cards_created);
         assert!(!info[0].enabled_at.is_empty());
+    }
+
+    #[test]
+    fn test_load_cards_with_lesson() {
+        let temp = TempDir::new().unwrap();
+
+        let cards_json = r#"{
+            "cards": [
+                {
+                    "front": "사람",
+                    "main_answer": "person",
+                    "card_type": "Vocabulary",
+                    "tier": 5,
+                    "is_reverse": false,
+                    "lesson": 1
+                },
+                {
+                    "front": "person",
+                    "main_answer": "사람",
+                    "card_type": "Vocabulary",
+                    "tier": 5,
+                    "is_reverse": true,
+                    "lesson": 1
+                }
+            ]
+        }"#;
+
+        fs::write(temp.path().join("cards.json"), cards_json).unwrap();
+
+        let cards = load_cards_from_pack(temp.path(), "cards.json").unwrap();
+        assert_eq!(cards.len(), 2);
+        assert_eq!(cards[0].lesson, Some(1));
+        assert_eq!(cards[1].lesson, Some(1));
+    }
+
+    #[test]
+    fn test_enable_card_pack_with_lessons() {
+        let (temp, app_conn, user_conn) = create_test_db();
+        let pack_dir = temp.path().join("vocab-pack");
+        fs::create_dir(&pack_dir).unwrap();
+
+        let cards_json = r#"{
+            "cards": [
+                {"front": "사람", "main_answer": "person", "card_type": "Vocabulary", "tier": 5, "is_reverse": false, "lesson": 1},
+                {"front": "물", "main_answer": "water", "card_type": "Vocabulary", "tier": 5, "is_reverse": false, "lesson": 2}
+            ]
+        }"#;
+        create_test_pack(&pack_dir, cards_json);
+
+        let result = enable_card_pack(&app_conn, &user_conn, "vocab-pack", "Vocab Pack", "1.0.0", None, &PackScope::Global, &pack_dir, "cards.json").unwrap();
+        assert_eq!(result.cards_inserted, 2);
+
+        // Verify lessons are stored
+        let lesson1_count: i64 = app_conn
+            .query_row("SELECT COUNT(*) FROM card_definitions WHERE lesson = 1", [], |row| row.get(0))
+            .unwrap();
+        let lesson2_count: i64 = app_conn
+            .query_row("SELECT COUNT(*) FROM card_definitions WHERE lesson = 2", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(lesson1_count, 1);
+        assert_eq!(lesson2_count, 1);
     }
 }

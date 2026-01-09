@@ -21,7 +21,7 @@
   </script>
   <link rel="stylesheet" href="{{ "/static/css/styles.css"|asset_url }}">
   <script src="https://unpkg.com/htmx.org@2.0.4"
-          integrity="sha384-M06VwgoUOHG3FN0UchwWKqh9jS4ejwpoL0yjF3EVljtsxFwFETEYMkyNL5lXbJ5/"
+          integrity="sha384-HGfztofotfshcF7+8n44JQL2oJmowVChPTg48S+jvZoztPfvwD79OC/LTtG6dMp+"
           crossorigin="anonymous"></script>
   <script src="https://code.iconify.design/iconify-icon/2.1.0/iconify-icon.min.js"
           integrity="sha384-GPb5RlngihS9H0z1D137JsvzmeZ7tCpWEF4t5YDoTZyMsPP8S7h7vFDh4XhheU83"
@@ -80,15 +80,15 @@
             <a href="/listen" id="nav-listen" class="hidden text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 px-3 py-2 rounded-md text-sm font-medium">
               Listen
             </a>
-            <!-- Library Dropdown -->
+            <!-- Library link/dropdown - show dropdown if user has vocab access -->
+            {% if nav.has_vocab_access %}
             <div class="relative group">
               <a href="/library" class="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 px-3 py-2 rounded-md text-sm font-medium inline-flex items-center gap-1">
                 Library
                 <iconify-icon icon="heroicons:chevron-down" width="14" height="14" class="transition-transform group-hover:rotate-180"></iconify-icon>
               </a>
-              <!-- Dropdown menu -->
               <div class="absolute left-0 top-full pt-1 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-150 z-50">
-                <div class="bg-white dark:bg-gray-800 shadow-lg rounded-lg border border-gray-200 dark:border-gray-700 py-1 min-w-[160px]">
+                <div class="bg-white dark:bg-gray-800 shadow-lg rounded-lg border border-gray-200 dark:border-gray-700 py-1 min-w-[180px]">
                   <a href="/library/characters" class="block px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700">
                     Characters
                   </a>
@@ -98,6 +98,11 @@
                 </div>
               </div>
             </div>
+            {% else %}
+            <a href="/library" class="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 px-3 py-2 rounded-md text-sm font-medium">
+              Library
+            </a>
+            {% endif %}
             <a href="/guide" class="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 px-3 py-2 rounded-md text-sm font-medium">
               Guide
             </a>
@@ -149,7 +154,8 @@
           <a href="/listen" id="nav-listen-mobile" class="hidden block text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 px-3 py-2 rounded-md text-base font-medium">
             Listen
           </a>
-          <!-- Library expandable section (mobile) -->
+          <!-- Library link/expandable - show expandable menu if user has vocab access -->
+          {% if nav.has_vocab_access %}
           <div class="library-mobile-section">
             <button type="button" onclick="toggleLibrarySubmenu(event)" class="w-full flex items-center justify-between text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 px-3 py-2 rounded-md text-base font-medium">
               <span>Library</span>
@@ -164,6 +170,11 @@
               </a>
             </div>
           </div>
+          {% else %}
+          <a href="/library" class="block text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 px-3 py-2 rounded-md text-base font-medium">
+            Library
+          </a>
+          {% endif %}
           <a href="/guide" class="block text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 px-3 py-2 rounded-md text-base font-medium">
             Guide
           </a>

@@ -29,8 +29,9 @@ pub use cards::{
     load_baseline_cards, load_cards_from_pack, CardDefinition, EnablePackResult, EnabledPackInfo,
 };
 pub use discovery::{
-    any_pack_provides, count_packs_in_directory, discover_packs, discover_packs_with_external,
-    find_packs_providing, PackLocation,
+    any_pack_provides, any_pack_provides_with_external, count_packs_in_directory, discover_packs,
+    discover_packs_with_external, find_packs_providing, find_packs_providing_with_external,
+    PackLocation,
 };
 pub use packs::{AudioConfig, CardConfig, GeneratorConfig, PackManifest, PackType};
 

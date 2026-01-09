@@ -21,7 +21,7 @@ Content packs are self-contained bundles of learning content that can be install
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                      PackLocation[]                              │
-│  manifest: PackManifest, path: PathBuf, scope: Shared|User       │
+│  manifest: PackManifest, path: PathBuf, scope: Global|User       │
 └─────────────────────────────────────────────────────────────────┘
                               │
               ┌───────────────┼───────────────┐
@@ -163,7 +163,7 @@ The `provides` field declares what content types a pack offers. This enables dyn
 
 | Scope | Path | Description |
 |-------|------|-------------|
-| Shared | `data/content/packs/` | Admin-installed packs, available to all users |
+| Global | `data/content/packs/` | Admin-installed packs, available based on permissions |
 | User | `data/users/{username}/content/packs/` | User-specific packs |
 
 ### Directory Structure
@@ -237,13 +237,13 @@ pub fn discover_packs(
 pub struct PackLocation {
     pub manifest: PackManifest,
     pub path: PathBuf,
-    pub scope: PackScope,      // Shared or User
+    pub scope: PackScope,      // Global or User
     pub username: Option<String>,
 }
 
 pub enum PackScope {
-    Shared,
-    User,
+    Global,  // Admin-managed, built-in packs
+    User,    // User-installed packs
 }
 ```
 
@@ -299,12 +299,13 @@ When enabling a pack:
 
 | Feature | Status |
 |---------|--------|
-| Baseline pack always enabled | Implemented |
-| Per-user pack enable/disable | Implemented |
-| Pack visible to all users | Implemented (shared packs) |
+| Built-in pack always enabled | Implemented |
+| Global pack enable/disable | Implemented (`is_enabled` column) |
 | User roles (`user`, `admin`) | Implemented |
 | User groups | Implemented |
 | Group-based pack permissions | Implemented |
+| User-based pack permissions | Implemented |
+| Public pack flag | Implemented (group_id='') |
 
 ### User Roles
 
@@ -337,27 +338,57 @@ CREATE TABLE user_group_members (
 
 ### Pack Permissions
 
-Control which users/groups can access each pack:
+The permissions system controls which users can access each pack. There are three levels of control:
+
+1. **Global enable/disable** - Admin can disable a pack entirely via `is_enabled` in `content_packs`
+2. **Group permissions** - Grant access to user groups via `pack_permissions`
+3. **User permissions** - Grant access to individual users via `pack_user_permissions`
+
+#### Permission Tables
 
 ```sql
+-- Group-level permissions
 CREATE TABLE pack_permissions (
     pack_id TEXT NOT NULL,
-    group_id TEXT NOT NULL DEFAULT '',  -- '' = all users
+    group_id TEXT NOT NULL DEFAULT '',  -- '' = public (all users)
     allowed INTEGER NOT NULL DEFAULT 1,
     PRIMARY KEY (pack_id, group_id)
 );
+
+-- User-level permissions
+CREATE TABLE pack_user_permissions (
+    pack_id TEXT NOT NULL,
+    user_id INTEGER NOT NULL,
+    allowed INTEGER NOT NULL DEFAULT 1,
+    PRIMARY KEY (pack_id, user_id)
+);
 ```
 
-**Permission resolution:**
-1. Admins can access all packs
-2. If no `pack_permissions` entry exists → pack available to all
-3. If entry with `group_id = ''` and `allowed = 1` exists → available to all
-4. Otherwise, user must be member of an allowed group
+#### Access Resolution
+
+When a user requests access to a pack, the system evaluates in order:
+
+1. **Global enabled check** - If `is_enabled = 0` in `content_packs` → denied
+2. **Admin bypass** - Admins can access all enabled packs
+3. **No permissions defined** - If no entries in either permission table → admin-only
+4. **Public permission** - If `group_id = ''` with `allowed = 1` exists → granted to all
+5. **Direct user permission** - If user has entry in `pack_user_permissions` → granted
+6. **Group membership** - If user belongs to an allowed group → granted
+7. **Default** - Denied
+
+#### Built-in Packs
+
+Packs with `scope = 'global'` (built-in) automatically receive a public permission entry when registered. This ensures the baseline content is always accessible to all users.
+
+#### UI Considerations
+
+The "restricted" label in settings only appears when a pack has specific user or group restrictions. Packs with only a public permission (or no permissions) don't show the label.
 
 **Use cases:**
 - Restrict premium content to specific groups
 - Beta test new packs with "beta-testers" group
-- Disable problematic packs without deleting
+- Grant individual users access without creating a group
+- Disable problematic packs globally without deleting
 
 ---
 
@@ -431,10 +462,11 @@ Shared registry of installed packs.
 | `version` | TEXT | Semver version |
 | `description` | TEXT | Brief description |
 | `source_path` | TEXT | Path to pack directory |
-| `scope` | TEXT | `shared` or `user` |
+| `scope` | TEXT | `global` or `user` |
 | `installed_at` | TEXT | ISO 8601 timestamp |
 | `installed_by` | TEXT | Username who installed |
 | `metadata` | TEXT | JSON configuration |
+| `is_enabled` | INTEGER | 1=enabled, 0=disabled (default 1) |
 
 ### card_definitions (app.db)
 
@@ -491,7 +523,17 @@ Pack access control per group.
 | Column | Type | Description |
 |--------|------|-------------|
 | `pack_id` | TEXT PK | Pack identifier |
-| `group_id` | TEXT PK | Group ('' = all users) |
+| `group_id` | TEXT PK | Group ID ('' = public/all users) |
+| `allowed` | INTEGER | 1 = allowed, 0 = blocked |
+
+### pack_user_permissions (app.db)
+
+Pack access control per user (direct grants).
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `pack_id` | TEXT PK | Pack identifier |
+| `user_id` | INTEGER PK | User ID |
 | `allowed` | INTEGER | 1 = allowed, 0 = blocked |
 
 ### users.role column (app.db)

@@ -26,6 +26,8 @@ pub struct AuthContext {
     pub username: String,
     pub is_admin: bool,
     pub user_db: Arc<Mutex<Connection>>,
+    /// Whether user has access to vocabulary content (for nav dropdown)
+    pub has_vocab_access: bool,
 }
 
 impl FromRequestParts<AppState> for AuthContext {
@@ -92,12 +94,18 @@ impl FromRequestParts<AppState> for AuthContext {
                 .into_response()
         })?;
 
-        // Check admin status (by role or legacy username='admin')
-        // Uses proper error handling instead of .unwrap() to avoid panics
-        let is_admin = match state.auth_db.lock() {
-            Ok(db) => auth_db::is_user_admin(&db, user_id)
-                .unwrap_or_else(|_| username.eq_ignore_ascii_case("admin")),
-            Err(_) => username.eq_ignore_ascii_case("admin"),
+        // Check admin status and vocab access
+        let (is_admin, has_vocab_access) = match state.auth_db.lock() {
+            Ok(db) => {
+                let admin = auth_db::is_user_admin(&db, user_id)
+                    .unwrap_or_else(|_| username.eq_ignore_ascii_case("admin"));
+                // Check if user has access to any vocabulary-providing packs
+                let vocab = crate::services::pack_manager::any_accessible_pack_provides(
+                    &db, user_id, "vocabulary"
+                );
+                (admin, vocab)
+            }
+            Err(_) => (username.eq_ignore_ascii_case("admin"), false),
         };
 
         Ok(AuthContext {
@@ -105,6 +113,7 @@ impl FromRequestParts<AppState> for AuthContext {
             username,
             is_admin,
             user_db: Arc::new(Mutex::new(conn)),
+            has_vocab_access,
         })
     }
 }

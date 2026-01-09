@@ -7,6 +7,7 @@ use rand::prelude::IndexedRandom;
 use serde::Deserialize;
 
 use super::settings::{has_lesson1, has_lesson2, has_lesson3};
+use super::NavContext;
 use crate::auth::AuthContext;
 use crate::filters;
 use crate::audio::{
@@ -245,6 +246,7 @@ pub struct ListenIndexTemplate {
     pub tier2_count: usize,
     pub tier3_available: bool,
     pub tier3_count: usize,
+    pub nav: NavContext,
 }
 
 #[derive(Template)]
@@ -263,6 +265,7 @@ pub struct ListenPracticeTemplate {
     pub user_answer: String,
     pub hard_mode: bool,
     pub all_syllables: Vec<ListenChoice>, // Full matrix for hard mode
+    pub nav: NavContext,
 }
 
 #[derive(Template)]
@@ -352,6 +355,7 @@ pub async fn listen_index(auth: AuthContext) -> impl IntoResponse {
         tier2_count: tier2.as_ref().map(|t| t.total_syllables).unwrap_or(0),
         tier3_available: tier3.is_some(),
         tier3_count: tier3.as_ref().map(|t| t.total_syllables).unwrap_or(0),
+        nav: NavContext::from_auth(&auth),
     };
 
     Html(template.render().unwrap_or_default())
@@ -401,6 +405,7 @@ pub async fn listen_start(auth: AuthContext, Query(query): Query<StartQuery>) ->
         user_answer: String::new(),
         hard_mode: query.hard_mode,
         all_syllables,
+        nav: NavContext::from_auth(&auth),
     };
 
     Html(template.render().unwrap_or_default())
@@ -456,6 +461,7 @@ pub async fn listen_answer(auth: AuthContext, Form(form): Form<AnswerForm>) -> i
         user_answer: form.answer,
         hard_mode: form.hard_mode,
         all_syllables,
+        nav: NavContext::from_auth(&auth),
     };
 
     Html(template.render().unwrap_or_default())
@@ -558,6 +564,7 @@ pub async fn listen_skip(auth: AuthContext, Query(query): Query<SkipQuery>) -> i
         user_answer: String::new(),
         hard_mode: query.hard_mode,
         all_syllables,
+        nav: NavContext::from_auth(&auth),
     };
 
     Html(template.render().unwrap_or_default())
