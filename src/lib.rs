@@ -1,12 +1,14 @@
 pub mod audio;
 pub mod auth;
 pub mod config;
+pub mod content;
 pub mod db;
 pub mod domain;
 pub mod filters;
 pub mod handlers;
 pub mod paths;
 pub mod profiling;
+pub mod services;
 pub mod session;
 pub mod srs;
 pub mod state;

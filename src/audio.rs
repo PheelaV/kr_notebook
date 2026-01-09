@@ -1,12 +1,15 @@
 //! Audio utilities for syllable and manifest handling
 //!
 //! Shared functions used by listen and pronunciation handlers.
+//! Uses the pack system for audio resolution with fallback to legacy locations.
 
 use std::collections::HashSet;
 use std::fs;
-use std::path::Path;
 
-use crate::paths;
+use crate::content::audio as pack_audio;
+
+// Re-export list_available_lessons for external use
+pub use pack_audio::list_available_lessons;
 
 /// Parsed manifest data shared between listen and pronunciation handlers
 #[derive(Debug, Clone)]
@@ -26,8 +29,9 @@ pub struct SyllableInfo {
 }
 
 /// Load and parse a manifest file for a lesson
+/// Uses pack system with fallback to legacy location
 pub fn load_manifest(lesson_id: &str) -> Option<ManifestData> {
-    let manifest_path = paths::manifest_path(lesson_id);
+    let manifest_path = pack_audio::get_manifest_path(lesson_id)?;
     let manifest_content = fs::read_to_string(&manifest_path).ok()?;
     let manifest: serde_json::Value = serde_json::from_str(&manifest_content).ok()?;
 
@@ -140,31 +144,9 @@ pub fn row_has_audio(manifest: &ManifestData, consonant: &str) -> bool {
 /// Get available syllable audio files for a lesson
 ///
 /// Returns a set of syllable romanizations that have corresponding .mp3 files.
+/// Uses pack system with fallback to legacy location.
 pub fn get_available_syllables(lesson: &str) -> HashSet<String> {
-    let syllables_dir = paths::syllables_dir(lesson);
-    let syllables_path = Path::new(&syllables_dir);
-
-    if syllables_path.exists() {
-        fs::read_dir(syllables_path)
-            .map(|entries| {
-                entries
-                    .filter_map(|e| e.ok())
-                    .filter_map(|e| {
-                        let path = e.path();
-                        if path.extension().map(|ext| ext == "mp3").unwrap_or(false) {
-                            path.file_stem()
-                                .and_then(|s| s.to_str())
-                                .map(String::from)
-                        } else {
-                            None
-                        }
-                    })
-                    .collect()
-            })
-            .unwrap_or_default()
-    } else {
-        HashSet::new()
-    }
+    pack_audio::get_available_syllables(lesson)
 }
 
 #[cfg(test)]

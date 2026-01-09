@@ -1,0 +1,29 @@
+{
+  "id": "htsk-scraper",
+  "name": "HTSK Audio Scraper",
+  "version": "1.0.0",
+  "type": "generator",
+  "description": "Downloads pronunciation audio from howtostudykorean.com",
+
+  "generator": {
+    "command": "uv run kr-scraper",
+    "subcommands": [
+      {
+        "id": "lesson1",
+        "args": [],
+        "output": "lesson1/"
+      },
+      {
+        "id": "lesson2",
+        "args": [],
+        "output": "lesson2/"
+      },
+      {
+        "id": "lesson3",
+        "args": [],
+        "output": "lesson3/"
+      }
+    ],
+    "output_type": "audio"
+  }
+}

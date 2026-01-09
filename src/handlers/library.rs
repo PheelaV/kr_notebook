@@ -22,17 +22,80 @@ pub struct TierGroup {
   pub entries: Vec<LibraryEntry>,
 }
 
-#[derive(Template)]
-#[template(path = "library.html")]
-pub struct LibraryTemplate {
-  pub tiers: Vec<TierGroup>,
-  pub max_unlocked_tier: u8,
+/// Library section for the index page
+pub struct LibrarySection {
+  pub id: String,
+  pub name: String,
+  pub description: String,
+  pub href: String,
+  pub count: Option<usize>,
+  pub enabled: bool,
 }
 
-pub async fn library(auth: AuthContext) -> Html<String> {
+use super::NavContext;
+
+#[derive(Template)]
+#[template(path = "library/index.html")]
+pub struct LibraryIndexTemplate {
+  pub sections: Vec<LibrarySection>,
+  pub nav: NavContext,
+}
+
+#[derive(Template)]
+#[template(path = "library/characters.html")]
+pub struct LibraryCharactersTemplate {
+  pub tiers: Vec<TierGroup>,
+  pub max_unlocked_tier: u8,
+  pub nav: NavContext,
+}
+
+/// Library index/landing page
+pub async fn library_index(auth: AuthContext) -> Html<String> {
+  let conn = match auth.user_db.lock() {
+    Ok(conn) => conn,
+    Err(_) => return Html("<h1>Database Error</h1><p>Please refresh the page.</p>".to_string()),
+  };
+
+  // Get character count
+  let cards = db::get_all_unlocked_cards(&conn).log_warn_default("Failed to get unlocked cards");
+  let char_count = cards.iter().filter(|c| !c.is_reverse).count();
+
+  // Start with characters section (always available)
+  let mut sections = vec![
+    LibrarySection {
+      id: "characters".to_string(),
+      name: "Characters".to_string(),
+      description: "Hangul consonants, vowels, and compound characters organized by tier".to_string(),
+      href: "/library/characters".to_string(),
+      count: Some(char_count),
+      enabled: true,
+    },
+  ];
+
+  // Only show vocabulary section if user has access to at least one vocab pack
+  if auth.has_vocab_access {
+    sections.push(LibrarySection {
+      id: "vocabulary".to_string(),
+      name: "Vocabulary".to_string(),
+      description: "Vocabulary words with examples and usage notes".to_string(),
+      href: "/library/vocabulary".to_string(),
+      count: None,
+      enabled: true,
+    });
+  }
+
+  let template = LibraryIndexTemplate {
+    sections,
+    nav: NavContext::from_auth(&auth),
+  };
+  Html(template.render().unwrap_or_default())
+}
+
+/// Character library page (formerly /library)
+pub async fn library_characters(auth: AuthContext) -> Html<String> {
   #[cfg(feature = "profiling")]
   crate::profile_log!(EventType::HandlerStart {
-    route: "/library".into(),
+    route: "/library/characters".into(),
     method: "GET".into(),
     username: Some(auth.username.clone()),
   });
@@ -72,9 +135,10 @@ pub async fn library(auth: AuthContext) -> Html<String> {
     })
     .collect();
 
-  let template = LibraryTemplate {
+  let template = LibraryCharactersTemplate {
     tiers,
     max_unlocked_tier,
+    nav: NavContext::from_auth(&auth),
   };
 
   Html(template.render().unwrap_or_default())

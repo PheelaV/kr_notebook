@@ -1,4 +1,4 @@
-use axum::{routing::get, routing::post, Router};
+use axum::{routing::delete, routing::get, routing::post, Router};
 use rusqlite::Connection;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -53,7 +53,13 @@ async fn main() {
     // Check for migration: old single-user database exists, no users yet
     if Path::new(OLD_DB_PATH).exists() {
         let should_migrate = {
-            let conn = auth_db.lock().expect("Auth DB lock failed");
+            let conn = match auth_db.lock() {
+                Ok(conn) => conn,
+                Err(_) => {
+                    tracing::error!("Auth DB lock poisoned during migration check");
+                    panic!("Fatal: Auth database lock poisoned at startup");
+                }
+            };
             auth::db::get_user_count(&conn).unwrap_or(0) == 0
         };
 
@@ -93,12 +99,15 @@ async fn main() {
         .route("/review-classic", post(handlers::submit_review))
         .route("/validate-answer", post(handlers::validate_answer_handler))
         .route("/next-card", post(handlers::next_card_interactive))
+        .route("/study/filter", post(handlers::set_study_filter))
         .route("/practice", get(handlers::practice_start))
         .route("/practice-next", post(handlers::practice_next))
         .route("/practice-validate", post(handlers::practice_validate))
         .route("/progress", get(handlers::progress))
         .route("/unlock-tier", post(handlers::unlock_tier))
-        .route("/library", get(handlers::library))
+        .route("/library", get(handlers::library_index))
+        .route("/library/characters", get(handlers::library_characters))
+        .route("/library/vocabulary", get(handlers::vocabulary_library))
         .route("/listen", get(handlers::listen_index))
         .route("/listen/start", get(handlers::listen_start))
         .route("/listen/answer", post(handlers::listen_answer))
@@ -136,11 +145,31 @@ async fn main() {
         )
         .route("/settings/export", get(handlers::export_data))
         .route("/settings/import", post(handlers::import_data))
+        .route("/settings/pack/{pack_id}/enable", post(handlers::enable_pack))
+        .route("/settings/pack/{pack_id}/disable", post(handlers::disable_pack))
         .route("/settings/cleanup-guests", post(handlers::cleanup_guests))
         .route(
             "/settings/delete-all-guests",
             post(handlers::delete_all_guests),
         )
+        // User/group management (admin)
+        .route("/settings/user/role", post(handlers::set_user_role))
+        .route("/settings/group/create", post(handlers::create_group))
+        .route("/settings/group/{group_id}", delete(handlers::delete_group))
+        .route("/settings/group/add-member", post(handlers::add_to_group))
+        .route("/settings/group/remove-member", post(handlers::remove_from_group))
+        // Pack permissions (admin) - groups
+        .route("/settings/pack/permission/add", post(handlers::restrict_pack_to_group))
+        .route("/settings/pack/permission/remove", post(handlers::remove_pack_restriction))
+        .route("/settings/pack/{pack_id}/make-public", post(handlers::make_pack_public))
+        // Pack permissions (admin) - users
+        .route("/settings/pack/user-permission/add", post(handlers::restrict_pack_to_user))
+        .route("/settings/pack/user-permission/remove", post(handlers::remove_pack_user_restriction))
+        // External pack paths (admin)
+        .route("/settings/pack-paths/register", post(handlers::register_pack_path))
+        .route("/settings/pack-paths/{id}", delete(handlers::unregister_pack_path))
+        .route("/settings/pack-paths/{id}/toggle", post(handlers::toggle_pack_path))
+        .route("/settings/pack-paths/browse", post(handlers::browse_directories))
         .route("/diagnostic", post(handlers::log_diagnostic));
 
     let app = Router::new()
@@ -193,7 +222,13 @@ fn migrate_existing_database(auth_db: &Arc<Mutex<Connection>>) {
 
     // Create admin user
     {
-        let conn = auth_db.lock().expect("Auth DB lock failed");
+        let conn = match auth_db.lock() {
+            Ok(conn) => conn,
+            Err(_) => {
+                tracing::error!("Auth DB lock poisoned during admin creation");
+                panic!("Fatal: Auth database lock poisoned during migration");
+            }
+        };
         auth::db::create_user(&conn, "admin", &password_hash).expect("Failed to create admin user");
     }
 

@@ -179,6 +179,70 @@
     {% endfor %}
   </div>
 
+  <!-- Vocabulary Pack Progress Sections -->
+  {% for unit in units %}
+    {% match unit %}
+      {% when ProgressUnit::VocabularyPack with (pack) %}
+      <div class="mt-8">
+        <div class="flex justify-between items-center mb-4">
+          <h2 class="text-xl font-bold text-gray-900 dark:text-white">
+            {{ pack.display_name }}
+          </h2>
+          {% if pack.is_accelerated %}
+          <span class="text-xs bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 px-2 py-1 rounded">
+            All {{ pack.unit_name }} Unlocked
+          </span>
+          {% endif %}
+        </div>
+
+        <div class="space-y-3">
+          {% for lesson in pack.lessons %}
+          <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-4 {% if !lesson.is_unlocked %}opacity-50{% endif %}">
+            <div class="flex justify-between items-center mb-2">
+              <div class="font-semibold text-gray-900 dark:text-white flex items-center">
+                {% if lesson.is_unlocked %}
+                <span class="text-green-500 mr-2">&#10003;</span>
+                {% else %}
+                <span class="text-gray-400 mr-2">&#128274;</span>
+                {% endif %}
+                {{ pack.section_prefix }} {{ lesson.lesson }}
+                {% if let Some(label) = lesson.label %}
+                <span class="text-sm font-normal text-gray-500 dark:text-gray-400 ml-2">{{ label }}</span>
+                {% endif %}
+              </div>
+              <span class="text-sm text-gray-600 dark:text-gray-400">
+                {% if lesson.is_unlocked %}
+                {{ lesson.learned }} / {{ lesson.total }} learned
+                {% else %}
+                Locked
+                {% endif %}
+              </span>
+            </div>
+            <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+              {% if lesson.is_unlocked %}
+              <div class="bg-indigo-600 h-2 rounded-full transition-all duration-300" style="width: {{ lesson.percentage }}%"></div>
+              {% endif %}
+            </div>
+            {% if lesson.is_unlocked %}
+            <div class="flex justify-between mt-2 text-xs text-gray-500 dark:text-gray-400">
+              <span>New: {{ lesson.new_cards }}</span>
+              <span>Learning: {{ lesson.learning }}</span>
+              <span>Learned: {{ lesson.learned }}</span>
+            </div>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+
+        <div class="mt-3 text-sm text-gray-500 dark:text-gray-400">
+          Overall: {{ pack.total_learned }} / {{ pack.total_cards }} cards learned
+        </div>
+      </div>
+      {% when ProgressUnit::HangulTiers with { .. } %}
+      {# Hangul tiers are rendered above, skip here #}
+    {% endmatch %}
+  {% endfor %}
+
   {% if !character_stats_groups.is_empty() %}
   <div class="mt-8">
     <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-4">

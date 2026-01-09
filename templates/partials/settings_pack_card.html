@@ -1,0 +1,65 @@
+<div id="pack-card-{{ pack.id }}" class="p-4 rounded-lg border {% if pack.is_enabled %}bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800{% else %}bg-gray-50 dark:bg-gray-700/50 border-gray-200 dark:border-gray-600{% endif %}">
+  <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+    <div>
+      <div class="flex items-center gap-2">
+        {% if pack.is_enabled %}
+        <iconify-icon icon="heroicons:check-circle" class="text-green-600 dark:text-green-400 flex-shrink-0" width="20" height="20"></iconify-icon>
+        {% else %}
+        <iconify-icon icon="heroicons:plus-circle" class="text-gray-400" width="20" height="20"></iconify-icon>
+        {% endif %}
+        <span class="font-medium text-gray-900 dark:text-white">{{ pack.name }}</span>
+        {% if let Some(version) = &pack.version %}
+        <span class="text-xs text-gray-400">v{{ version }}</span>
+        {% endif %}
+        {% if pack.is_restricted %}
+        <span class="text-xs px-2 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300">restricted</span>
+        {% endif %}
+      </div>
+      {% if let Some(desc) = &pack.description %}
+      <p class="text-sm text-gray-500 dark:text-gray-400 mt-1 ml-7">{{ desc }}</p>
+      {% endif %}
+      {% if let Some(count) = pack.cards_count %}
+      <p class="text-xs text-gray-400 mt-1 ml-7">{{ count }} cards</p>
+      {% endif %}
+    </div>
+    <div class="flex gap-2 ml-7 sm:ml-0">
+      {% if pack.is_baseline %}
+      <span class="px-3 py-1.5 text-sm text-gray-500 dark:text-gray-400">
+        Built-in
+      </span>
+      {% else if pack.can_manage %}
+        {% if pack.is_enabled %}
+        <button type="button"
+                hx-post="/settings/pack/{{ pack.id }}/disable"
+                hx-target="#pack-card-{{ pack.id }}"
+                hx-swap="outerHTML"
+                hx-confirm="Disable {{ pack.name }}? Your progress will be kept."
+                class="px-3 py-1.5 text-sm bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-200 rounded hover:bg-gray-300 dark:hover:bg-gray-500">
+          Disable
+        </button>
+        {% else %}
+        <button type="button"
+                hx-post="/settings/pack/{{ pack.id }}/enable"
+                hx-target="#pack-card-{{ pack.id }}"
+                hx-swap="outerHTML"
+                class="px-3 py-1.5 text-sm bg-indigo-600 text-white rounded hover:bg-indigo-700">
+          Enable
+        </button>
+        {% endif %}
+      {% else %}
+      <span class="px-3 py-1.5 text-sm text-gray-400 dark:text-gray-500 italic">
+        {% if pack.is_enabled %}Enabled{% else %}Disabled{% endif %}
+      </span>
+      {% endif %}
+    </div>
+  </div>
+  {% if is_admin && !pack.is_baseline %}
+  <!-- Pack Permissions (Admin) -->
+  <details class="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
+    <summary class="text-sm text-indigo-600 dark:text-indigo-400 cursor-pointer hover:underline">
+      Manage access
+    </summary>
+    {% include "partials/settings_pack_permissions.html" %}
+  </details>
+  {% endif %}
+</div>

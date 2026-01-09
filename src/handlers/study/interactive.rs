@@ -1,22 +1,26 @@
 //! Interactive study mode with input-based validation.
 
 use askama::Template;
+use axum::extract::State;
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum::Form;
+use serde::Deserialize;
 
 use crate::auth::AuthContext;
 use crate::db::{self, LogOnError};
 use crate::domain::StudyMode;
+use crate::handlers::NavContext;
 use crate::session;
 use crate::srs::{self, select_next_card};
+use crate::state::AppState;
 use crate::validation::{validate_answer, HintGenerator};
 
 #[cfg(feature = "profiling")]
 use crate::profiling::EventType;
 
 use super::templates::{
-  InteractiveCardTemplate, NextCardForm, NoCardsTemplate, ReviewForm, StudyInteractiveTemplate,
-  ValidateAnswerForm,
+  InteractiveCardTemplate, NextCardForm, NoCardsTemplate, ReviewForm, StudyFilterOption,
+  StudyInteractiveTemplate, ValidateAnswerForm,
 };
 use super::{
   generate_choices, get_available_study_cards, get_character_type, get_review_direction,
@@ -24,7 +28,10 @@ use super::{
 };
 
 /// Interactive study mode with input-based validation
-pub async fn study_start_interactive(auth: AuthContext) -> Response {
+pub async fn study_start_interactive(
+  State(state): State<AppState>,
+  auth: AuthContext,
+) -> Response {
   #[cfg(feature = "profiling")]
   crate::profile_log!(EventType::HandlerStart {
     route: "/study".into(),
@@ -38,6 +45,52 @@ pub async fn study_start_interactive(auth: AuthContext) -> Response {
       return Html("<h1>Database Error</h1><p>Please refresh the page.</p>".to_string()).into_response()
     }
   };
+
+  let app_conn = match state.auth_db.lock() {
+    Ok(conn) => conn,
+    Err(_) => {
+      return Html("<h1>Database Error</h1><p>Please refresh the page.</p>".to_string()).into_response()
+    }
+  };
+
+  // Build study filter options from enabled packs
+  let current_filter = db::get_setting(&conn, "study_filter_mode")
+    .ok()
+    .flatten()
+    .unwrap_or_else(|| "all".to_string());
+
+  let mut study_filters = vec![
+    StudyFilterOption {
+      id: "all".to_string(),
+      label: "All Content".to_string(),
+      is_selected: current_filter == "all",
+    },
+    StudyFilterOption {
+      id: "hangul".to_string(),
+      label: "Hangul Only".to_string(),
+      is_selected: current_filter == "hangul",
+    },
+  ];
+
+  // Add filter options for packs the user has permission to access
+  // For global packs: permission = access (no need to "enable" in settings)
+  if let Ok(packs) = db::get_all_packs_with_lessons(&app_conn) {
+    for pack in packs {
+      // Skip packs the user doesn't have permission to access
+      if !crate::auth::db::can_user_access_pack(&app_conn, auth.user_id, &pack.pack_id)
+        .unwrap_or(false)
+      {
+        continue;
+      }
+      let filter_id = format!("pack:{}", pack.pack_id);
+      let label = pack.study_filter_label.unwrap_or(pack.display_name);
+      study_filters.push(StudyFilterOption {
+        is_selected: current_filter == filter_id,
+        id: filter_id,
+        label,
+      });
+    }
+  }
 
   // Check focus mode status for exit recommendation
   let focus_tier = db::get_focus_tier(&conn).log_warn_default("Failed to get focus tier");
@@ -61,7 +114,7 @@ pub async fn study_start_interactive(auth: AuthContext) -> Response {
   let mut study_session = session::get_session(&session_id);
 
   // Get available cards using existing logic
-  let available_cards = get_available_study_cards(&conn);
+  let available_cards = get_available_study_cards(&conn, &app_conn, auth.user_id);
 
   // Use weighted selection
   let selected_card_id = if !available_cards.is_empty() {
@@ -82,8 +135,14 @@ pub async fn study_start_interactive(auth: AuthContext) -> Response {
       // Check if answer is Korean (needs multiple choice)
       let is_multiple_choice = is_korean(&card.main_answer);
       let choices = if is_multiple_choice {
-        let all_cards = db::get_cards_by_tier(&conn, card.tier)
-          .log_warn_default("Failed to get tier cards for choices");
+        // For vocabulary cards, get choices from same lesson; for Hangul, from same tier
+        let all_cards = if let (Some(pack_id), Some(lesson)) = (&card.pack_id, card.lesson) {
+          db::get_cards_from_same_lesson(&conn, pack_id, lesson)
+            .log_warn_default("Failed to get lesson cards for choices")
+        } else {
+          db::get_cards_by_tier(&conn, card.tier)
+            .log_warn_default("Failed to get tier cards for choices")
+        };
         generate_choices(&card, &all_cards)
       } else {
         vec![]
@@ -96,6 +155,7 @@ pub async fn study_start_interactive(auth: AuthContext) -> Response {
         description: card.description.clone(),
         tier: card.tier,
         is_reverse: card.is_reverse,
+        is_vocabulary: card.pack_id.is_some(),
         validated: false,
         is_correct: false,
         user_answer: String::new(),
@@ -118,6 +178,9 @@ pub async fn study_start_interactive(auth: AuthContext) -> Response {
         focus_tier: focus_tier_num,
         focus_tier_progress,
         show_exit_focus_recommendation,
+        study_filters: study_filters.clone(),
+        current_filter: current_filter.clone(),
+        nav: NavContext::from_auth(&auth),
       };
       return Html(template.render().unwrap_or_default()).into_response();
     }
@@ -131,6 +194,7 @@ pub async fn study_start_interactive(auth: AuthContext) -> Response {
     description: None,
     tier: 0,
     is_reverse: false,
+    is_vocabulary: false,
     validated: false,
     is_correct: false,
     user_answer: String::new(),
@@ -153,6 +217,9 @@ pub async fn study_start_interactive(auth: AuthContext) -> Response {
     testing_mode: true,
     #[cfg(not(feature = "testing"))]
     testing_mode: false,
+    study_filters,
+    current_filter,
+    nav: NavContext::from_auth(&auth),
   };
   Html(template.render().unwrap_or_default()).into_response()
 }
@@ -307,6 +374,7 @@ pub async fn validate_answer_handler(
       description: card.description.clone(),
       tier: card.tier,
       is_reverse: card.is_reverse,
+      is_vocabulary: card.pack_id.is_some(),
       validated: true,
       is_correct,
       user_answer: form.answer,
@@ -323,13 +391,14 @@ pub async fn validate_answer_handler(
     };
     Html(template.render().unwrap_or_default()).into_response()
   } else {
-    let template = NoCardsTemplate {};
+    let template = NoCardsTemplate { nav: NavContext::from_auth(&auth) };
     Html(template.render().unwrap_or_default()).into_response()
   }
 }
 
 /// Get next interactive card (review was already recorded during validation)
 pub async fn next_card_interactive(
+  State(state): State<AppState>,
   auth: AuthContext,
   Form(form): Form<NextCardForm>,
 ) -> Response {
@@ -347,6 +416,13 @@ pub async fn next_card_interactive(
     }
   };
 
+  let app_conn = match state.auth_db.lock() {
+    Ok(conn) => conn,
+    Err(_) => {
+      return Html("<h1>Database Error</h1><p>Please refresh the page.</p>".to_string()).into_response()
+    }
+  };
+
   // Get or create session
   let session_id = if form.session_id.is_empty() {
     session::generate_session_id()
@@ -356,7 +432,7 @@ pub async fn next_card_interactive(
   let mut study_session = session::get_session(&session_id);
 
   // Get available cards and select next using weighted selection
-  let available_cards = get_available_study_cards(&conn);
+  let available_cards = get_available_study_cards(&conn, &app_conn, auth.user_id);
 
   let selected_card_id = if !available_cards.is_empty() {
     select_next_card(&conn, &mut study_session, &available_cards)
@@ -376,8 +452,14 @@ pub async fn next_card_interactive(
       // Check if answer is Korean (needs multiple choice)
       let is_multiple_choice = is_korean(&next_card.main_answer);
       let choices = if is_multiple_choice {
-        let all_cards = db::get_cards_by_tier(&conn, next_card.tier)
-          .log_warn_default("Failed to get tier cards for choices");
+        // For vocabulary cards, get choices from same lesson; for Hangul, from same tier
+        let all_cards = if let (Some(pack_id), Some(lesson)) = (&next_card.pack_id, next_card.lesson) {
+          db::get_cards_from_same_lesson(&conn, pack_id, lesson)
+            .log_warn_default("Failed to get lesson cards for choices")
+        } else {
+          db::get_cards_by_tier(&conn, next_card.tier)
+            .log_warn_default("Failed to get tier cards for choices")
+        };
         generate_choices(&next_card, &all_cards)
       } else {
         vec![]
@@ -390,6 +472,7 @@ pub async fn next_card_interactive(
         description: next_card.description.clone(),
         tier: next_card.tier,
         is_reverse: next_card.is_reverse,
+        is_vocabulary: next_card.pack_id.is_some(),
         validated: false,
         is_correct: false,
         user_answer: String::new(),
@@ -413,7 +496,11 @@ pub async fn next_card_interactive(
     return Redirect::to("/").into_response();
   }
 
-  let template = NoCardsTemplate {};
+  // Check if any pack lessons were unlocked
+  let _ = db::try_auto_unlock_all_pack_lessons(&conn, &app_conn)
+    .log_warn("Auto lesson unlock failed");
+
+  let template = NoCardsTemplate { nav: NavContext::from_auth(&auth) };
   Html(template.render().unwrap_or_default()).into_response()
 }
 
@@ -421,6 +508,7 @@ pub async fn next_card_interactive(
 /// DEPRECATED: Review recording now happens in validate_answer_handler.
 /// Use next_card_interactive instead. Kept for backwards compatibility.
 pub async fn submit_review_interactive(
+  State(state): State<AppState>,
   auth: AuthContext,
   Form(form): Form<ReviewForm>,
 ) -> Response {
@@ -432,6 +520,13 @@ pub async fn submit_review_interactive(
   });
 
   let conn = match auth.user_db.lock() {
+    Ok(conn) => conn,
+    Err(_) => {
+      return Html("<h1>Database Error</h1><p>Please refresh the page.</p>".to_string()).into_response()
+    }
+  };
+
+  let app_conn = match state.auth_db.lock() {
     Ok(conn) => conn,
     Err(_) => {
       return Html("<h1>Database Error</h1><p>Please refresh the page.</p>".to_string()).into_response()
@@ -450,7 +545,7 @@ pub async fn submit_review_interactive(
   // This handler is kept for backwards compatibility but only fetches next card.
 
   // Get available cards and select next using weighted selection
-  let available_cards = get_available_study_cards(&conn);
+  let available_cards = get_available_study_cards(&conn, &app_conn, auth.user_id);
 
   let selected_card_id = if !available_cards.is_empty() {
     select_next_card(&conn, &mut study_session, &available_cards)
@@ -470,8 +565,14 @@ pub async fn submit_review_interactive(
       // Check if answer is Korean (needs multiple choice)
       let is_multiple_choice = is_korean(&next_card.main_answer);
       let choices = if is_multiple_choice {
-        let all_cards = db::get_cards_by_tier(&conn, next_card.tier)
-          .log_warn_default("Failed to get tier cards for choices");
+        // For vocabulary cards, get choices from same lesson; for Hangul, from same tier
+        let all_cards = if let (Some(pack_id), Some(lesson)) = (&next_card.pack_id, next_card.lesson) {
+          db::get_cards_from_same_lesson(&conn, pack_id, lesson)
+            .log_warn_default("Failed to get lesson cards for choices")
+        } else {
+          db::get_cards_by_tier(&conn, next_card.tier)
+            .log_warn_default("Failed to get tier cards for choices")
+        };
         generate_choices(&next_card, &all_cards)
       } else {
         vec![]
@@ -484,6 +585,7 @@ pub async fn submit_review_interactive(
         description: next_card.description.clone(),
         tier: next_card.tier,
         is_reverse: next_card.is_reverse,
+        is_vocabulary: next_card.pack_id.is_some(),
         validated: false,
         is_correct: false,
         user_answer: String::new(),
@@ -507,6 +609,31 @@ pub async fn submit_review_interactive(
     return Redirect::to("/").into_response();
   }
 
-  let template = NoCardsTemplate {};
+  let template = NoCardsTemplate { nav: NavContext::from_auth(&auth) };
   Html(template.render().unwrap_or_default()).into_response()
+}
+
+/// Form for changing study filter
+#[derive(Deserialize)]
+pub struct StudyFilterForm {
+  pub filter: String,
+}
+
+/// Change the study filter mode
+pub async fn set_study_filter(
+  auth: AuthContext,
+  Form(form): Form<StudyFilterForm>,
+) -> Redirect {
+  let conn = match auth.user_db.lock() {
+    Ok(conn) => conn,
+    Err(_) => return Redirect::to("/study"),
+  };
+
+  // Validate filter value (should be "all", "hangul", or "pack:<id>")
+  let filter = form.filter.trim();
+  if filter == "all" || filter == "hangul" || filter.starts_with("pack:") {
+    let _ = db::set_setting(&conn, "study_filter_mode", filter);
+  }
+
+  Redirect::to("/study")
 }

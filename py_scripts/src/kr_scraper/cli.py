@@ -6,7 +6,7 @@ from pathlib import Path
 
 import click
 
-from .paths import HTSK_DIR
+from .paths import HTSK_DIR, PROJECT_ROOT
 
 # Default output directory for scraped content
 DEFAULT_OUTPUT = HTSK_DIR
@@ -702,3 +702,74 @@ def reset_manual(lesson: str, syllable: str) -> None:
         click.echo(f"Reset {syllable} to baseline timestamps")
     else:
         raise click.ClickException(f"Syllable '{syllable}' not found or no baseline available")
+
+
+@cli.command()
+@click.argument(
+    "input_path",
+    type=click.Path(path_type=Path, exists=True),
+)
+@click.option(
+    "--output",
+    "-o",
+    "output_path",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Output cards.json path (default: same directory as input).",
+)
+@click.option(
+    "--tier",
+    "-t",
+    type=int,
+    default=5,
+    help="Card tier (default: 5).",
+)
+@click.option(
+    "--no-reverse",
+    is_flag=True,
+    help="Don't create reverse cards.",
+)
+def vocabulary(
+    input_path: Path,
+    output_path: Path | None,
+    tier: int,
+    no_reverse: bool,
+) -> None:
+    """Convert vocabulary.json to cards.json format.
+
+    INPUT_PATH is a vocabulary.json file with entries containing:
+    term, romanization, translation, word_type.
+
+    Creates flashcards in the format expected by kr_notebook packs.
+    By default, creates both forward (Korean -> English) and reverse
+    (English -> Korean) cards.
+
+    Example:
+        kr-scraper vocabulary path/to/vocabulary.json
+    """
+    from .vocabulary import convert_vocabulary
+
+    vocab_path = input_path
+    cards_path = output_path or vocab_path.parent / "cards.json"
+
+    click.echo("Converting vocabulary to cards...")
+    click.echo(f"  Input: {vocab_path}")
+    click.echo(f"  Output: {cards_path}")
+    click.echo(f"  Tier: {tier}")
+    click.echo(f"  Reverse cards: {not no_reverse}")
+    click.echo()
+
+    try:
+        result = convert_vocabulary(
+            vocab_path=vocab_path,
+            output_path=cards_path,
+            tier=tier,
+            create_reverse=not no_reverse,
+        )
+
+        click.echo(f"Converted {result['vocabulary_count']} vocabulary entries")
+        click.echo(f"Created {result['cards_created']} cards")
+        click.echo(f"Output: {result['output']}")
+
+    except Exception as e:
+        raise click.ClickException(str(e)) from e

@@ -1,6 +1,7 @@
 use askama::Template;
 use axum::response::Html;
 
+use super::NavContext;
 use crate::filters;
 
 /// TOC item for navigation
@@ -15,6 +16,7 @@ pub struct TocItem {
 pub struct GuideTemplate {
     pub toc_items: Vec<TocItem>,
     pub toc_title: String,
+    pub nav: NavContext,
 }
 
 pub async fn guide() -> Html<String> {
@@ -32,12 +34,14 @@ pub async fn guide() -> Html<String> {
         TocItem { id: "tips".into(), short_label: "Tips".into(), full_label: "Tips for Success".into() },
         TocItem { id: "learned".into(), short_label: "Learned".into(), full_label: "What \"Learned\" Means".into() },
         TocItem { id: "practice".into(), short_label: "Practice".into(), full_label: "Practice Mode".into() },
+        TocItem { id: "content-packs".into(), short_label: "Packs".into(), full_label: "Content Packs".into() },
         TocItem { id: "shortcuts".into(), short_label: "Shortcuts".into(), full_label: "Keyboard Shortcuts".into() },
     ];
 
     let template = GuideTemplate {
         toc_items,
         toc_title: "Contents".to_string(),
+        nav: NavContext::public(),
     };
     Html(template.render().unwrap_or_default())
 }

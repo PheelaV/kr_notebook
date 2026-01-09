@@ -1,9 +1,16 @@
 use askama::Template;
+use axum::extract::State;
 use axum::response::{Html, Redirect};
 
 use crate::auth::AuthContext;
-use crate::db::{self, CharacterStats, LogOnError, TierProgress};
+use super::NavContext;
+use crate::content::cards::list_enabled_packs;
+use crate::db::{
+    self, CharacterStats, LogOnError, PackProgress, TierProgress,
+    get_pack_progress, get_pack_ui_metadata,
+};
 use crate::filters;
+use crate::state::AppState;
 #[cfg(feature = "profiling")]
 use crate::profiling::EventType;
 
@@ -67,21 +74,42 @@ pub struct CharacterStatsGroup {
   pub stats: Vec<CharacterStatsDisplay>,
 }
 
+/// Generic progress unit - can be Hangul tiers or vocabulary pack lessons
+#[derive(Debug, Clone)]
+pub enum ProgressUnit {
+  /// Hangul character learning tiers
+  HangulTiers {
+    tiers: Vec<TierProgress>,
+    max_unlocked_tier: u8,
+    can_unlock_next: bool,
+    all_tiers_unlocked: bool,
+  },
+  /// Vocabulary pack with lesson-based progression
+  VocabularyPack(PackProgress),
+}
+
 #[derive(Template)]
 #[template(path = "progress.html")]
 pub struct ProgressTemplate {
   pub total_cards: i64,
   pub total_reviews: i64,
   pub cards_learned: i64,
+  // Hangul tier progress (kept for backwards compatibility with existing template)
   pub tiers: Vec<TierProgress>,
   pub max_unlocked_tier: u8,
   pub can_unlock_next: bool,
   pub all_tiers_unlocked: bool,
+  // Generic progress units (includes vocabulary packs)
+  pub units: Vec<ProgressUnit>,
   pub problem_cards: Vec<ProblemCard>,
   pub character_stats_groups: Vec<CharacterStatsGroup>,
+  pub nav: NavContext,
 }
 
-pub async fn progress(auth: AuthContext) -> axum::response::Response {
+pub async fn progress(
+  State(state): State<AppState>,
+  auth: AuthContext,
+) -> axum::response::Response {
   use axum::response::IntoResponse;
 
   #[cfg(feature = "profiling")]
@@ -136,6 +164,39 @@ pub async fn progress(auth: AuthContext) -> axum::response::Response {
   let all_stats = db::get_all_character_stats(&conn).log_warn_default("Failed to get character stats");
   let character_stats_groups = build_character_stats_groups(all_stats);
 
+  // Build progress units (Hangul tiers + vocabulary packs)
+  let mut units = Vec::new();
+
+  // Unit 1: Hangul tiers (always present)
+  units.push(ProgressUnit::HangulTiers {
+    tiers: tiers.clone(),
+    max_unlocked_tier,
+    can_unlock_next,
+    all_tiers_unlocked,
+  });
+
+  // Additional units: enabled vocabulary packs with lessons
+  // Need app_db connection for pack UI metadata
+  if let Ok(app_conn) = state.auth_db.lock() {
+    let enabled_packs = list_enabled_packs(&conn);
+
+    for pack_id in enabled_packs {
+      // Only include packs that have UI metadata (lesson-based progression)
+      if let Ok(Some(ui_metadata)) = get_pack_ui_metadata(&app_conn, &pack_id) {
+        if ui_metadata.total_lessons.unwrap_or(0) > 0 {
+          match get_pack_progress(&conn, &app_conn, &pack_id, &ui_metadata) {
+            Ok(pack_progress) => {
+              units.push(ProgressUnit::VocabularyPack(pack_progress));
+            }
+            Err(e) => {
+              tracing::warn!("Failed to get pack progress for {}: {}", pack_id, e);
+            }
+          }
+        }
+      }
+    }
+  }
+
   let template = ProgressTemplate {
     total_cards,
     total_reviews,
@@ -144,8 +205,10 @@ pub async fn progress(auth: AuthContext) -> axum::response::Response {
     max_unlocked_tier,
     can_unlock_next,
     all_tiers_unlocked,
+    units,
     problem_cards,
     character_stats_groups,
+    nav: NavContext::from_auth(&auth),
   };
 
   Html(template.render().unwrap_or_default()).into_response()

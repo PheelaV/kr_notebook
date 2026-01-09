@@ -109,7 +109,7 @@
 
 .haetae-tail {
   transform-origin: 85% 50%;
-  animation: haetae-tail-wag 0.6s ease-in-out infinite;
+  /* No animation by default - only wags when clicked (happy state) */
 }
 
 /* Emotion states */

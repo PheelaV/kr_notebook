@@ -1,0 +1,8 @@
+.env
+.env.local
+.env.*
+**/.claude/settings.local.json
+MY_LOCAL*
+data/*
+static/*
+config.toml

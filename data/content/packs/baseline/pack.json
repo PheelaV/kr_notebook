@@ -1,0 +1,13 @@
+{
+  "id": "baseline",
+  "name": "Baseline Hangul Characters",
+  "version": "1.0.0",
+  "type": "cards",
+  "description": "Core Hangul consonants and vowels - the foundation for learning Korean writing",
+  "cards": {
+    "file": "cards.json",
+    "tier": 1,
+    "card_types": ["Consonant", "Vowel", "AspiratedConsonant", "TenseConsonant", "CompoundVowel"],
+    "create_reverse": false
+  }
+}

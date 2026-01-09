@@ -1,0 +1,19 @@
+<!-- Content Packs Section - used by HTMX OOB refresh -->
+{% if !card_packs.is_empty() %}
+<section id="packs" class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6 scroll-mt-16">
+  <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+    Content Packs
+  </h2>
+  <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">
+    Enable additional card packs to expand your learning content.
+  </p>
+
+  <div class="space-y-3">
+    {% for pack in card_packs %}
+    {% include "partials/settings_pack_card.html" %}
+    {% endfor %}
+  </div>
+</section>
+{% else %}
+<section id="packs" class="hidden"></section>
+{% endif %}

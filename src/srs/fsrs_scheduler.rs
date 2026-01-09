@@ -251,6 +251,8 @@ mod tests {
       tier: 1,
       audio_hint: None,
       is_reverse: false,
+      pack_id: None,
+      lesson: None,
       ease_factor: 2.5,
       interval_days: 0,
       repetitions: 0,

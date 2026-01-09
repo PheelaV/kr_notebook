@@ -7,19 +7,44 @@ pub mod pronunciation;
 pub mod reference;
 pub mod settings;
 pub mod study;
+pub mod vocabulary;
 
 use askama::Template;
 use axum::response::Html;
 use chrono::{DateTime, Utc};
 
+use axum::extract::State;
+
 use crate::auth::AuthContext;
 use crate::db::{self, LogOnError};
 use crate::filters;
+use crate::state::AppState;
 #[cfg(feature = "profiling")]
 use crate::profiling::EventType;
 
 /// Error HTML returned when database is unavailable
 pub const DB_ERROR_HTML: &str = r#"<!DOCTYPE html><html><head><title>Error</title></head><body><h1>Database Error</h1><p>Please refresh the page. If the problem persists, restart the application.</p></body></html>"#;
+
+/// Shared navigation context for all templates.
+/// Contains data needed by the navbar component in base.html.
+#[derive(Clone, Default)]
+pub struct NavContext {
+    pub has_vocab_access: bool,
+}
+
+impl NavContext {
+    /// Create NavContext from authenticated user context
+    pub fn from_auth(auth: &AuthContext) -> Self {
+        Self {
+            has_vocab_access: auth.has_vocab_access,
+        }
+    }
+
+    /// Create empty NavContext for public pages (no auth)
+    pub fn public() -> Self {
+        Self::default()
+    }
+}
 
 #[derive(Template)]
 #[template(path = "index.html")]
@@ -33,6 +58,7 @@ pub struct IndexTemplate {
   pub accelerated_mode: bool,
   pub unlocked_tier: Option<u8>, // Tier that was just auto-unlocked
   pub testing_mode: bool,
+  pub nav: NavContext,
 }
 
 fn format_relative_time(dt: DateTime<Utc>) -> String {
@@ -56,7 +82,7 @@ fn format_relative_time(dt: DateTime<Utc>) -> String {
   }
 }
 
-pub async fn index(auth: AuthContext) -> Html<String> {
+pub async fn index(State(state): State<AppState>, auth: AuthContext) -> Html<String> {
   #[cfg(feature = "profiling")]
   crate::profile_log!(EventType::HandlerStart {
     route: "/".into(),
@@ -65,6 +91,11 @@ pub async fn index(auth: AuthContext) -> Html<String> {
   });
 
   let conn = match auth.user_db.lock() {
+    Ok(conn) => conn,
+    Err(_) => return Html(DB_ERROR_HTML.to_string()),
+  };
+
+  let app_conn = match state.auth_db.lock() {
     Ok(conn) => conn,
     Err(_) => return Html(DB_ERROR_HTML.to_string()),
   };
@@ -81,13 +112,18 @@ pub async fn index(auth: AuthContext) -> Html<String> {
   }
 
   let accelerated_mode = db::get_all_tiers_unlocked(&conn).log_warn_default("Failed to get all_tiers_unlocked");
-  let due_count = db::get_due_count(&conn).log_warn_default("Failed to get due count");
+
+  // Use filtered counts to include vocabulary pack cards (with permission check)
+  let filter = db::StudyFilterMode::All;
+  let due_count = db::get_due_count_filtered(&conn, &app_conn, auth.user_id, &filter).log_warn_default("Failed to get due count");
   let unreviewed_count = if accelerated_mode {
-    db::get_unreviewed_today_count(&conn).log_warn_default("Failed to get unreviewed count")
+    db::get_unreviewed_today_count_filtered(&conn, &app_conn, auth.user_id, &filter).log_warn_default("Failed to get unreviewed count")
   } else {
     0
   };
-  let (total_cards, _, cards_learned) = db::get_total_stats(&conn).log_warn_default("Failed to get total stats");
+  // Get accessible card counts (only cards user can actually study)
+  let (total_cards, cards_learned) = db::get_accessible_card_count(&conn, &app_conn, auth.user_id)
+    .log_warn_default("Failed to get accessible card count");
 
   // Always fetch next upcoming review time (for cards not yet due)
   // This allows the UI to show a countdown even when there are cards currently due
@@ -111,6 +147,7 @@ pub async fn index(auth: AuthContext) -> Html<String> {
     testing_mode: true,
     #[cfg(not(feature = "testing"))]
     testing_mode: false,
+    nav: NavContext::from_auth(&auth),
   };
 
   Html(template.render().unwrap_or_default())
@@ -118,7 +155,7 @@ pub async fn index(auth: AuthContext) -> Html<String> {
 
 pub use diagnostic::log_diagnostic;
 pub use guide::guide;
-pub use library::library;
+pub use library::{library_characters, library_index};
 pub use progress::{progress, unlock_tier};
 pub use reference::{
   reference_basics, reference_index, reference_tier1, reference_tier2, reference_tier3,
@@ -127,12 +164,21 @@ pub use reference::{
 pub use listen::{listen_index, listen_start, listen_answer, listen_answer_htmx, listen_skip};
 pub use pronunciation::{has_scraped_content, pronunciation_page};
 pub use settings::{
-  cleanup_guests, delete_all_guests, delete_scraped, delete_scraped_lesson, export_data,
-  graduate_tier, import_data, make_all_due, restore_tier, settings_page, trigger_scrape,
-  trigger_scrape_lesson, trigger_segment, trigger_row_segment, trigger_manual_segment,
-  trigger_reset_segment, update_settings,
+  cleanup_guests, delete_all_guests, delete_scraped, delete_scraped_lesson, disable_pack,
+  enable_pack, export_data, graduate_tier, import_data, make_all_due, restore_tier, settings_page,
+  trigger_manual_segment, trigger_reset_segment, trigger_row_segment, trigger_scrape,
+  trigger_scrape_lesson, trigger_segment, update_settings,
+  // User/group management
+  set_user_role, create_group, delete_group, add_to_group, remove_from_group,
+  // Pack permissions (groups and users)
+  restrict_pack_to_group, remove_pack_restriction, make_pack_public,
+  restrict_pack_to_user, remove_pack_user_restriction,
+  // External pack paths (admin)
+  register_pack_path, unregister_pack_path, toggle_pack_path, browse_directories,
 };
 pub use study::{
-  next_card_interactive, practice_next, practice_start, practice_validate, study_start,
-  submit_review, study_start_interactive, submit_review_interactive, validate_answer_handler,
+  next_card_interactive, practice_next, practice_start, practice_validate, set_study_filter,
+  study_start, submit_review, study_start_interactive, submit_review_interactive,
+  validate_answer_handler,
 };
+pub use vocabulary::vocabulary_library;

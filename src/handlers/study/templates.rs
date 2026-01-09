@@ -5,6 +5,15 @@ use serde::Deserialize;
 
 use crate::domain::InputMethod;
 use crate::filters;
+use crate::handlers::NavContext;
+
+/// A filter option for the study page dropdown
+#[derive(Debug, Clone)]
+pub struct StudyFilterOption {
+    pub id: String,        // "all", "hangul", "pack:krnb_htsk_voc1_pack"
+    pub label: String,     // "All Content", "Hangul Only", "Vocabulary"
+    pub is_selected: bool,
+}
 
 #[derive(Template)]
 #[template(path = "study.html")]
@@ -15,7 +24,9 @@ pub struct StudyTemplate {
   pub description: Option<String>,
   pub tier: u8,
   pub is_reverse: bool,
+  pub is_vocabulary: bool,
   pub has_card: bool,
+  pub nav: NavContext,
 }
 
 #[derive(Template)]
@@ -27,6 +38,7 @@ pub struct CardTemplate {
   pub description: Option<String>,
   pub tier: u8,
   pub is_reverse: bool,
+  pub is_vocabulary: bool,
 }
 
 #[derive(Template)]
@@ -38,11 +50,14 @@ pub struct PracticeCardTemplate {
   pub description: Option<String>,
   pub tier: u8,
   pub is_reverse: bool,
+  pub is_vocabulary: bool,
 }
 
 #[derive(Template)]
 #[template(path = "no_cards.html")]
-pub struct NoCardsTemplate {}
+pub struct NoCardsTemplate {
+  pub nav: NavContext,
+}
 
 /// Interactive card template with input-based validation
 /// Used for both study mode (tracked) and practice mode (optional tracking)
@@ -55,6 +70,7 @@ pub struct InteractiveCardTemplate {
   pub description: Option<String>,
   pub tier: u8,
   pub is_reverse: bool,
+  pub is_vocabulary: bool,     // true if this is a vocabulary card (from a pack)
   pub validated: bool,
   pub is_correct: bool,
   pub user_answer: String,
@@ -83,6 +99,7 @@ pub struct StudyInteractiveTemplate {
   pub description: Option<String>,
   pub tier: u8,
   pub is_reverse: bool,
+  pub is_vocabulary: bool,     // true if this is a vocabulary card (from a pack)
   pub validated: bool,
   pub is_correct: bool,
   pub user_answer: String,
@@ -106,6 +123,10 @@ pub struct StudyInteractiveTemplate {
   pub focus_tier: u8,
   pub focus_tier_progress: i64,
   pub show_exit_focus_recommendation: bool,
+  // Study filter (content type selection)
+  pub study_filters: Vec<StudyFilterOption>,
+  pub current_filter: String,
+  pub nav: NavContext,
 }
 
 #[derive(Template)]
@@ -117,6 +138,7 @@ pub struct PracticeTemplate {
   pub description: Option<String>,
   pub tier: u8,
   pub is_reverse: bool,
+  pub is_vocabulary: bool,     // true if this is a vocabulary card (from a pack)
   pub mode: String,
   // Interactive mode fields
   pub validated: bool,
@@ -126,6 +148,8 @@ pub struct PracticeTemplate {
   pub choices: Vec<String>,
   // Progress tracking
   pub track_progress: bool,
+  // Study filter options
+  pub study_filters: Vec<StudyFilterOption>,
   // Fields for unified interactive_card.html (unused in practice mode but required)
   pub quality: u8,
   pub hints_used: u8,
@@ -134,6 +158,7 @@ pub struct PracticeTemplate {
   pub hint_final: String,
   pub session_id: String,
   pub is_tracked: bool,
+  pub nav: NavContext,
 }
 
 // ============================================================================

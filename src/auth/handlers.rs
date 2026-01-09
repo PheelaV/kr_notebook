@@ -30,6 +30,7 @@ const SESSION_DURATION_HOURS: i64 = 24 * 7;
 #[template(path = "auth/login.html")]
 pub struct LoginTemplate {
     pub error: Option<String>,
+    pub version: &'static str,
 }
 
 #[derive(Template)]
@@ -67,7 +68,10 @@ pub struct GuestForm {
 
 /// GET /login - Show login page
 pub async fn login_page() -> Html<String> {
-    let template = LoginTemplate { error: None };
+    let template = LoginTemplate {
+        error: None,
+        version: env!("CARGO_PKG_VERSION"),
+    };
     Html(template.render().unwrap_or_default())
 }
 
@@ -81,6 +85,7 @@ pub async fn login_submit(
     if form.username.is_empty() || form.password_hash.is_empty() {
         let template = LoginTemplate {
             error: Some("Username and password are required".to_string()),
+            version: env!("CARGO_PKG_VERSION"),
         };
         return (jar, Html(template.render().unwrap_or_default())).into_response();
     }
@@ -90,6 +95,7 @@ pub async fn login_submit(
         Err(_) => {
             let template = LoginTemplate {
                 error: Some("Database error".to_string()),
+                version: env!("CARGO_PKG_VERSION"),
             };
             return (jar, Html(template.render().unwrap_or_default())).into_response();
         }
@@ -101,12 +107,14 @@ pub async fn login_submit(
         Ok(None) => {
             let template = LoginTemplate {
                 error: Some("Invalid username or password".to_string()),
+                version: env!("CARGO_PKG_VERSION"),
             };
             return (jar, Html(template.render().unwrap_or_default())).into_response();
         }
         Err(_) => {
             let template = LoginTemplate {
                 error: Some("Database error".to_string()),
+                version: env!("CARGO_PKG_VERSION"),
             };
             return (jar, Html(template.render().unwrap_or_default())).into_response();
         }
@@ -122,18 +130,22 @@ pub async fn login_submit(
 
         let template = LoginTemplate {
             error: Some("Invalid username or password".to_string()),
+            version: env!("CARGO_PKG_VERSION"),
         };
         return (jar, Html(template.render().unwrap_or_default())).into_response();
     }
 
-    // Update last login time
-    let _ = auth_db::update_last_login(&auth_db, user_id);
+    // Update last login time (log but don't fail on error)
+    if let Err(e) = auth_db::update_last_login(&auth_db, user_id) {
+        tracing::warn!("Failed to update last login for user {}: {}", user_id, e);
+    }
 
     // Create session
     let session_id = generate_session_id();
     if auth_db::create_session(&auth_db, user_id, &session_id, SESSION_DURATION_HOURS).is_err() {
         let template = LoginTemplate {
             error: Some("Failed to create session".to_string()),
+            version: env!("CARGO_PKG_VERSION"),
         };
         return (jar, Html(template.render().unwrap_or_default())).into_response();
     }
@@ -300,7 +312,17 @@ pub async fn register_submit(
 
     // Seed the database with hangul cards
     {
-        let conn = user_db.lock().expect("User DB lock failed");
+        let conn = match user_db.lock() {
+            Ok(conn) => conn,
+            Err(_) => {
+                tracing::error!("User DB lock poisoned during registration");
+                let _ = fs::remove_dir_all(&user_dir);
+                let template = RegisterTemplate {
+                    error: Some("Database error".to_string()),
+                };
+                return (jar, Html(template.render().unwrap_or_default())).into_response();
+            }
+        };
         if let Err(e) = db::seed_hangul_cards(&conn) {
             tracing::error!("Failed to seed user database: {}", e);
             drop(conn);
@@ -315,7 +337,17 @@ pub async fn register_submit(
 
     // Create session for auto-login
     let session_id = generate_session_id();
-    let auth_db = state.auth_db.lock().expect("Auth DB lock failed");
+    let auth_db = match state.auth_db.lock() {
+        Ok(conn) => conn,
+        Err(_) => {
+            tracing::error!("Auth DB lock poisoned during session creation");
+            // User was created but session failed - they can still log in manually
+            let template = RegisterTemplate {
+                error: Some("Account created but session failed. Please log in.".to_string()),
+            };
+            return (jar, Html(template.render().unwrap_or_default())).into_response();
+        }
+    };
     if let Err(e) = auth_db::create_session(&auth_db, user_id, &session_id, SESSION_DURATION_HOURS)
     {
         tracing::error!("Failed to create session after registration: {}", e);
@@ -362,7 +394,9 @@ pub async fn logout(State(state): State<AppState>, jar: CookieJar) -> impl IntoR
                     logged_out_username = Some(username);
                 }
             }
-            let _ = auth_db::delete_session(&auth_db, session_id);
+            if let Err(e) = auth_db::delete_session(&auth_db, session_id) {
+                tracing::warn!("Failed to delete session during logout: {}", e);
+            }
         }
     }
 
@@ -536,7 +570,17 @@ pub async fn guest_login(
 
     // Seed the database with hangul cards
     {
-        let conn = user_db.lock().expect("User DB lock failed");
+        let conn = match user_db.lock() {
+            Ok(conn) => conn,
+            Err(_) => {
+                tracing::error!("User DB lock poisoned during guest creation");
+                let _ = fs::remove_dir_all(&user_dir);
+                let template = GuestTemplate {
+                    error: Some("Database error".to_string()),
+                };
+                return (jar, Html(template.render().unwrap_or_default())).into_response();
+            }
+        };
         if let Err(e) = db::seed_hangul_cards(&conn) {
             tracing::error!("Failed to seed guest database: {}", e);
             drop(conn);
@@ -550,7 +594,16 @@ pub async fn guest_login(
 
     // Create session
     let session_id = generate_session_id();
-    let auth_db = state.auth_db.lock().expect("Auth DB lock failed");
+    let auth_db = match state.auth_db.lock() {
+        Ok(conn) => conn,
+        Err(_) => {
+            tracing::error!("Auth DB lock poisoned during guest session creation");
+            let template = GuestTemplate {
+                error: Some("Database error".to_string()),
+            };
+            return (jar, Html(template.render().unwrap_or_default())).into_response();
+        }
+    };
     if let Err(e) = auth_db::create_session(&auth_db, user_id, &session_id, SESSION_DURATION_HOURS) {
         tracing::error!("Failed to create session for guest: {}", e);
     }

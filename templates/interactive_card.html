@@ -6,9 +6,9 @@
   <!-- Card Front Display -->
   <div class="mb-4 sm:mb-6 bg-white dark:bg-gray-800 shadow-lg rounded-xl p-6 sm:p-10">
     {% if is_reverse %}
-    <!-- Reverse card: romanization -> Korean -->
+    <!-- Reverse card: romanization/English -> Korean -->
     <div class="text-base sm:text-lg text-gray-500 dark:text-gray-400 mb-2">
-      Which letter sounds like
+      {% if is_vocabulary %}Which matches{% else %}Which letter sounds like{% endif %}
     </div>
     <div class="text-5xl sm:text-7xl font-bold text-gray-900 dark:text-white mb-4">
       {{ front }}
@@ -97,8 +97,8 @@
       </div>
 
       <script>
-        // Initialize hints for this card
-        CardInteractions.initHints("{{ hint_1|escape }}", "{{ hint_2|escape }}", "{{ hint_final|escape }}", {{ hints_used }});
+        // Initialize hints for this card (js_escape for proper JavaScript string escaping)
+        CardInteractions.initHints("{{ hint_1|js_escape }}", "{{ hint_2|js_escape }}", "{{ hint_final|js_escape }}", {{ hints_used }});
       </script>
       {% endif %}
       {% endif %}

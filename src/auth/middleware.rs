@@ -10,8 +10,10 @@ use rusqlite::Connection;
 use std::sync::{Arc, Mutex};
 
 use super::db as auth_db;
-use crate::db::run_migrations;
+use crate::db::run_migrations_with_app_db;
+use crate::paths::AUTH_DB_PATH;
 use crate::state::AppState;
+use std::path::Path;
 
 pub const SESSION_COOKIE_NAME: &str = "kr_session";
 
@@ -24,6 +26,8 @@ pub struct AuthContext {
     pub username: String,
     pub is_admin: bool,
     pub user_db: Arc<Mutex<Connection>>,
+    /// Whether user has access to vocabulary content (for nav dropdown)
+    pub has_vocab_access: bool,
 }
 
 impl FromRequestParts<AppState> for AuthContext {
@@ -67,7 +71,9 @@ impl FromRequestParts<AppState> for AuthContext {
         })?;
 
         // Ensure schema is up to date (adds new columns if missing)
-        run_migrations(&conn).map_err(|_| {
+        // Pass app.db path for legacy cards → card_progress migration
+        let app_db_path = Path::new(AUTH_DB_PATH);
+        run_migrations_with_app_db(&conn, Some(app_db_path)).map_err(|_| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "Failed to run database migrations",
@@ -75,13 +81,39 @@ impl FromRequestParts<AppState> for AuthContext {
                 .into_response()
         })?;
 
-        let is_admin = username.eq_ignore_ascii_case("admin");
+        // Attach app.db for cross-database queries (card_definitions)
+        conn.execute(
+            &format!("ATTACH DATABASE '{}' AS app", AUTH_DB_PATH),
+            [],
+        )
+        .map_err(|_| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to attach app database",
+            )
+                .into_response()
+        })?;
+
+        // Check admin status and vocab access
+        let (is_admin, has_vocab_access) = match state.auth_db.lock() {
+            Ok(db) => {
+                let admin = auth_db::is_user_admin(&db, user_id)
+                    .unwrap_or_else(|_| username.eq_ignore_ascii_case("admin"));
+                // Check if user has access to any vocabulary-providing packs
+                let vocab = crate::services::pack_manager::any_accessible_pack_provides(
+                    &db, user_id, "vocabulary"
+                );
+                (admin, vocab)
+            }
+            Err(_) => (username.eq_ignore_ascii_case("admin"), false),
+        };
 
         Ok(AuthContext {
             user_id,
             username,
             is_admin,
             user_db: Arc::new(Mutex::new(conn)),
+            has_vocab_access,
         })
     }
 }

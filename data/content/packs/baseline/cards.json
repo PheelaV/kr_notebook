@@ -1,0 +1,605 @@
+{
+  "cards": [
+    {
+      "front": "ㄱ",
+      "main_answer": "g / k",
+      "description": "Like 'g' in 'go' at the start, 'k' in 'kite' at the end",
+      "card_type": "Consonant",
+      "tier": 1,
+      "is_reverse": false
+    },
+    {
+      "front": "g / k",
+      "main_answer": "ㄱ",
+      "card_type": "Consonant",
+      "tier": 1,
+      "is_reverse": true
+    },
+    {
+      "front": "ㄴ",
+      "main_answer": "n",
+      "description": "Like 'n' in 'no'",
+      "card_type": "Consonant",
+      "tier": 1,
+      "is_reverse": false
+    },
+    {
+      "front": "n",
+      "main_answer": "ㄴ",
+      "card_type": "Consonant",
+      "tier": 1,
+      "is_reverse": true
+    },
+    {
+      "front": "ㄷ",
+      "main_answer": "d / t",
+      "description": "Like 'd' in 'do' at the start, 't' in 'top' at the end",
+      "card_type": "Consonant",
+      "tier": 1,
+      "is_reverse": false
+    },
+    {
+      "front": "d / t",
+      "main_answer": "ㄷ",
+      "card_type": "Consonant",
+      "tier": 1,
+      "is_reverse": true
+    },
+    {
+      "front": "ㄹ",
+      "main_answer": "r / l",
+      "description": "Like 'r' in 'run' at the start, 'l' in 'ball' at the end",
+      "card_type": "Consonant",
+      "tier": 1,
+      "is_reverse": false
+    },
+    {
+      "front": "r / l",
+      "main_answer": "ㄹ",
+      "card_type": "Consonant",
+      "tier": 1,
+      "is_reverse": true
+    },
+    {
+      "front": "ㅁ",
+      "main_answer": "m",
+      "description": "Like 'm' in 'mom'",
+      "card_type": "Consonant",
+      "tier": 1,
+      "is_reverse": false
+    },
+    {
+      "front": "m",
+      "main_answer": "ㅁ",
+      "card_type": "Consonant",
+      "tier": 1,
+      "is_reverse": true
+    },
+    {
+      "front": "ㅂ",
+      "main_answer": "b / p",
+      "description": "Like 'b' in 'boy' at the start, 'p' in 'put' at the end",
+      "card_type": "Consonant",
+      "tier": 1,
+      "is_reverse": false
+    },
+    {
+      "front": "b / p",
+      "main_answer": "ㅂ",
+      "card_type": "Consonant",
+      "tier": 1,
+      "is_reverse": true
+    },
+    {
+      "front": "ㅅ",
+      "main_answer": "s",
+      "description": "Like 's' in 'sun'",
+      "card_type": "Consonant",
+      "tier": 1,
+      "is_reverse": false
+    },
+    {
+      "front": "s",
+      "main_answer": "ㅅ",
+      "card_type": "Consonant",
+      "tier": 1,
+      "is_reverse": true
+    },
+    {
+      "front": "ㅈ",
+      "main_answer": "j",
+      "description": "Like 'j' in 'just'",
+      "card_type": "Consonant",
+      "tier": 1,
+      "is_reverse": false
+    },
+    {
+      "front": "j",
+      "main_answer": "ㅈ",
+      "card_type": "Consonant",
+      "tier": 1,
+      "is_reverse": true
+    },
+    {
+      "front": "ㅎ",
+      "main_answer": "h",
+      "description": "Like 'h' in 'hi'",
+      "card_type": "Consonant",
+      "tier": 1,
+      "is_reverse": false
+    },
+    {
+      "front": "h",
+      "main_answer": "ㅎ",
+      "card_type": "Consonant",
+      "tier": 1,
+      "is_reverse": true
+    },
+    {
+      "front": "ㅏ",
+      "main_answer": "a",
+      "description": "Like 'a' in 'father'",
+      "card_type": "Vowel",
+      "tier": 1,
+      "is_reverse": false
+    },
+    {
+      "front": "a",
+      "main_answer": "ㅏ",
+      "card_type": "Vowel",
+      "tier": 1,
+      "is_reverse": true
+    },
+    {
+      "front": "ㅓ",
+      "main_answer": "eo",
+      "description": "Like 'u' in 'fun' or 'uh'",
+      "card_type": "Vowel",
+      "tier": 1,
+      "is_reverse": false
+    },
+    {
+      "front": "eo",
+      "main_answer": "ㅓ",
+      "card_type": "Vowel",
+      "tier": 1,
+      "is_reverse": true
+    },
+    {
+      "front": "ㅗ",
+      "main_answer": "o",
+      "description": "Like 'o' in 'go'",
+      "card_type": "Vowel",
+      "tier": 1,
+      "is_reverse": false
+    },
+    {
+      "front": "o",
+      "main_answer": "ㅗ",
+      "card_type": "Vowel",
+      "tier": 1,
+      "is_reverse": true
+    },
+    {
+      "front": "ㅜ",
+      "main_answer": "u",
+      "description": "Like 'oo' in 'moon'",
+      "card_type": "Vowel",
+      "tier": 1,
+      "is_reverse": false
+    },
+    {
+      "front": "u",
+      "main_answer": "ㅜ",
+      "card_type": "Vowel",
+      "tier": 1,
+      "is_reverse": true
+    },
+    {
+      "front": "ㅡ",
+      "main_answer": "eu",
+      "description": "Like 'u' in 'put', with unrounded lips",
+      "card_type": "Vowel",
+      "tier": 1,
+      "is_reverse": false
+    },
+    {
+      "front": "eu",
+      "main_answer": "ㅡ",
+      "card_type": "Vowel",
+      "tier": 1,
+      "is_reverse": true
+    },
+    {
+      "front": "ㅣ",
+      "main_answer": "i",
+      "description": "Like 'ee' in 'see'",
+      "card_type": "Vowel",
+      "tier": 1,
+      "is_reverse": false
+    },
+    {
+      "front": "i",
+      "main_answer": "ㅣ",
+      "card_type": "Vowel",
+      "tier": 1,
+      "is_reverse": true
+    },
+    {
+      "front": "ㅇ (initial)",
+      "main_answer": "Silent",
+      "description": "No sound when at the start of a syllable",
+      "card_type": "Consonant",
+      "tier": 2,
+      "is_reverse": false
+    },
+    {
+      "front": "ㅇ (final)",
+      "main_answer": "ng",
+      "description": "Like 'ng' in 'sing' when at the end",
+      "card_type": "Consonant",
+      "tier": 2,
+      "is_reverse": false
+    },
+    {
+      "front": "ㅑ",
+      "main_answer": "ya",
+      "description": "Like 'ya' in 'yacht'",
+      "card_type": "Vowel",
+      "tier": 2,
+      "is_reverse": false
+    },
+    {
+      "front": "ya",
+      "main_answer": "ㅑ",
+      "card_type": "Vowel",
+      "tier": 2,
+      "is_reverse": true
+    },
+    {
+      "front": "ㅕ",
+      "main_answer": "yeo",
+      "description": "Like 'yu' in 'yuck'",
+      "card_type": "Vowel",
+      "tier": 2,
+      "is_reverse": false
+    },
+    {
+      "front": "yeo",
+      "main_answer": "ㅕ",
+      "card_type": "Vowel",
+      "tier": 2,
+      "is_reverse": true
+    },
+    {
+      "front": "ㅛ",
+      "main_answer": "yo",
+      "description": "Like 'yo' in 'yoga'",
+      "card_type": "Vowel",
+      "tier": 2,
+      "is_reverse": false
+    },
+    {
+      "front": "yo",
+      "main_answer": "ㅛ",
+      "card_type": "Vowel",
+      "tier": 2,
+      "is_reverse": true
+    },
+    {
+      "front": "ㅠ",
+      "main_answer": "yu",
+      "description": "Like 'you'",
+      "card_type": "Vowel",
+      "tier": 2,
+      "is_reverse": false
+    },
+    {
+      "front": "yu",
+      "main_answer": "ㅠ",
+      "card_type": "Vowel",
+      "tier": 2,
+      "is_reverse": true
+    },
+    {
+      "front": "ㅐ",
+      "main_answer": "ae",
+      "description": "Like 'a' in 'can' or 'e' in 'bed'",
+      "card_type": "Vowel",
+      "tier": 2,
+      "is_reverse": false
+    },
+    {
+      "front": "ae",
+      "main_answer": "ㅐ",
+      "card_type": "Vowel",
+      "tier": 2,
+      "is_reverse": true
+    },
+    {
+      "front": "ㅔ",
+      "main_answer": "e",
+      "description": "Like 'e' in 'bed' (sounds same as ㅐ in modern Korean)",
+      "card_type": "Vowel",
+      "tier": 2,
+      "is_reverse": false
+    },
+    {
+      "front": "e",
+      "main_answer": "ㅔ",
+      "card_type": "Vowel",
+      "tier": 2,
+      "is_reverse": true
+    },
+    {
+      "front": "ㅋ",
+      "main_answer": "k (aspirated)",
+      "description": "Stronger 'k' with a puff of breath, like 'k' in 'kick'",
+      "card_type": "AspiratedConsonant",
+      "tier": 3,
+      "is_reverse": false
+    },
+    {
+      "front": "k (aspirated)",
+      "main_answer": "ㅋ",
+      "card_type": "AspiratedConsonant",
+      "tier": 3,
+      "is_reverse": true
+    },
+    {
+      "front": "ㅍ",
+      "main_answer": "p (aspirated)",
+      "description": "Stronger 'p' with a puff of breath, like 'p' in 'pop'",
+      "card_type": "AspiratedConsonant",
+      "tier": 3,
+      "is_reverse": false
+    },
+    {
+      "front": "p (aspirated)",
+      "main_answer": "ㅍ",
+      "card_type": "AspiratedConsonant",
+      "tier": 3,
+      "is_reverse": true
+    },
+    {
+      "front": "ㅌ",
+      "main_answer": "t (aspirated)",
+      "description": "Stronger 't' with a puff of breath, like 't' in 'top'",
+      "card_type": "AspiratedConsonant",
+      "tier": 3,
+      "is_reverse": false
+    },
+    {
+      "front": "t (aspirated)",
+      "main_answer": "ㅌ",
+      "card_type": "AspiratedConsonant",
+      "tier": 3,
+      "is_reverse": true
+    },
+    {
+      "front": "ㅊ",
+      "main_answer": "ch (aspirated)",
+      "description": "Stronger 'ch' with a puff of breath, like 'ch' in 'church'",
+      "card_type": "AspiratedConsonant",
+      "tier": 3,
+      "is_reverse": false
+    },
+    {
+      "front": "ch (aspirated)",
+      "main_answer": "ㅊ",
+      "card_type": "AspiratedConsonant",
+      "tier": 3,
+      "is_reverse": true
+    },
+    {
+      "front": "ㄲ",
+      "main_answer": "kk (tense)",
+      "description": "Tense 'k' with no breath, like 'ck' in 'sticky'",
+      "card_type": "TenseConsonant",
+      "tier": 3,
+      "is_reverse": false
+    },
+    {
+      "front": "kk (tense)",
+      "main_answer": "ㄲ",
+      "card_type": "TenseConsonant",
+      "tier": 3,
+      "is_reverse": true
+    },
+    {
+      "front": "ㅃ",
+      "main_answer": "pp (tense)",
+      "description": "Tense 'p' with no breath, like 'pp' in 'happy'",
+      "card_type": "TenseConsonant",
+      "tier": 3,
+      "is_reverse": false
+    },
+    {
+      "front": "pp (tense)",
+      "main_answer": "ㅃ",
+      "card_type": "TenseConsonant",
+      "tier": 3,
+      "is_reverse": true
+    },
+    {
+      "front": "ㄸ",
+      "main_answer": "tt (tense)",
+      "description": "Tense 't' with no breath, like 'tt' in 'butter'",
+      "card_type": "TenseConsonant",
+      "tier": 3,
+      "is_reverse": false
+    },
+    {
+      "front": "tt (tense)",
+      "main_answer": "ㄸ",
+      "card_type": "TenseConsonant",
+      "tier": 3,
+      "is_reverse": true
+    },
+    {
+      "front": "ㅆ",
+      "main_answer": "ss (tense)",
+      "description": "Tense 's', like 'ss' in 'hiss'",
+      "card_type": "TenseConsonant",
+      "tier": 3,
+      "is_reverse": false
+    },
+    {
+      "front": "ss (tense)",
+      "main_answer": "ㅆ",
+      "card_type": "TenseConsonant",
+      "tier": 3,
+      "is_reverse": true
+    },
+    {
+      "front": "ㅉ",
+      "main_answer": "jj (tense)",
+      "description": "Tense 'j', like 'dg' in 'edge'",
+      "card_type": "TenseConsonant",
+      "tier": 3,
+      "is_reverse": false
+    },
+    {
+      "front": "jj (tense)",
+      "main_answer": "ㅉ",
+      "card_type": "TenseConsonant",
+      "tier": 3,
+      "is_reverse": true
+    },
+    {
+      "front": "ㅘ",
+      "main_answer": "wa",
+      "description": "Like 'wa' in 'want'",
+      "card_type": "CompoundVowel",
+      "tier": 4,
+      "is_reverse": false
+    },
+    {
+      "front": "wa",
+      "main_answer": "ㅘ",
+      "card_type": "CompoundVowel",
+      "tier": 4,
+      "is_reverse": true
+    },
+    {
+      "front": "ㅝ",
+      "main_answer": "wo",
+      "description": "Like 'wo' in 'won'",
+      "card_type": "CompoundVowel",
+      "tier": 4,
+      "is_reverse": false
+    },
+    {
+      "front": "wo",
+      "main_answer": "ㅝ",
+      "card_type": "CompoundVowel",
+      "tier": 4,
+      "is_reverse": true
+    },
+    {
+      "front": "ㅟ",
+      "main_answer": "wi",
+      "description": "Like 'wee'",
+      "card_type": "CompoundVowel",
+      "tier": 4,
+      "is_reverse": false
+    },
+    {
+      "front": "wi",
+      "main_answer": "ㅟ",
+      "card_type": "CompoundVowel",
+      "tier": 4,
+      "is_reverse": true
+    },
+    {
+      "front": "ㅚ",
+      "main_answer": "oe",
+      "description": "Like 'we' in 'wet'",
+      "card_type": "CompoundVowel",
+      "tier": 4,
+      "is_reverse": false
+    },
+    {
+      "front": "oe",
+      "main_answer": "ㅚ",
+      "card_type": "CompoundVowel",
+      "tier": 4,
+      "is_reverse": true
+    },
+    {
+      "front": "ㅢ",
+      "main_answer": "ui",
+      "description": "Like 'oo-ee' said quickly",
+      "card_type": "CompoundVowel",
+      "tier": 4,
+      "is_reverse": false
+    },
+    {
+      "front": "ui",
+      "main_answer": "ㅢ",
+      "card_type": "CompoundVowel",
+      "tier": 4,
+      "is_reverse": true
+    },
+    {
+      "front": "ㅙ",
+      "main_answer": "wae",
+      "description": "Like 'wa' in 'wax'",
+      "card_type": "CompoundVowel",
+      "tier": 4,
+      "is_reverse": false
+    },
+    {
+      "front": "wae",
+      "main_answer": "ㅙ",
+      "card_type": "CompoundVowel",
+      "tier": 4,
+      "is_reverse": true
+    },
+    {
+      "front": "ㅞ",
+      "main_answer": "we",
+      "description": "Like 'we' in 'wet'",
+      "card_type": "CompoundVowel",
+      "tier": 4,
+      "is_reverse": false
+    },
+    {
+      "front": "we",
+      "main_answer": "ㅞ",
+      "card_type": "CompoundVowel",
+      "tier": 4,
+      "is_reverse": true
+    },
+    {
+      "front": "ㅒ",
+      "main_answer": "yae",
+      "description": "Like 'ya' in 'yam'",
+      "card_type": "CompoundVowel",
+      "tier": 4,
+      "is_reverse": false
+    },
+    {
+      "front": "yae",
+      "main_answer": "ㅒ",
+      "card_type": "CompoundVowel",
+      "tier": 4,
+      "is_reverse": true
+    },
+    {
+      "front": "ㅖ",
+      "main_answer": "ye",
+      "description": "Like 'ye' in 'yes'",
+      "card_type": "CompoundVowel",
+      "tier": 4,
+      "is_reverse": false
+    },
+    {
+      "front": "ye",
+      "main_answer": "ㅖ",
+      "card_type": "CompoundVowel",
+      "tier": 4,
+      "is_reverse": true
+    }
+  ]
+}

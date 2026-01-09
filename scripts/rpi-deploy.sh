@@ -1,6 +1,6 @@
 #!/bin/bash
 # Deploy kr_notebook to Raspberry Pi
-# Usage: ./scripts/rpi-deploy.sh [--no-build] [--no-backup] [--debug]
+# Usage: ./scripts/rpi-deploy.sh [--no-build] [--no-backup] [--debug] [--rollback]
 
 set -e
 
@@ -19,6 +19,7 @@ fi
 # Parse args
 DO_BUILD=true
 DO_BACKUP=true
+DO_ROLLBACK=false
 PROFILE="--release"
 PROFILE_NAME="release"
 
@@ -27,18 +28,162 @@ for arg in "$@"; do
         --no-build)  DO_BUILD=false ;;
         --no-backup) DO_BACKUP=false ;;
         --debug)     PROFILE=""; PROFILE_NAME="debug" ;;
+        --rollback)  DO_ROLLBACK=true ;;
     esac
 done
 
 BINARY="$PROJECT_DIR/target/$TARGET/$PROFILE_NAME/kr_notebook"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 
+# =============================================================================
+# ROLLBACK MODE
+# =============================================================================
+if [ "$DO_ROLLBACK" = true ]; then
+    echo "=== Rolling back deployment on $RPI_SSH ==="
+    echo ""
+
+    # Test SSH connection
+    echo "[1/5] Testing SSH connection..."
+    if ! ssh -o ConnectTimeout=5 "$RPI_SSH" "echo 'OK'" &>/dev/null; then
+        echo "Error: Cannot connect to $RPI_SSH"
+        exit 1
+    fi
+    echo "  Connected to $(ssh "$RPI_SSH" 'hostname')"
+
+    # Check rollback prerequisites
+    echo ""
+    echo "[2/5] Checking rollback prerequisites..."
+    ssh "$RPI_SSH" bash -s "$RPI_INSTALL_DIR" << 'CHECK_SCRIPT'
+        INSTALL_DIR="$1"
+        ERRORS=0
+
+        # Check for old binary
+        if [ ! -f "$INSTALL_DIR/target/release/kr_notebook.old" ]; then
+            echo "  ERROR: No old binary found at $INSTALL_DIR/target/release/kr_notebook.old"
+            ERRORS=$((ERRORS + 1))
+        else
+            echo "  OK: Old binary exists"
+        fi
+
+        # Check for old static assets
+        if [ ! -d "$INSTALL_DIR/static.old" ]; then
+            echo "  ERROR: No old static assets found at $INSTALL_DIR/static.old"
+            ERRORS=$((ERRORS + 1))
+        else
+            echo "  OK: Old static assets exist"
+        fi
+
+        # Check for backup marker
+        if [ ! -f "$INSTALL_DIR/backups/latest" ]; then
+            echo "  ERROR: No backup marker found at $INSTALL_DIR/backups/latest"
+            ERRORS=$((ERRORS + 1))
+        else
+            BACKUP_TS=$(cat "$INSTALL_DIR/backups/latest")
+            if [ ! -d "$INSTALL_DIR/backups/$BACKUP_TS" ]; then
+                echo "  ERROR: Backup directory $INSTALL_DIR/backups/$BACKUP_TS not found"
+                ERRORS=$((ERRORS + 1))
+            else
+                echo "  OK: Database backup exists ($BACKUP_TS)"
+            fi
+        fi
+
+        exit $ERRORS
+CHECK_SCRIPT
+
+    # Stop service
+    echo ""
+    echo "[3/5] Stopping service..."
+    ssh "$RPI_SSH" bash -s "$RPI_SERVICE" << 'STOP_SCRIPT'
+        SERVICE="$1"
+        if systemctl is-active --quiet "$SERVICE" 2>/dev/null; then
+            sudo systemctl stop "$SERVICE"
+            echo "  Stopped $SERVICE"
+        else
+            echo "  Service not running"
+        fi
+STOP_SCRIPT
+
+    # Restore everything
+    echo ""
+    echo "[4/5] Restoring from backup..."
+    ssh "$RPI_SSH" bash -s "$RPI_INSTALL_DIR" << 'RESTORE_SCRIPT'
+        INSTALL_DIR="$1"
+
+        # Restore binary
+        echo "  Restoring binary..."
+        cd "$INSTALL_DIR/target/release"
+        if [ -f "kr_notebook.old" ]; then
+            cp "kr_notebook.old" "kr_notebook"
+            chmod +x "kr_notebook"
+            echo "    Binary restored"
+        fi
+
+        # Restore static assets
+        echo "  Restoring static assets..."
+        if [ -d "$INSTALL_DIR/static.old" ]; then
+            rm -rf "$INSTALL_DIR/static"
+            cp -r "$INSTALL_DIR/static.old" "$INSTALL_DIR/static"
+            echo "    Static assets restored"
+        fi
+
+        # Restore databases
+        echo "  Restoring databases..."
+        BACKUP_TS=$(cat "$INSTALL_DIR/backups/latest")
+        BACKUP_DIR="$INSTALL_DIR/backups/$BACKUP_TS"
+
+        if [ -f "$BACKUP_DIR/app.db" ]; then
+            cp "$BACKUP_DIR/app.db" "$INSTALL_DIR/data/app.db"
+            echo "    app.db restored"
+        fi
+
+        if [ -d "$BACKUP_DIR/users" ]; then
+            for user_backup in "$BACKUP_DIR/users"/*/; do
+                if [ -d "$user_backup" ]; then
+                    username=$(basename "$user_backup")
+                    if [ -f "$user_backup/learning.db" ]; then
+                        mkdir -p "$INSTALL_DIR/data/users/$username"
+                        cp "$user_backup/learning.db" "$INSTALL_DIR/data/users/$username/"
+                        echo "    users/$username/learning.db restored"
+                    fi
+                fi
+            done
+        fi
+RESTORE_SCRIPT
+
+    # Start service
+    echo ""
+    echo "[5/5] Starting service..."
+    ssh "$RPI_SSH" bash -s "$RPI_SERVICE" << 'START_SCRIPT'
+        SERVICE="$1"
+        if systemctl list-unit-files | grep -q "^$SERVICE"; then
+            sudo systemctl start "$SERVICE"
+            sleep 2
+            if systemctl is-active --quiet "$SERVICE"; then
+                echo "  Service started successfully"
+            else
+                echo "  Warning: Service may have failed to start"
+                echo "  Check with: sudo journalctl -u $SERVICE -n 50"
+            fi
+        else
+            echo "  No systemd service configured"
+            echo "  Start manually with: ./target/release/kr_notebook"
+        fi
+START_SCRIPT
+
+    echo ""
+    echo "=== Rollback Complete ==="
+    exit 0
+fi
+
+# =============================================================================
+# NORMAL DEPLOYMENT MODE
+# =============================================================================
 echo "=== Deploying to $RPI_SSH ==="
 echo ""
 
 # Step 1: Build
 if [ "$DO_BUILD" = true ]; then
-    echo "[1/7] Building for $TARGET ($PROFILE_NAME)..."
+    echo "[1/8] Building for $TARGET ($PROFILE_NAME)..."
 
     # Build features (optional)
     FEATURES_ARG=""
@@ -61,7 +206,7 @@ if [ "$DO_BUILD" = true ]; then
     fi
     echo ""
 else
-    echo "[1/7] Skipping build (--no-build)"
+    echo "[1/8] Skipping build (--no-build)"
 fi
 
 # Check binary exists
@@ -72,7 +217,7 @@ if [ ! -f "$BINARY" ]; then
 fi
 
 # Step 2: Test SSH connection
-echo "[2/7] Testing SSH connection..."
+echo "[2/8] Testing SSH connection..."
 if ! ssh -o ConnectTimeout=5 "$RPI_SSH" "echo 'OK'" &>/dev/null; then
     echo "Error: Cannot connect to $RPI_SSH"
     echo "Check RPI_SSH in .rpi-deploy.conf"
@@ -80,10 +225,77 @@ if ! ssh -o ConnectTimeout=5 "$RPI_SSH" "echo 'OK'" &>/dev/null; then
 fi
 echo "  Connected to $(ssh "$RPI_SSH" 'hostname')"
 
+# Step 2b: Check database schema compatibility
+echo ""
+echo "[2b/8] Checking database schema..."
+SCHEMA_CHECK=$(ssh "$RPI_SSH" bash -s "$RPI_INSTALL_DIR" << 'SCHEMA_SCRIPT'
+    INSTALL_DIR="$1"
+    APP_DB="$INSTALL_DIR/data/app.db"
+
+    if [ ! -f "$APP_DB" ]; then
+        echo "NEW"
+        exit 0
+    fi
+
+    # Check for card_definitions table (required by modular_content branch)
+    HAS_CARD_DEFS=$(sqlite3 "$APP_DB" "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='card_definitions';" 2>/dev/null || echo "0")
+
+    # Check for db_version table
+    HAS_VERSION=$(sqlite3 "$APP_DB" "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='db_version';" 2>/dev/null || echo "0")
+
+    if [ "$HAS_CARD_DEFS" = "0" ]; then
+        # Get schema version if available
+        if [ "$HAS_VERSION" = "1" ]; then
+            VERSION=$(sqlite3 "$APP_DB" "SELECT MAX(version) FROM db_version;" 2>/dev/null || echo "0")
+            echo "OLD:$VERSION"
+        else
+            echo "OLD:0"
+        fi
+    else
+        VERSION=$(sqlite3 "$APP_DB" "SELECT MAX(version) FROM db_version;" 2>/dev/null || echo "unknown")
+        echo "OK:$VERSION"
+    fi
+SCHEMA_SCRIPT
+)
+
+case "$SCHEMA_CHECK" in
+    NEW)
+        echo "  Fresh install (no existing database)"
+        ;;
+    OLD:*)
+        OLD_VERSION="${SCHEMA_CHECK#OLD:}"
+        echo ""
+        echo "  ⚠️  WARNING: Production database has OLD schema (version $OLD_VERSION)"
+        echo "  The new binary uses card_definitions table which doesn't exist."
+        echo ""
+        echo "  This deployment will trigger a migration that:"
+        echo "    1. Creates card_definitions table in app.db"
+        echo "    2. Seeds baseline card definitions"
+        echo "    3. Migrates user progress from legacy cards table"
+        echo ""
+        echo "  The migration matches cards by (main_answer, card_type, tier, is_reverse)."
+        echo "  A backup will be created before deployment."
+        echo ""
+        read -p "  Continue with deployment? [y/N] " -n 1 -r
+        echo ""
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            echo "  Deployment cancelled."
+            exit 1
+        fi
+        ;;
+    OK:*)
+        CURRENT_VERSION="${SCHEMA_CHECK#OK:}"
+        echo "  Schema version: $CURRENT_VERSION (compatible)"
+        ;;
+    *)
+        echo "  Warning: Could not check schema (${SCHEMA_CHECK})"
+        ;;
+esac
+
 # Step 3: Backup on RPi
 if [ "$DO_BACKUP" = true ]; then
     echo ""
-    echo "[3/7] Creating backup on RPi..."
+    echo "[3/8] Creating backup on RPi..."
     ssh "$RPI_SSH" bash -s "$RPI_INSTALL_DIR" "$TIMESTAMP" << 'BACKUP_SCRIPT'
         INSTALL_DIR="$1"
         TIMESTAMP="$2"
@@ -117,12 +329,12 @@ if [ "$DO_BACKUP" = true ]; then
 BACKUP_SCRIPT
 else
     echo ""
-    echo "[3/7] Skipping backup (--no-backup)"
+    echo "[3/8] Skipping backup (--no-backup)"
 fi
 
 # Step 4: Stop service
 echo ""
-echo "[4/7] Stopping service..."
+echo "[4/8] Stopping service..."
 ssh "$RPI_SSH" bash -s "$RPI_SERVICE" << 'STOP_SCRIPT'
     SERVICE="$1"
     if systemctl is-active --quiet "$SERVICE" 2>/dev/null; then
@@ -135,7 +347,7 @@ STOP_SCRIPT
 
 # Step 5: Deploy binary
 echo ""
-echo "[5/7] Deploying binary..."
+echo "[5/8] Deploying binary..."
 ssh "$RPI_SSH" "mkdir -p $RPI_INSTALL_DIR/target/release"
 scp "$BINARY" "$RPI_SSH:$RPI_INSTALL_DIR/target/release/kr_notebook.new"
 ssh "$RPI_SSH" bash -s "$RPI_INSTALL_DIR" << 'DEPLOY_SCRIPT'
@@ -153,14 +365,34 @@ ssh "$RPI_SSH" bash -s "$RPI_INSTALL_DIR" << 'DEPLOY_SCRIPT'
     echo "  Binary installed"
 DEPLOY_SCRIPT
 
-# Step 6: Deploy static assets
+# Step 6: Deploy static assets (backup old first)
 echo ""
-echo "[6/7] Syncing static assets..."
+echo "[6/8] Syncing static assets..."
+ssh "$RPI_SSH" bash -s "$RPI_INSTALL_DIR" << 'STATIC_BACKUP_SCRIPT'
+    INSTALL_DIR="$1"
+    # Backup current static assets (overwrite previous .old)
+    if [ -d "$INSTALL_DIR/static" ]; then
+        rm -rf "$INSTALL_DIR/static.old"
+        cp -r "$INSTALL_DIR/static" "$INSTALL_DIR/static.old"
+        echo "  Backed up static/ -> static.old/"
+    fi
+STATIC_BACKUP_SCRIPT
 rsync -av --delete --exclude='.DS_Store' "$PROJECT_DIR/static/" "$RPI_SSH:$RPI_INSTALL_DIR/static/"
 
-# Step 7: Start service
+# Step 7: Update backup marker
 echo ""
-echo "[7/7] Starting service..."
+echo "[7/8] Updating backup marker..."
+ssh "$RPI_SSH" bash -s "$RPI_INSTALL_DIR" "$TIMESTAMP" << 'MARKER_SCRIPT'
+    INSTALL_DIR="$1"
+    TIMESTAMP="$2"
+    mkdir -p "$INSTALL_DIR/backups"
+    echo "$TIMESTAMP" > "$INSTALL_DIR/backups/latest"
+    echo "  Backup marker set to: $TIMESTAMP"
+MARKER_SCRIPT
+
+# Step 8: Start service
+echo ""
+echo "[8/8] Starting service..."
 ssh "$RPI_SSH" bash -s "$RPI_SERVICE" << 'START_SCRIPT'
     SERVICE="$1"
     if systemctl list-unit-files | grep -q "^$SERVICE"; then
@@ -181,5 +413,5 @@ START_SCRIPT
 echo ""
 echo "=== Deploy Complete ==="
 echo ""
-echo "To rollback:"
-echo "  ssh $RPI_SSH 'cd $RPI_INSTALL_DIR/target/release && mv kr_notebook.old kr_notebook && sudo systemctl restart $RPI_SERVICE'"
+echo "To rollback (restores binary, static assets, and databases):"
+echo "  ./scripts/rpi-deploy.sh --rollback"

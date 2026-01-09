@@ -1,9 +1,11 @@
-//! Admin-only operations: scraper, segmentation, tier graduation, guest management.
+//! Admin-only operations: scraper, segmentation, tier graduation, guest management, user/group management.
 
 use askama::Template;
 use axum::extract::{Path, State};
-use axum::response::{Html, Redirect};
+use axum::http::HeaderMap;
+use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum::Form;
+use html_escape::encode_text;
 use serde::Deserialize;
 use std::process::Command;
 
@@ -16,6 +18,9 @@ use crate::state::AppState;
 use crate::profiling::EventType;
 
 use super::audio::{get_audio_row, get_lesson_audio, AudioRow, SegmentParams};
+use super::user::{GroupDisplay, GroupMember, UserDisplay, AllowedUser, PackInfo};
+use crate::content::PackType;
+use crate::services::pack_manager;
 
 // ============================================================================
 // Scraper Operations
@@ -34,20 +39,40 @@ pub async fn trigger_scrape(auth: AuthContext) -> Redirect {
     username: Some(auth.username.clone()),
   });
 
-  // Run the scraper commands for all lessons
-  let cmd = format!(
-    "cd {} && uv run kr-scraper lesson1 && uv run kr-scraper lesson2 && uv run kr-scraper lesson3 && uv run kr-scraper segment --padding 75",
-    paths::PY_SCRIPTS_DIR
-  );
-  match Command::new("sh").args(["-c", &cmd]).output() {
+  // Run the scraper commands for all lessons using argument arrays (no shell injection risk)
+  for lesson in ["lesson1", "lesson2", "lesson3"] {
+    match Command::new("uv")
+      .current_dir(paths::PY_SCRIPTS_DIR)
+      .args(["run", "kr-scraper", lesson])
+      .output()
+    {
+      Ok(output) if !output.status.success() => {
+        tracing::warn!(
+          "Scrape {} failed with status {}: {}",
+          lesson,
+          output.status,
+          String::from_utf8_lossy(&output.stderr)
+        );
+      }
+      Err(e) => tracing::warn!("Failed to run scrape command for {}: {}", lesson, e),
+      _ => {}
+    }
+  }
+
+  // Run segment with padding
+  match Command::new("uv")
+    .current_dir(paths::PY_SCRIPTS_DIR)
+    .args(["run", "kr-scraper", "segment", "--padding", "75"])
+    .output()
+  {
     Ok(output) if !output.status.success() => {
       tracing::warn!(
-        "Scrape command failed with status {}: {}",
+        "Segment command failed with status {}: {}",
         output.status,
         String::from_utf8_lossy(&output.stderr)
       );
     }
-    Err(e) => tracing::warn!("Failed to run scrape command: {}", e),
+    Err(e) => tracing::warn!("Failed to run segment command: {}", e),
     _ => {}
   }
 
@@ -67,23 +92,20 @@ pub async fn trigger_scrape_lesson(auth: AuthContext, Path(lesson): Path<String>
     username: Some(auth.username.clone()),
   });
 
-  let cmd = match lesson.as_str() {
-    "1" => format!(
-      "cd {} && uv run kr-scraper lesson1 && uv run kr-scraper segment -l 1 --padding 75",
-      paths::PY_SCRIPTS_DIR
-    ),
-    "2" => format!(
-      "cd {} && uv run kr-scraper lesson2 && uv run kr-scraper segment -l 2 --padding 75",
-      paths::PY_SCRIPTS_DIR
-    ),
-    "3" => format!(
-      "cd {} && uv run kr-scraper lesson3 && uv run kr-scraper segment -l 3 --padding 75",
-      paths::PY_SCRIPTS_DIR
-    ),
+  // Validate lesson input and map to scraper args (no shell injection risk)
+  let (lesson_cmd, lesson_num) = match lesson.as_str() {
+    "1" => ("lesson1", "1"),
+    "2" => ("lesson2", "2"),
+    "3" => ("lesson3", "3"),
     _ => return Redirect::to("/settings"),
   };
 
-  match Command::new("sh").args(["-c", &cmd]).output() {
+  // Run scraper for this lesson
+  match Command::new("uv")
+    .current_dir(paths::PY_SCRIPTS_DIR)
+    .args(["run", "kr-scraper", lesson_cmd])
+    .output()
+  {
     Ok(output) if !output.status.success() => {
       tracing::warn!(
         "Scrape lesson {} failed with status {}: {}",
@@ -93,6 +115,24 @@ pub async fn trigger_scrape_lesson(auth: AuthContext, Path(lesson): Path<String>
       );
     }
     Err(e) => tracing::warn!("Failed to run scrape command for lesson {}: {}", lesson, e),
+    _ => {}
+  }
+
+  // Run segment for this lesson
+  match Command::new("uv")
+    .current_dir(paths::PY_SCRIPTS_DIR)
+    .args(["run", "kr-scraper", "segment", "-l", lesson_num, "--padding", "75"])
+    .output()
+  {
+    Ok(output) if !output.status.success() => {
+      tracing::warn!(
+        "Segment lesson {} failed with status {}: {}",
+        lesson,
+        output.status,
+        String::from_utf8_lossy(&output.stderr)
+      );
+    }
+    Err(e) => tracing::warn!("Failed to run segment command for lesson {}: {}", lesson, e),
     _ => {}
   }
 
@@ -112,9 +152,12 @@ pub async fn delete_scraped(auth: AuthContext) -> Redirect {
     username: Some(auth.username.clone()),
   });
 
-  // Run the clean command
-  let cmd = format!("cd {} && uv run kr-scraper clean --yes", paths::PY_SCRIPTS_DIR);
-  match Command::new("sh").args(["-c", &cmd]).output() {
+  // Run the clean command using argument array (no shell injection risk)
+  match Command::new("uv")
+    .current_dir(paths::PY_SCRIPTS_DIR)
+    .args(["run", "kr-scraper", "clean", "--yes"])
+    .output()
+  {
     Ok(output) if !output.status.success() => {
       tracing::warn!(
         "Clean command failed with status {}: {}",
@@ -198,14 +241,15 @@ pub async fn trigger_segment(auth: AuthContext, Form(form): Form<SegmentForm>) -
     }
   );
 
-  // Use --reset to ignore saved manifest params and apply CLI values
-  let cmd = format!(
-    "cd {} && uv run kr-scraper segment --padding {} --reset 2>&1",
-    paths::PY_SCRIPTS_DIR,
-    form.padding
-  );
-
-  match Command::new("sh").args(["-c", &cmd]).output() {
+  // Use argument array instead of shell string for consistency
+  match Command::new("uv")
+    .current_dir(paths::PY_SCRIPTS_DIR)
+    .args([
+      "run", "kr-scraper", "segment",
+      "--padding", &form.padding.to_string(),
+      "--reset",
+    ])
+    .output() {
     Ok(output) if output.status.success() => {
       let stdout = String::from_utf8_lossy(&output.stdout);
       // Count "OK" occurrences for a rough success count
@@ -247,12 +291,12 @@ pub async fn trigger_segment(auth: AuthContext, Form(form): Form<SegmentForm>) -
       let error = stderr.lines().chain(stdout.lines()).next().unwrap_or("unknown error");
       Html(format!(
         r#"<span class="text-red-600 dark:text-red-400">Failed: {}</span>"#,
-        error
+        encode_text(error)
       ))
     }
     Err(e) => Html(format!(
       r#"<span class="text-red-600 dark:text-red-400">Failed: {}</span>"#,
-      e
+      encode_text(&e.to_string())
     )),
   }
 }
@@ -308,20 +352,30 @@ pub async fn trigger_row_segment(auth: AuthContext, Form(form): Form<RowSegmentF
     }
   );
 
-  // Use the segment-row CLI command for cleaner invocation
-  let cmd = format!(
-    "cd {} && uv run kr-scraper segment-row {} {} -s {} -t {} -P {} --skip-first {} --skip-last {} --json",
-    paths::PY_SCRIPTS_DIR,
-    form.lesson,
-    form.row,
-    form.min_silence,
-    form.threshold,
-    form.padding,
-    form.skip_first,
-    form.skip_last
-  );
+  // Validate lesson format (only allow lesson1, lesson2, lesson3)
+  if !matches!(form.lesson.as_str(), "lesson1" | "lesson2" | "lesson3") {
+    return Html(r#"<span class="text-red-600 dark:text-red-400">Invalid lesson</span>"#.to_string());
+  }
 
-  let (status_message, status_success) = match Command::new("sh").args(["-c", &cmd]).output() {
+  // Validate row format (alphanumeric only, for romanization)
+  if !form.row.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+    return Html(r#"<span class="text-red-600 dark:text-red-400">Invalid row</span>"#.to_string());
+  }
+
+  // Use argument array instead of shell string to prevent command injection
+  let (status_message, status_success) = match Command::new("uv")
+    .current_dir(paths::PY_SCRIPTS_DIR)
+    .args([
+      "run", "kr-scraper", "segment-row",
+      &form.lesson, &form.row,
+      "-s", &form.min_silence.to_string(),
+      "-t", &form.threshold.to_string(),
+      "-P", &form.padding.to_string(),
+      "--skip-first", &form.skip_first.to_string(),
+      "--skip-last", &form.skip_last.to_string(),
+      "--json",
+    ])
+    .output() {
     Ok(output) if output.status.success() => {
       let stdout = String::from_utf8_lossy(&output.stdout);
       if let Ok(result) = serde_json::from_str::<serde_json::Value>(stdout.trim()) {
@@ -335,11 +389,11 @@ pub async fn trigger_row_segment(auth: AuthContext, Form(form): Form<RowSegmentF
     Ok(output) => {
       let stderr = String::from_utf8_lossy(&output.stderr);
       (
-        format!("Failed: {}", stderr.lines().next().unwrap_or("unknown error")),
+        format!("Failed: {}", encode_text(stderr.lines().next().unwrap_or("unknown error"))),
         false,
       )
     }
-    Err(e) => (format!("Failed: {}", e), false),
+    Err(e) => (format!("Failed: {}", encode_text(&e.to_string())), false),
   };
 
   // Re-read the updated row data from manifest
@@ -393,28 +447,37 @@ pub async fn trigger_manual_segment(auth: AuthContext, Form(form): Form<ManualSe
     }
   );
 
-  // Call Python apply-manual command
-  let cmd = format!(
-    "cd {} && uv run kr-scraper apply-manual {} {} --start {} --end {}",
-    paths::PY_SCRIPTS_DIR,
-    form.lesson,
-    form.syllable,
-    form.start_ms,
-    form.end_ms
-  );
+  // Validate lesson format (only allow lesson1, lesson2, lesson3)
+  if !matches!(form.lesson.as_str(), "lesson1" | "lesson2" | "lesson3") {
+    return Html(r#"<span class="text-red-600 dark:text-red-400">Invalid lesson</span>"#.to_string());
+  }
 
-  let (status_message, status_success) = match Command::new("sh").args(["-c", &cmd]).output() {
+  // Syllable is Korean text - only allow Hangul characters and basic punctuation
+  if form.syllable.chars().any(|c| c.is_ascii_punctuation() && !matches!(c, '-' | '_')) {
+    return Html(r#"<span class="text-red-600 dark:text-red-400">Invalid syllable</span>"#.to_string());
+  }
+
+  // Use argument array instead of shell string to prevent command injection
+  let (status_message, status_success) = match Command::new("uv")
+    .current_dir(paths::PY_SCRIPTS_DIR)
+    .args([
+      "run", "kr-scraper", "apply-manual",
+      &form.lesson, &form.syllable,
+      "--start", &form.start_ms.to_string(),
+      "--end", &form.end_ms.to_string(),
+    ])
+    .output() {
     Ok(output) if output.status.success() => {
       ("Manual applied".to_string(), true)
     }
     Ok(output) => {
       let stderr = String::from_utf8_lossy(&output.stderr);
       (
-        format!("Failed: {}", stderr.lines().next().unwrap_or("unknown error")),
+        format!("Failed: {}", encode_text(stderr.lines().next().unwrap_or("unknown error"))),
         false,
       )
     }
-    Err(e) => (format!("Failed: {}", e), false),
+    Err(e) => (format!("Failed: {}", encode_text(&e.to_string())), false),
   };
 
   // Re-read the updated row data from manifest
@@ -464,26 +527,35 @@ pub async fn trigger_reset_segment(auth: AuthContext, Form(form): Form<ResetSegm
     }
   );
 
-  // Call Python reset-manual command
-  let cmd = format!(
-    "cd {} && uv run kr-scraper reset-manual {} {}",
-    paths::PY_SCRIPTS_DIR,
-    form.lesson,
-    form.syllable
-  );
+  // Validate lesson format (only allow lesson1, lesson2, lesson3)
+  if !matches!(form.lesson.as_str(), "lesson1" | "lesson2" | "lesson3") {
+    return Html(r#"<span class="text-red-600 dark:text-red-400">Invalid lesson</span>"#.to_string());
+  }
 
-  let (status_message, status_success) = match Command::new("sh").args(["-c", &cmd]).output() {
+  // Syllable is Korean text - only allow Hangul characters and basic punctuation
+  if form.syllable.chars().any(|c| c.is_ascii_punctuation() && !matches!(c, '-' | '_')) {
+    return Html(r#"<span class="text-red-600 dark:text-red-400">Invalid syllable</span>"#.to_string());
+  }
+
+  // Use argument array instead of shell string to prevent command injection
+  let (status_message, status_success) = match Command::new("uv")
+    .current_dir(paths::PY_SCRIPTS_DIR)
+    .args([
+      "run", "kr-scraper", "reset-manual",
+      &form.lesson, &form.syllable,
+    ])
+    .output() {
     Ok(output) if output.status.success() => {
       ("Reset to baseline".to_string(), true)
     }
     Ok(output) => {
       let stderr = String::from_utf8_lossy(&output.stderr);
       (
-        format!("Failed: {}", stderr.lines().next().unwrap_or("unknown error")),
+        format!("Failed: {}", encode_text(stderr.lines().next().unwrap_or("unknown error"))),
         false,
       )
     }
-    Err(e) => (format!("Failed: {}", e), false),
+    Err(e) => (format!("Failed: {}", encode_text(&e.to_string())), false),
   };
 
   // Re-read the updated row data from manifest
@@ -649,4 +721,996 @@ pub async fn delete_all_guests(auth: AuthContext, State(state): State<AppState>)
   }
 
   Redirect::to("/settings")
+}
+
+// ============================================================================
+// HTMX Templates for async updates
+// ============================================================================
+
+/// Check if request is from HTMX
+fn is_htmx_request(headers: &HeaderMap) -> bool {
+  headers.get("HX-Request").is_some()
+}
+
+/// Group card partial template
+#[derive(Template)]
+#[template(path = "partials/settings_group_card.html")]
+pub struct GroupCardTemplate {
+  pub group: GroupDisplay,
+  pub users: Vec<UserDisplay>,
+}
+
+/// Pack permission panel partial template
+#[derive(Template)]
+#[template(path = "partials/settings_pack_permissions.html")]
+pub struct PackPermissionsTemplate {
+  pub pack: PackInfo,
+  pub groups: Vec<GroupDisplay>,
+  pub users: Vec<UserDisplay>,
+}
+
+/// Helper to render pack permissions partial for HTMX response
+fn render_pack_permissions(conn: &rusqlite::Connection, pack_id: &str) -> Option<String> {
+  // Find pack using PackManager (includes external paths)
+  let pack_loc = pack_manager::find_pack_by_id(conn, pack_id)?;
+
+  // Build PackInfo
+  let allowed_groups = auth_db::get_pack_allowed_groups(conn, pack_id).unwrap_or_default();
+  let allowed_users_raw = auth_db::get_pack_allowed_users(conn, pack_id).unwrap_or_default();
+  let allowed_users: Vec<AllowedUser> = allowed_users_raw
+    .into_iter()
+    .map(|(id, username)| AllowedUser { id, username })
+    .collect();
+  let is_restricted = !allowed_groups.is_empty() || !allowed_users.is_empty();
+  let is_baseline = pack_loc.manifest.id == "baseline";
+
+  let pack = PackInfo {
+    id: pack_loc.manifest.id.clone(),
+    name: pack_loc.manifest.name.clone(),
+    description: pack_loc.manifest.description.clone(),
+    version: pack_loc.manifest.version.clone(),
+    pack_type: match pack_loc.manifest.pack_type {
+      PackType::Cards => "cards".to_string(),
+      PackType::Audio => "audio".to_string(),
+      PackType::Generator => "generator".to_string(),
+    },
+    is_enabled: false, // Not needed for permissions partial
+    is_baseline,
+    cards_count: None,
+    is_restricted,
+    allowed_groups,
+    allowed_users,
+    can_manage: !is_baseline, // Admin-only function, so can manage all non-baseline packs
+  };
+
+  // Get groups for the dropdown
+  let groups: Vec<GroupDisplay> = auth_db::get_all_groups(conn)
+    .unwrap_or_default()
+    .into_iter()
+    .map(|g| {
+      let members = auth_db::get_group_members(conn, &g.id)
+        .unwrap_or_default()
+        .into_iter()
+        .map(|(id, username)| GroupMember { id, username })
+        .collect();
+      GroupDisplay {
+        id: g.id,
+        name: g.name,
+        description: g.description,
+        members,
+      }
+    })
+    .collect();
+
+  // Get users for the dropdown
+  let users: Vec<UserDisplay> = auth_db::get_all_users(conn)
+    .unwrap_or_default()
+    .into_iter()
+    .map(|u| UserDisplay {
+      id: u.id,
+      username: u.username,
+      role: u.role,
+      is_guest: u.is_guest,
+    })
+    .collect();
+
+  let template = PackPermissionsTemplate { pack, groups, users };
+  template.render().ok()
+}
+
+// ============================================================================
+// User Role Management (Admin Only)
+// ============================================================================
+
+#[derive(Deserialize)]
+pub struct SetRoleForm {
+  pub user_id: i64,
+  pub role: String,
+}
+
+/// User row partial template
+#[derive(Template)]
+#[template(path = "partials/settings_user_row.html")]
+pub struct UserRowTemplate {
+  pub user: UserDisplay,
+}
+
+/// Change a user's role (admin only)
+pub async fn set_user_role(
+  auth: AuthContext,
+  State(state): State<AppState>,
+  headers: HeaderMap,
+  Form(form): Form<SetRoleForm>,
+) -> Response {
+  if !auth.is_admin {
+    return Redirect::to("/settings").into_response();
+  }
+
+  // Validate role
+  if form.role != "user" && form.role != "admin" {
+    if is_htmx_request(&headers) {
+      return Html(error_notification("Invalid role")).into_response();
+    }
+    return Redirect::to("/settings").into_response();
+  }
+
+  let auth_db = match state.auth_db.lock() {
+    Ok(conn) => conn,
+    Err(_) => {
+      if is_htmx_request(&headers) {
+        return Html(error_notification("Database error")).into_response();
+      }
+      return Redirect::to("/settings").into_response();
+    }
+  };
+
+  if let Err(e) = auth_db::set_user_role(&auth_db, form.user_id, &form.role) {
+    tracing::warn!("Failed to set user role: {}", e);
+    if is_htmx_request(&headers) {
+      return Html(error_notification(&format!("Failed to set role: {}", e))).into_response();
+    }
+    return Redirect::to("/settings").into_response();
+  }
+
+  // Return HTMX partial or redirect
+  if is_htmx_request(&headers) {
+    // Fetch updated user info
+    if let Ok(Some(user)) = auth_db::get_user_by_id(&auth_db, form.user_id) {
+      let template = UserRowTemplate {
+        user: UserDisplay {
+          id: user.id,
+          username: user.username,
+          role: user.role,
+          is_guest: user.is_guest,
+        },
+      };
+      return Html(template.render().unwrap_or_default()).into_response();
+    }
+  }
+
+  Redirect::to("/settings").into_response()
+}
+
+// ============================================================================
+// User Group Management (Admin Only)
+// ============================================================================
+
+#[derive(Deserialize)]
+pub struct CreateGroupForm {
+  pub id: String,
+  pub name: String,
+  pub description: Option<String>,
+}
+
+/// Helper to create an error notification HTML (uses hx-swap-oob to update notifications area)
+fn error_notification(message: &str) -> String {
+  format!(
+    r#"<div id="notifications" hx-swap-oob="innerHTML:#notifications">
+      <div class="p-4 mb-4 text-sm text-red-700 bg-red-100 dark:bg-red-900/30 dark:text-red-300 rounded-lg flex items-center justify-between" role="alert">
+        <span>{}</span>
+        <button type="button" onclick="this.parentElement.remove()" class="ml-4 text-red-700 dark:text-red-300 hover:text-red-900 dark:hover:text-red-100">&times;</button>
+      </div>
+    </div>"#,
+    message
+  )
+}
+
+/// Create a new user group (admin only)
+pub async fn create_group(
+  auth: AuthContext,
+  State(state): State<AppState>,
+  headers: HeaderMap,
+  Form(form): Form<CreateGroupForm>,
+) -> Response {
+  if !auth.is_admin {
+    return Redirect::to("/settings").into_response();
+  }
+
+  let auth_db = match state.auth_db.lock() {
+    Ok(conn) => conn,
+    Err(_) => {
+      if is_htmx_request(&headers) {
+        return Html(error_notification("Database error")).into_response();
+      }
+      return Redirect::to("/settings").into_response();
+    }
+  };
+
+  // Validate group ID
+  if form.id.trim().is_empty() || form.name.trim().is_empty() {
+    if is_htmx_request(&headers) {
+      return Html(error_notification("Group ID and name are required")).into_response();
+    }
+    return Redirect::to("/settings").into_response();
+  }
+
+  if let Err(e) = auth_db::create_user_group(&auth_db, &form.id, &form.name, form.description.as_deref()) {
+    tracing::warn!("Failed to create group: {}", e);
+    if is_htmx_request(&headers) {
+      let msg = if e.to_string().contains("UNIQUE constraint") {
+        format!("Group '{}' already exists", form.id)
+      } else {
+        format!("Failed to create group: {}", e)
+      };
+      return Html(error_notification(&msg)).into_response();
+    }
+    return Redirect::to("/settings").into_response();
+  }
+
+  // Return HTMX partial or redirect
+  if is_htmx_request(&headers) {
+    // Render the new group card plus remove the "no groups" message if present
+    if let Some(html) = render_group_card(&auth_db, &form.id) {
+      let mut response = html;
+      // Remove "no groups" message via OOB swap
+      response.push_str(r#"<p id="no-groups-msg" hx-swap-oob="delete"></p>"#);
+      return Html(response).into_response();
+    }
+  }
+  Redirect::to("/settings").into_response()
+}
+
+/// Delete a user group (admin only)
+pub async fn delete_group(
+  auth: AuthContext,
+  State(state): State<AppState>,
+  headers: HeaderMap,
+  Path(group_id): Path<String>,
+) -> Response {
+  if !auth.is_admin {
+    return Redirect::to("/settings").into_response();
+  }
+
+  let auth_db = match state.auth_db.lock() {
+    Ok(conn) => conn,
+    Err(_) => {
+      if is_htmx_request(&headers) {
+        return Html(error_notification("Database error")).into_response();
+      }
+      return Redirect::to("/settings").into_response();
+    }
+  };
+
+  if let Err(e) = auth_db::delete_group(&auth_db, &group_id) {
+    tracing::warn!("Failed to delete group: {}", e);
+    if is_htmx_request(&headers) {
+      return Html(error_notification(&format!("Failed to delete group: {}", e))).into_response();
+    }
+    return Redirect::to("/settings").into_response();
+  }
+
+  // Return empty response for HTMX (element will be removed) or redirect
+  if is_htmx_request(&headers) {
+    return Html("").into_response();
+  }
+  Redirect::to("/settings").into_response()
+}
+
+#[derive(Deserialize)]
+pub struct GroupMemberForm {
+  pub user_id: i64,
+  pub group_id: String,
+}
+
+/// Helper to render a group card for HTMX response
+fn render_group_card(conn: &rusqlite::Connection, group_id: &str) -> Option<String> {
+  let group = auth_db::get_group(conn, group_id).ok()??;
+  let members = auth_db::get_group_members(conn, group_id)
+    .unwrap_or_default()
+    .into_iter()
+    .map(|(id, username)| GroupMember { id, username })
+    .collect();
+  let group_display = GroupDisplay {
+    id: group.id,
+    name: group.name,
+    description: group.description,
+    members,
+  };
+  let users: Vec<UserDisplay> = auth_db::get_all_users(conn)
+    .unwrap_or_default()
+    .into_iter()
+    .map(|u| UserDisplay {
+      id: u.id,
+      username: u.username,
+      role: u.role,
+      is_guest: u.is_guest,
+    })
+    .collect();
+
+  let template = GroupCardTemplate { group: group_display, users };
+  template.render().ok()
+}
+
+/// Add a user to a group (admin only)
+pub async fn add_to_group(
+  auth: AuthContext,
+  State(state): State<AppState>,
+  headers: HeaderMap,
+  Form(form): Form<GroupMemberForm>,
+) -> Response {
+  if !auth.is_admin {
+    return Redirect::to("/settings").into_response();
+  }
+
+  let auth_db = match state.auth_db.lock() {
+    Ok(conn) => conn,
+    Err(_) => {
+      if is_htmx_request(&headers) {
+        return Html(error_notification("Database error")).into_response();
+      }
+      return Redirect::to("/settings").into_response();
+    }
+  };
+
+  if let Err(e) = auth_db::add_user_to_group(&auth_db, form.user_id, &form.group_id) {
+    tracing::warn!("Failed to add user to group: {}", e);
+    if is_htmx_request(&headers) {
+      return Html(error_notification(&format!("Failed to add user: {}", e))).into_response();
+    }
+    return Redirect::to("/settings").into_response();
+  }
+
+  // Return HTMX partial or redirect
+  if is_htmx_request(&headers) {
+    match render_group_card(&auth_db, &form.group_id) {
+      Some(html) => return Html(html).into_response(),
+      None => {
+        tracing::warn!("Failed to render group card for {}", form.group_id);
+        return Html(error_notification("Failed to render group. Please refresh the page.")).into_response();
+      }
+    }
+  }
+  Redirect::to("/settings").into_response()
+}
+
+/// Remove a user from a group (admin only)
+pub async fn remove_from_group(
+  auth: AuthContext,
+  State(state): State<AppState>,
+  headers: HeaderMap,
+  Form(form): Form<GroupMemberForm>,
+) -> Response {
+  if !auth.is_admin {
+    return Redirect::to("/settings").into_response();
+  }
+
+  let auth_db = match state.auth_db.lock() {
+    Ok(conn) => conn,
+    Err(_) => {
+      if is_htmx_request(&headers) {
+        return Html(error_notification("Database error")).into_response();
+      }
+      return Redirect::to("/settings").into_response();
+    }
+  };
+
+  if let Err(e) = auth_db::remove_user_from_group(&auth_db, form.user_id, &form.group_id) {
+    tracing::warn!("Failed to remove user from group: {}", e);
+    if is_htmx_request(&headers) {
+      return Html(error_notification(&format!("Failed to remove user: {}", e))).into_response();
+    }
+    return Redirect::to("/settings").into_response();
+  }
+
+  // Return HTMX partial or redirect
+  if is_htmx_request(&headers) {
+    match render_group_card(&auth_db, &form.group_id) {
+      Some(html) => return Html(html).into_response(),
+      None => {
+        tracing::warn!("Failed to render group card for {}", form.group_id);
+        return Html(error_notification("Failed to render group. Please refresh the page.")).into_response();
+      }
+    }
+  }
+  Redirect::to("/settings").into_response()
+}
+
+// ============================================================================
+// Pack Permissions (Admin Only)
+// ============================================================================
+
+#[derive(Deserialize)]
+pub struct PackPermissionForm {
+  pub pack_id: String,
+  pub group_id: String,  // Empty string = all users
+}
+
+#[derive(Deserialize)]
+pub struct PackUserPermissionForm {
+  pub pack_id: String,
+  pub user_id: i64,
+}
+
+/// Restrict a pack to specific groups (admin only)
+pub async fn restrict_pack_to_group(
+  auth: AuthContext,
+  State(state): State<AppState>,
+  headers: HeaderMap,
+  Form(form): Form<PackPermissionForm>,
+) -> Response {
+  if !auth.is_admin {
+    return Redirect::to("/settings").into_response();
+  }
+
+  let auth_db = match state.auth_db.lock() {
+    Ok(conn) => conn,
+    Err(_) => {
+      if is_htmx_request(&headers) {
+        return Html(error_notification("Database error")).into_response();
+      }
+      return Redirect::to("/settings").into_response();
+    }
+  };
+
+  // Set permission: this group can access this pack
+  if let Err(e) = auth_db::set_pack_permission(&auth_db, &form.pack_id, &form.group_id, true) {
+    tracing::warn!("Failed to set pack permission: {}", e);
+    if is_htmx_request(&headers) {
+      return Html(error_notification(&format!("Failed to add group access: {}", e))).into_response();
+    }
+    return Redirect::to("/settings").into_response();
+  }
+
+  tracing::info!("Added group {} access to pack {}", form.group_id, form.pack_id);
+
+  // Return HTMX partial or redirect
+  if is_htmx_request(&headers) {
+    match render_pack_permissions(&auth_db, &form.pack_id) {
+      Some(html) => return Html(html).into_response(),
+      None => {
+        tracing::warn!("Failed to render pack permissions for {}", form.pack_id);
+        return Html(error_notification("Failed to render permissions. Pack may not be found.")).into_response();
+      }
+    }
+  }
+  Redirect::to("/settings").into_response()
+}
+
+/// Remove pack restriction for a group (admin only)
+pub async fn remove_pack_restriction(
+  auth: AuthContext,
+  State(state): State<AppState>,
+  headers: HeaderMap,
+  Form(form): Form<PackPermissionForm>,
+) -> Response {
+  if !auth.is_admin {
+    return Redirect::to("/settings").into_response();
+  }
+
+  let auth_db = match state.auth_db.lock() {
+    Ok(conn) => conn,
+    Err(_) => {
+      if is_htmx_request(&headers) {
+        return Html(error_notification("Database error")).into_response();
+      }
+      return Redirect::to("/settings").into_response();
+    }
+  };
+
+  if let Err(e) = auth_db::remove_pack_permission(&auth_db, &form.pack_id, &form.group_id) {
+    tracing::warn!("Failed to remove pack permission: {}", e);
+    if is_htmx_request(&headers) {
+      return Html(error_notification(&format!("Failed to remove group access: {}", e))).into_response();
+    }
+    return Redirect::to("/settings").into_response();
+  }
+
+  // Return HTMX partial or redirect
+  if is_htmx_request(&headers) {
+    match render_pack_permissions(&auth_db, &form.pack_id) {
+      Some(html) => return Html(html).into_response(),
+      None => return Html(error_notification("Failed to render permissions.")).into_response(),
+    }
+  }
+  Redirect::to("/settings").into_response()
+}
+
+/// Make a pack available to all users (remove all restrictions)
+pub async fn make_pack_public(
+  auth: AuthContext,
+  State(state): State<AppState>,
+  headers: HeaderMap,
+  Path(pack_id): Path<String>,
+) -> Response {
+  if !auth.is_admin {
+    return Redirect::to("/settings").into_response();
+  }
+
+  let auth_db = match state.auth_db.lock() {
+    Ok(conn) => conn,
+    Err(_) => {
+      if is_htmx_request(&headers) {
+        return Html(error_notification("Database error")).into_response();
+      }
+      return Redirect::to("/settings").into_response();
+    }
+  };
+
+  // Remove all permissions for this pack (makes it available to all)
+  if let Err(e) = auth_db::clear_pack_permissions(&auth_db, &pack_id) {
+    tracing::warn!("Failed to clear pack permissions: {}", e);
+    if is_htmx_request(&headers) {
+      return Html(error_notification(&format!("Failed to make pack public: {}", e))).into_response();
+    }
+    return Redirect::to("/settings").into_response();
+  }
+
+  // Return HTMX partial or redirect
+  if is_htmx_request(&headers) {
+    match render_pack_permissions(&auth_db, &pack_id) {
+      Some(html) => return Html(html).into_response(),
+      None => return Html(error_notification("Failed to render permissions.")).into_response(),
+    }
+  }
+  Redirect::to("/settings").into_response()
+}
+
+/// Restrict a pack to a specific user (admin only)
+pub async fn restrict_pack_to_user(
+  auth: AuthContext,
+  State(state): State<AppState>,
+  headers: HeaderMap,
+  Form(form): Form<PackUserPermissionForm>,
+) -> Response {
+  if !auth.is_admin {
+    return Redirect::to("/settings").into_response();
+  }
+
+  let auth_db = match state.auth_db.lock() {
+    Ok(conn) => conn,
+    Err(_) => {
+      if is_htmx_request(&headers) {
+        return Html(error_notification("Database error")).into_response();
+      }
+      return Redirect::to("/settings").into_response();
+    }
+  };
+
+  // Set permission: this user can access this pack
+  if let Err(e) = auth_db::set_pack_user_permission(&auth_db, &form.pack_id, form.user_id, true) {
+    tracing::warn!("Failed to set pack user permission: {}", e);
+    if is_htmx_request(&headers) {
+      return Html(error_notification(&format!("Failed to add user access: {}", e))).into_response();
+    }
+    return Redirect::to("/settings").into_response();
+  }
+
+  tracing::info!("Added user {} access to pack {}", form.user_id, form.pack_id);
+
+  // Return HTMX partial or redirect
+  if is_htmx_request(&headers) {
+    match render_pack_permissions(&auth_db, &form.pack_id) {
+      Some(html) => return Html(html).into_response(),
+      None => return Html(error_notification("Failed to render permissions.")).into_response(),
+    }
+  }
+  Redirect::to("/settings").into_response()
+}
+
+/// Remove pack restriction for a user (admin only)
+pub async fn remove_pack_user_restriction(
+  auth: AuthContext,
+  State(state): State<AppState>,
+  headers: HeaderMap,
+  Form(form): Form<PackUserPermissionForm>,
+) -> Response {
+  if !auth.is_admin {
+    return Redirect::to("/settings").into_response();
+  }
+
+  let auth_db = match state.auth_db.lock() {
+    Ok(conn) => conn,
+    Err(_) => {
+      if is_htmx_request(&headers) {
+        return Html(error_notification("Database error")).into_response();
+      }
+      return Redirect::to("/settings").into_response();
+    }
+  };
+
+  if let Err(e) = auth_db::remove_pack_user_permission(&auth_db, &form.pack_id, form.user_id) {
+    tracing::warn!("Failed to remove pack user permission: {}", e);
+    if is_htmx_request(&headers) {
+      return Html(error_notification(&format!("Failed to remove user access: {}", e))).into_response();
+    }
+    return Redirect::to("/settings").into_response();
+  }
+
+  // Return HTMX partial or redirect
+  if is_htmx_request(&headers) {
+    match render_pack_permissions(&auth_db, &form.pack_id) {
+      Some(html) => return Html(html).into_response(),
+      None => return Html(error_notification("Failed to render permissions.")).into_response(),
+    }
+  }
+  Redirect::to("/settings").into_response()
+}
+
+// ============================================================================
+// External Pack Path Registration (Admin Only)
+// ============================================================================
+
+use crate::content::count_packs_in_directory;
+
+/// Directory entry for browser
+#[derive(Clone)]
+pub struct DirectoryEntry {
+  pub name: String,
+  pub path: String,
+  pub is_dir: bool,
+  pub has_packs: bool, // Contains pack.json files (for highlighting)
+}
+
+/// Template for directory browser (HTMX partial)
+#[derive(Template)]
+#[template(path = "partials/settings_directory_browser.html")]
+pub struct DirectoryBrowserTemplate {
+  pub current_path: String,
+  pub parent_path: Option<String>,
+  pub entries: Vec<DirectoryEntry>,
+  pub error: Option<String>,
+}
+
+/// Browse directories on the server (admin only)
+pub async fn browse_directories(
+  auth: AuthContext,
+  headers: HeaderMap,
+  Form(form): Form<BrowseDirectoryForm>,
+) -> Response {
+  if !auth.is_admin {
+    return Redirect::to("/settings").into_response();
+  }
+
+  let path = if form.path.trim().is_empty() {
+    // Start at user's home or root
+    std::env::var("HOME").unwrap_or_else(|_| "/".to_string())
+  } else {
+    form.path.trim().to_string()
+  };
+
+  let path_buf = std::path::Path::new(&path);
+
+  // Compute parent path
+  let parent_path = path_buf.parent().map(|p| p.to_string_lossy().to_string());
+
+  // Read directory entries
+  let (entries, error) = match std::fs::read_dir(&path) {
+    Ok(read_dir) => {
+      let mut dirs: Vec<DirectoryEntry> = read_dir
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().is_dir())
+        .filter(|e| {
+          // Skip hidden directories (starting with .)
+          e.file_name().to_string_lossy().chars().next() != Some('.')
+        })
+        .map(|e| {
+          let entry_path = e.path();
+          let has_packs = count_packs_in_directory(&entry_path) > 0;
+          DirectoryEntry {
+            name: e.file_name().to_string_lossy().to_string(),
+            path: entry_path.to_string_lossy().to_string(),
+            is_dir: true,
+            has_packs,
+          }
+        })
+        .collect();
+      dirs.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+      (dirs, None)
+    }
+    Err(e) => (Vec::new(), Some(format!("Cannot read directory: {}", e))),
+  };
+
+  let template = DirectoryBrowserTemplate {
+    current_path: path,
+    parent_path,
+    entries,
+    error,
+  };
+
+  if is_htmx_request(&headers) {
+    Html(template.render().unwrap_or_default()).into_response()
+  } else {
+    Redirect::to("/settings").into_response()
+  }
+}
+
+#[derive(Deserialize)]
+pub struct BrowseDirectoryForm {
+  #[serde(default)]
+  pub path: String,
+}
+
+/// Form for registering a new pack path
+#[derive(Deserialize)]
+pub struct RegisterPackPathForm {
+  pub path: String,
+  pub name: Option<String>,
+}
+
+/// Display info for a registered pack path
+#[derive(Clone)]
+pub struct RegisteredPathDisplay {
+  pub id: i64,
+  pub path: String,
+  pub name: Option<String>,
+  pub registered_by: String,
+  pub is_active: bool,
+  pub pack_count: usize,
+}
+
+/// Template for registered paths list (HTMX partial)
+#[derive(Template)]
+#[template(path = "partials/settings_registered_paths.html")]
+pub struct RegisteredPathsTemplate {
+  pub paths: Vec<RegisteredPathDisplay>,
+}
+
+/// Helper to render registered paths partial
+pub fn render_registered_paths(conn: &rusqlite::Connection) -> Option<String> {
+  let db_paths = auth_db::get_all_registered_paths(conn).ok()?;
+  let paths: Vec<RegisteredPathDisplay> = db_paths
+    .into_iter()
+    .map(|p| {
+      let pack_count = count_packs_in_directory(std::path::Path::new(&p.path));
+      RegisteredPathDisplay {
+        id: p.id,
+        path: p.path,
+        name: p.name,
+        registered_by: p.registered_by,
+        is_active: p.is_active,
+        pack_count,
+      }
+    })
+    .collect();
+
+  let template = RegisteredPathsTemplate { paths };
+  template.render().ok()
+}
+
+/// Packs section partial template (for OOB swap when paths change)
+#[derive(Template)]
+#[template(path = "partials/settings_packs_section.html")]
+pub struct PacksSectionTemplate {
+  pub card_packs: Vec<PackInfo>,
+  pub groups: Vec<GroupDisplay>,
+  pub users: Vec<UserDisplay>,
+  pub is_admin: bool,
+}
+
+/// Helper to render packs section partial for OOB swap
+pub fn render_packs_section_oob(conn: &rusqlite::Connection, is_admin: bool) -> Option<String> {
+  // Discover all packs using PackManager (includes external paths)
+  let discovered = pack_manager::discover_all_packs(conn);
+
+  // Filter to card packs
+  let enabled_packs = Vec::new(); // Not used since we use is_globally_enabled now
+  let card_packs: Vec<PackInfo> = discovered
+    .iter()
+    .filter(|loc| loc.manifest.pack_type == PackType::Cards)
+    .map(|loc| PackInfo::from_location(loc, &enabled_packs, Some(conn), is_admin))
+    .collect();
+
+  // Fetch groups and users for permissions section
+  let groups = auth_db::get_all_groups(conn)
+    .unwrap_or_default()
+    .into_iter()
+    .map(|g| {
+      let members = auth_db::get_group_members(conn, &g.id)
+        .unwrap_or_default()
+        .into_iter()
+        .map(|(id, username)| GroupMember { id, username })
+        .collect();
+      GroupDisplay {
+        id: g.id,
+        name: g.name,
+        description: g.description,
+        members,
+      }
+    })
+    .collect();
+  let users = auth_db::get_all_users(conn)
+    .unwrap_or_default()
+    .into_iter()
+    .map(|u| UserDisplay {
+      id: u.id,
+      username: u.username,
+      role: u.role,
+      is_guest: u.is_guest,
+    })
+    .collect();
+
+  let template = PacksSectionTemplate {
+    card_packs,
+    groups,
+    users,
+    is_admin,
+  };
+
+  // Add OOB swap attribute to the section element
+  template.render().ok().map(|html| {
+    // The section has id="packs", add hx-swap-oob attribute to it
+    html.replace(r#"id="packs""#, r#"id="packs" hx-swap-oob="outerHTML""#)
+  })
+}
+
+/// Register a new external pack path (admin only)
+pub async fn register_pack_path(
+  auth: AuthContext,
+  State(state): State<AppState>,
+  headers: HeaderMap,
+  Form(form): Form<RegisterPackPathForm>,
+) -> Response {
+  if !auth.is_admin {
+    return Redirect::to("/settings").into_response();
+  }
+
+  let path = form.path.trim();
+  if path.is_empty() {
+    if is_htmx_request(&headers) {
+      return Html(error_notification("Path is required")).into_response();
+    }
+    return Redirect::to("/settings").into_response();
+  }
+
+  // Validate path exists and is a directory
+  let path_buf = std::path::Path::new(path);
+  if !path_buf.exists() {
+    if is_htmx_request(&headers) {
+      return Html(error_notification(&format!("Path does not exist: {}", path))).into_response();
+    }
+    return Redirect::to("/settings").into_response();
+  }
+  if !path_buf.is_dir() {
+    if is_htmx_request(&headers) {
+      return Html(error_notification(&format!("Path is not a directory: {}", path))).into_response();
+    }
+    return Redirect::to("/settings").into_response();
+  }
+
+  // Check for valid packs
+  let pack_count = count_packs_in_directory(path_buf);
+  if pack_count == 0 {
+    if is_htmx_request(&headers) {
+      return Html(error_notification(&format!("No valid packs found in: {}", path))).into_response();
+    }
+    return Redirect::to("/settings").into_response();
+  }
+
+  let auth_db = match state.auth_db.lock() {
+    Ok(conn) => conn,
+    Err(_) => {
+      if is_htmx_request(&headers) {
+        return Html(error_notification("Database error")).into_response();
+      }
+      return Redirect::to("/settings").into_response();
+    }
+  };
+
+  // Check if already registered
+  if auth_db::is_path_registered(&auth_db, path).unwrap_or(false) {
+    if is_htmx_request(&headers) {
+      return Html(error_notification("Path is already registered")).into_response();
+    }
+    return Redirect::to("/settings").into_response();
+  }
+
+  // Register the path
+  let name = form.name.as_deref().filter(|s| !s.trim().is_empty());
+  if let Err(e) = auth_db::register_pack_path(&auth_db, path, name, &auth.username) {
+    tracing::warn!("Failed to register pack path: {}", e);
+    if is_htmx_request(&headers) {
+      return Html(error_notification(&format!("Failed to register path: {}", e))).into_response();
+    }
+    return Redirect::to("/settings").into_response();
+  }
+
+  // Return HTMX partial or redirect
+  if is_htmx_request(&headers) {
+    if let Some(paths_html) = render_registered_paths(&auth_db) {
+      // Also include OOB swap for packs section since new packs may be available
+      let packs_oob = render_packs_section_oob(&auth_db, auth.is_admin).unwrap_or_default();
+      return Html(format!("{}{}", paths_html, packs_oob)).into_response();
+    }
+  }
+  Redirect::to("/settings").into_response()
+}
+
+/// Unregister (delete) a pack path (admin only)
+pub async fn unregister_pack_path(
+  auth: AuthContext,
+  State(state): State<AppState>,
+  headers: HeaderMap,
+  Path(id): Path<i64>,
+) -> Response {
+  if !auth.is_admin {
+    return Redirect::to("/settings").into_response();
+  }
+
+  let auth_db = match state.auth_db.lock() {
+    Ok(conn) => conn,
+    Err(_) => {
+      if is_htmx_request(&headers) {
+        return Html(error_notification("Database error")).into_response();
+      }
+      return Redirect::to("/settings").into_response();
+    }
+  };
+
+  if let Err(e) = auth_db::unregister_pack_path(&auth_db, id) {
+    tracing::warn!("Failed to unregister pack path: {}", e);
+    if is_htmx_request(&headers) {
+      return Html(error_notification(&format!("Failed to remove path: {}", e))).into_response();
+    }
+    return Redirect::to("/settings").into_response();
+  }
+
+  // Return HTMX partial or redirect
+  if is_htmx_request(&headers) {
+    if let Some(paths_html) = render_registered_paths(&auth_db) {
+      // Also include OOB swap for packs section since packs may have changed
+      let packs_oob = render_packs_section_oob(&auth_db, auth.is_admin).unwrap_or_default();
+      return Html(format!("{}{}", paths_html, packs_oob)).into_response();
+    }
+  }
+  Redirect::to("/settings").into_response()
+}
+
+/// Toggle a pack path's active status (admin only)
+pub async fn toggle_pack_path(
+  auth: AuthContext,
+  State(state): State<AppState>,
+  headers: HeaderMap,
+  Path(id): Path<i64>,
+) -> Response {
+  if !auth.is_admin {
+    return Redirect::to("/settings").into_response();
+  }
+
+  let auth_db = match state.auth_db.lock() {
+    Ok(conn) => conn,
+    Err(_) => {
+      if is_htmx_request(&headers) {
+        return Html(error_notification("Database error")).into_response();
+      }
+      return Redirect::to("/settings").into_response();
+    }
+  };
+
+  if let Err(e) = auth_db::toggle_pack_path_active(&auth_db, id) {
+    tracing::warn!("Failed to toggle pack path: {}", e);
+    if is_htmx_request(&headers) {
+      return Html(error_notification(&format!("Failed to toggle path: {}", e))).into_response();
+    }
+    return Redirect::to("/settings").into_response();
+  }
+
+  // Return HTMX partial or redirect
+  if is_htmx_request(&headers) {
+    if let Some(paths_html) = render_registered_paths(&auth_db) {
+      // Also include OOB swap for packs section since toggling active affects available packs
+      let packs_oob = render_packs_section_oob(&auth_db, auth.is_admin).unwrap_or_default();
+      return Html(format!("{}{}", paths_html, packs_oob)).into_response();
+    }
+  }
+  Redirect::to("/settings").into_response()
 }

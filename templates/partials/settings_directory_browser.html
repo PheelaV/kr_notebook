@@ -1,0 +1,63 @@
+<div id="directory-browser-content">
+  <!-- Current path display -->
+  <div class="flex items-center gap-2 mb-3 p-2 bg-gray-100 dark:bg-gray-700 rounded font-mono text-sm">
+    <span class="text-gray-600 dark:text-gray-400 truncate flex-1" title="{{ current_path }}">{{ current_path }}</span>
+    <button type="button"
+            onclick="document.getElementById('path-input').value = '{{ current_path }}'; closeDirectoryBrowser();"
+            class="px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700 whitespace-nowrap">
+      Select
+    </button>
+  </div>
+
+  {% if let Some(err) = error %}
+  <div class="p-3 mb-3 text-sm text-red-700 bg-red-100 dark:bg-red-900/30 dark:text-red-300 rounded">
+    {{ err }}
+  </div>
+  {% endif %}
+
+  <!-- Navigation -->
+  <div class="flex gap-2 mb-3">
+    {% if let Some(parent) = parent_path %}
+    <button type="button"
+            hx-post="/settings/pack-paths/browse"
+            hx-vals='{"path": "{{ parent }}"}'
+            hx-target="#directory-browser-content"
+            hx-swap="outerHTML"
+            class="px-3 py-1.5 text-sm bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-200 rounded hover:bg-gray-300 dark:hover:bg-gray-500">
+      .. (Up)
+    </button>
+    {% endif %}
+    <button type="button"
+            hx-post="/settings/pack-paths/browse"
+            hx-vals='{"path": ""}'
+            hx-target="#directory-browser-content"
+            hx-swap="outerHTML"
+            class="px-3 py-1.5 text-sm bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-200 rounded hover:bg-gray-300 dark:hover:bg-gray-500">
+      Home
+    </button>
+  </div>
+
+  <!-- Directory listing -->
+  <div class="max-h-64 overflow-y-auto border border-gray-200 dark:border-gray-600 rounded">
+    {% if entries.is_empty() %}
+    <p class="p-4 text-sm text-gray-500 dark:text-gray-400 italic">No subdirectories</p>
+    {% else %}
+    <div class="divide-y divide-gray-200 dark:divide-gray-600">
+      {% for entry in entries %}
+      <button type="button"
+              hx-post="/settings/pack-paths/browse"
+              hx-vals='{"path": "{{ entry.path }}"}'
+              hx-target="#directory-browser-content"
+              hx-swap="outerHTML"
+              class="w-full flex items-center gap-2 p-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 {% if entry.has_packs %}bg-green-50 dark:bg-green-900/20{% endif %}">
+        <iconify-icon icon="heroicons:folder" class="text-gray-400 flex-shrink-0" width="16" height="16"></iconify-icon>
+        <span class="truncate flex-1">{{ entry.name }}</span>
+        {% if entry.has_packs %}
+        <span class="text-xs px-1.5 py-0.5 rounded bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300">packs</span>
+        {% endif %}
+      </button>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+</div>

@@ -1,0 +1,13 @@
+{
+  "cards": [
+    {
+      "front": "테스트",
+      "main_answer": "test",
+      "description": "(te-seu-teu) - noun - A simple test card",
+      "card_type": "Vocabulary",
+      "tier": 5,
+      "is_reverse": false,
+      "audio_hint": null
+    }
+  ]
+}

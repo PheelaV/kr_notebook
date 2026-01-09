@@ -1,6 +1,6 @@
 [package]
 name = "kr_notebook"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 
 [features]
@@ -30,6 +30,8 @@ rand_core = { version = "0.6", features = ["getrandom"] }
 sha2 = "0.10.9"
 hex = "0.4.3"
 urlencoding = "2.1"
+html-escape = "0.2.13"
 
 [dev-dependencies]
 axum-test = "18.4.1"
+tempfile = "3.24.0"

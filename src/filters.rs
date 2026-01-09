@@ -22,3 +22,31 @@ pub fn asset_url(path: impl std::fmt::Display, _: &dyn askama::Values) -> askama
         _ => path_str,
     })
 }
+
+/// Escape a string for use inside JavaScript string literals.
+/// This escapes backslashes, quotes, and newlines to prevent injection.
+///
+/// Usage in templates:
+/// ```html
+/// <script>var x = "{{ user_input|js_escape }}";</script>
+/// ```
+#[askama::filter_fn]
+pub fn js_escape(s: impl std::fmt::Display, _: &dyn askama::Values) -> askama::Result<String> {
+    let input = s.to_string();
+    let mut result = String::with_capacity(input.len());
+    for c in input.chars() {
+        match c {
+            '\\' => result.push_str("\\\\"),
+            '"' => result.push_str("\\\""),
+            '\'' => result.push_str("\\'"),
+            '\n' => result.push_str("\\n"),
+            '\r' => result.push_str("\\r"),
+            '\t' => result.push_str("\\t"),
+            '<' => result.push_str("\\x3c"),  // Prevent </script> injection
+            '>' => result.push_str("\\x3e"),
+            '&' => result.push_str("\\x26"),
+            c => result.push(c),
+        }
+    }
+    Ok(result)
+}

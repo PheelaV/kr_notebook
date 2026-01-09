@@ -7,6 +7,7 @@ use axum::Form;
 use crate::auth::AuthContext;
 use crate::db::{self, LogOnError};
 use crate::domain::{ReviewQuality, StudyMode};
+use crate::handlers::NavContext;
 use crate::srs;
 
 use super::templates::{CardTemplate, NoCardsTemplate, ReviewForm, StudyTemplate};
@@ -29,7 +30,9 @@ pub async fn study_start(auth: AuthContext) -> impl IntoResponse {
       description: card.description.clone(),
       tier: card.tier,
       is_reverse: card.is_reverse,
+      is_vocabulary: card.pack_id.is_some(),
       has_card: true,
+      nav: NavContext::from_auth(&auth),
     };
     Html(template.render().unwrap_or_default())
   } else {
@@ -40,7 +43,9 @@ pub async fn study_start(auth: AuthContext) -> impl IntoResponse {
       description: None,
       tier: 0,
       is_reverse: false,
+      is_vocabulary: false,
       has_card: false,
+      nav: NavContext::from_auth(&auth),
     };
     Html(template.render().unwrap_or_default())
   }
@@ -113,10 +118,11 @@ pub async fn submit_review(auth: AuthContext, Form(form): Form<ReviewForm>) -> i
       description: next_card.description.clone(),
       tier: next_card.tier,
       is_reverse: next_card.is_reverse,
+      is_vocabulary: next_card.pack_id.is_some(),
     };
     Html(template.render().unwrap_or_default())
   } else {
-    let template = NoCardsTemplate {};
+    let template = NoCardsTemplate { nav: NavContext::from_auth(&auth) };
     Html(template.render().unwrap_or_default())
   }
 }
