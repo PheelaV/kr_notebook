@@ -12,6 +12,17 @@ fn is_init_db_only() -> bool {
     std::env::args().any(|arg| arg == "--init-db" || arg == "--init-db-only")
 }
 
+/// Check for --init-user-db <username> flag (initialize user learning.db and exit)
+fn get_init_user_db() -> Option<String> {
+    let args: Vec<String> = std::env::args().collect();
+    for (i, arg) in args.iter().enumerate() {
+        if arg == "--init-user-db" {
+            return args.get(i + 1).cloned();
+        }
+    }
+    None
+}
+
 #[tokio::main]
 async fn main() {
     tracing_subscriber::registry()
@@ -60,6 +71,26 @@ async fn main() {
     if init_db_only {
         tracing::info!("Database initialized successfully at: {}", auth_db_path_str);
         tracing::info!("Schema version: {}", auth::db::get_schema_version(&auth_conn).unwrap_or(0));
+        return;
+    }
+
+    // Check for --init-user-db <username> flag
+    if let Some(username) = get_init_user_db() {
+        let user_db_path = paths::user_db_path(&username);
+        tracing::info!("Initializing user learning.db for: {}", username);
+
+        // Create user directory
+        let user_dir = Path::new(&user_db_path).parent().unwrap();
+        std::fs::create_dir_all(user_dir).expect("Failed to create user directory");
+
+        // Initialize learning.db with schema
+        let _pool = kr_notebook::db::init_db_with_app_db(
+            Path::new(&user_db_path),
+            Some(auth_db_path),
+        )
+        .expect("Failed to initialize user learning.db");
+
+        tracing::info!("User learning.db initialized at: {}", user_db_path);
         return;
     }
 

@@ -202,9 +202,20 @@ def create_user(username: str, password: str | None, guest: bool) -> None:
     finally:
         conn.close()
 
-    # Create and seed learning database
+    # Create learning database using Rust CLI (ensures schema matches server)
     user_db_path = get_user_db_path(username)
-    init_learning_db(user_db_path)
+    import subprocess
+
+    result = subprocess.run(
+        ["cargo", "run", "--release", "--", "--init-user-db", username],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        raise click.ClickException(
+            f"Failed to initialize learning.db: {result.stderr}"
+        )
     click.echo(f"Created learning database: {user_db_path}")
 
     click.echo(click.style(f"User '{username}' created successfully!", fg="green"))
@@ -1000,127 +1011,10 @@ def init_auth_db(db_path: Path) -> None:
         conn.close()
 
 
-def init_learning_db(db_path: Path) -> None:
-    """Initialize a learning database with schema matching Rust app."""
-    conn = sqlite3.connect(db_path)
-    try:
-        # Create schema matching src/db/schema.rs
-        conn.executescript("""
-            -- card_progress: User's progress on cards (definitions are in app.db)
-            CREATE TABLE IF NOT EXISTS card_progress (
-                card_id INTEGER PRIMARY KEY,
-                ease_factor REAL NOT NULL DEFAULT 2.5,
-                interval_days INTEGER NOT NULL DEFAULT 0,
-                repetitions INTEGER NOT NULL DEFAULT 0,
-                next_review TEXT NOT NULL DEFAULT (datetime('now')),
-                total_reviews INTEGER NOT NULL DEFAULT 0,
-                correct_reviews INTEGER NOT NULL DEFAULT 0,
-                learning_step INTEGER NOT NULL DEFAULT 0,
-                fsrs_stability REAL,
-                fsrs_difficulty REAL,
-                fsrs_state TEXT DEFAULT 'New'
-            );
-
-            -- Legacy cards table (kept for compatibility)
-            CREATE TABLE IF NOT EXISTS cards (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                front TEXT NOT NULL,
-                main_answer TEXT NOT NULL,
-                description TEXT,
-                card_type TEXT NOT NULL,
-                tier INTEGER NOT NULL,
-                audio_hint TEXT,
-                is_reverse INTEGER DEFAULT 0,
-                ease_factor REAL DEFAULT 2.5,
-                interval_days INTEGER DEFAULT 0,
-                repetitions INTEGER DEFAULT 0,
-                next_review TEXT DEFAULT (datetime('now')),
-                total_reviews INTEGER DEFAULT 0,
-                correct_reviews INTEGER DEFAULT 0,
-                learning_step INTEGER DEFAULT 0,
-                fsrs_stability REAL,
-                fsrs_difficulty REAL,
-                fsrs_state TEXT DEFAULT 'New',
-                pack_id TEXT
-            );
-
-            CREATE TABLE IF NOT EXISTS review_logs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                card_id INTEGER NOT NULL,
-                quality INTEGER NOT NULL,
-                reviewed_at TEXT NOT NULL,
-                is_correct INTEGER,
-                study_mode TEXT,
-                direction TEXT,
-                response_time_ms INTEGER,
-                hints_used INTEGER DEFAULT 0,
-                FOREIGN KEY (card_id) REFERENCES cards(id) ON DELETE CASCADE
-            );
-
-            CREATE TABLE IF NOT EXISTS settings (
-                key TEXT PRIMARY KEY,
-                value TEXT
-            );
-
-            CREATE TABLE IF NOT EXISTS confusions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                card_id INTEGER NOT NULL,
-                wrong_answer TEXT NOT NULL,
-                count INTEGER DEFAULT 1,
-                last_confused_at TEXT NOT NULL,
-                FOREIGN KEY (card_id) REFERENCES cards(id) ON DELETE CASCADE
-            );
-
-            CREATE TABLE IF NOT EXISTS character_stats (
-                character TEXT PRIMARY KEY,
-                character_type TEXT NOT NULL,
-                total_attempts INTEGER DEFAULT 0,
-                total_correct INTEGER DEFAULT 0,
-                attempts_7d INTEGER DEFAULT 0,
-                correct_7d INTEGER DEFAULT 0,
-                attempts_1d INTEGER DEFAULT 0,
-                correct_1d INTEGER DEFAULT 0,
-                last_attempt_at TEXT
-            );
-
-            CREATE TABLE IF NOT EXISTS tier_graduation_backups (
-                tier INTEGER PRIMARY KEY,
-                backup_data TEXT NOT NULL,
-                created_at TEXT NOT NULL
-            );
-
-            CREATE TABLE IF NOT EXISTS enabled_packs (
-                pack_id TEXT PRIMARY KEY,
-                enabled_at TEXT,
-                cards_created INTEGER DEFAULT 0,
-                config TEXT
-            );
-
-            CREATE INDEX IF NOT EXISTS idx_card_progress_next_review ON card_progress(next_review);
-            CREATE INDEX IF NOT EXISTS idx_cards_next_review ON cards(next_review);
-            CREATE INDEX IF NOT EXISTS idx_cards_tier ON cards(tier);
-            CREATE INDEX IF NOT EXISTS idx_review_logs_card_id ON review_logs(card_id);
-            CREATE INDEX IF NOT EXISTS idx_review_logs_reviewed_at ON review_logs(reviewed_at);
-            CREATE INDEX IF NOT EXISTS idx_confusions_card_id ON confusions(card_id);
-            CREATE INDEX IF NOT EXISTS idx_character_stats_type ON character_stats(character_type);
-        """)
-
-        # Seed with baseline cards (imported from fixtures)
-        from .fixtures import BASELINE_CARDS
-        for card in BASELINE_CARDS:
-            conn.execute(
-                """INSERT INTO cards (front, main_answer, description, card_type, tier, is_reverse)
-                   VALUES (?, ?, ?, ?, ?, ?)""",
-                (card["front"], card["main_answer"], card.get("description"),
-                 card["card_type"], card["tier"], card.get("is_reverse", 0))
-            )
-
-        # Default settings
-        conn.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('max_unlocked_tier', '1')")
-
-        conn.commit()
-    finally:
-        conn.close()
+# NOTE: Learning database schema is now handled by Rust CLI (--init-user-db)
+# to ensure schema matches exactly what the server expects. See:
+# - src/db/schema.rs for the canonical schema
+# - main.rs --init-user-db for user db initialization
 
 
 # ==================== Test Environment Commands ====================
@@ -1439,13 +1333,30 @@ def create_test_user(username: str, password: str, scenario: str | None, data_di
     finally:
         conn.close()
 
-    # Create user directory and learning database
+    # Create user directory and learning database using Rust CLI
+    # This ensures schema matches exactly what the server expects
     user_dir = users_base / username
-    user_dir.mkdir(parents=True, exist_ok=True)
     user_db_path = user_dir / "learning.db"
 
     if not user_db_path.exists():
-        init_learning_db(user_db_path)
+        import subprocess
+
+        # Use Rust CLI to initialize learning.db with correct schema
+        env = os.environ.copy()
+        if data_dir:
+            env["DATA_DIR"] = str(env_dir)
+
+        result = subprocess.run(
+            ["cargo", "run", "--release", "--", "--init-user-db", username],
+            cwd=ROOT,
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            raise click.ClickException(
+                f"Failed to initialize learning.db: {result.stderr}"
+            )
         click.echo(f"Created learning database: {user_db_path}")
 
     # Apply scenario if specified
