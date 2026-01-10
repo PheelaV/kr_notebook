@@ -238,21 +238,38 @@ SCHEMA_CHECK=$(ssh "$RPI_SSH" bash -s "$RPI_INSTALL_DIR" << 'SCHEMA_SCRIPT'
     fi
 
     # Check for card_definitions table (required by modular_content branch)
-    HAS_CARD_DEFS=$(sqlite3 "$APP_DB" "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='card_definitions';" 2>/dev/null || echo "0")
+    # Find sqlite3 binary
+    SQLITE3=""
+    for path in /usr/bin/sqlite3 /usr/local/bin/sqlite3 /bin/sqlite3; do
+        if [ -x "$path" ]; then
+            SQLITE3="$path"
+            break
+        fi
+    done
+    # Also try command lookup
+    if [ -z "$SQLITE3" ]; then
+        SQLITE3=$(command -v sqlite3 2>/dev/null || true)
+    fi
+    if [ -z "$SQLITE3" ] || [ ! -x "$SQLITE3" ]; then
+        echo "SKIP"
+        exit 0
+    fi
+
+    HAS_CARD_DEFS=$($SQLITE3 "$APP_DB" "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='card_definitions';" 2>/dev/null || echo "0")
 
     # Check for db_version table
-    HAS_VERSION=$(sqlite3 "$APP_DB" "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='db_version';" 2>/dev/null || echo "0")
+    HAS_VERSION=$($SQLITE3 "$APP_DB" "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='db_version';" 2>/dev/null || echo "0")
 
     if [ "$HAS_CARD_DEFS" = "0" ]; then
         # Get schema version if available
         if [ "$HAS_VERSION" = "1" ]; then
-            VERSION=$(sqlite3 "$APP_DB" "SELECT MAX(version) FROM db_version;" 2>/dev/null || echo "0")
+            VERSION=$($SQLITE3 "$APP_DB" "SELECT MAX(version) FROM db_version;" 2>/dev/null || echo "0")
             echo "OLD:$VERSION"
         else
             echo "OLD:0"
         fi
     else
-        VERSION=$(sqlite3 "$APP_DB" "SELECT MAX(version) FROM db_version;" 2>/dev/null || echo "unknown")
+        VERSION=$($SQLITE3 "$APP_DB" "SELECT MAX(version) FROM db_version;" 2>/dev/null || echo "unknown")
         echo "OK:$VERSION"
     fi
 SCHEMA_SCRIPT
@@ -261,6 +278,9 @@ SCHEMA_SCRIPT
 case "$SCHEMA_CHECK" in
     NEW)
         echo "  Fresh install (no existing database)"
+        ;;
+    SKIP)
+        echo "  Skipped (sqlite3 not available on remote)"
         ;;
     OLD:*)
         OLD_VERSION="${SCHEMA_CHECK#OLD:}"

@@ -11,10 +11,10 @@
   <div class="grid grid-cols-3 gap-2 sm:gap-4 mb-6 sm:mb-8">
     <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-3 sm:p-4 text-center">
       <div class="text-2xl sm:text-3xl font-bold text-indigo-600 dark:text-indigo-400">
-        {{ total_cards }}
+        {{ total_cards }}{% if available_cards > total_cards %}<span class="text-lg sm:text-xl text-gray-400 dark:text-gray-500"> / {{ available_cards }}</span>{% endif %}
       </div>
       <div class="text-xs sm:text-sm text-gray-600 dark:text-gray-400">
-        Active Cards
+        {% if available_cards > total_cards %}Active / Available{% else %}Active Cards{% endif %}
       </div>
     </div>
     <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-3 sm:p-4 text-center">

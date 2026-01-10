@@ -1080,6 +1080,7 @@ pub fn get_practice_cards_filtered(
 }
 
 /// Get count of cards accessible to the user (Hangul + enabled packs with permission)
+/// This respects lesson unlock status - only counts cards user can currently study
 pub fn get_accessible_card_count(
     conn: &Connection,
     app_conn: &Connection,
@@ -1112,4 +1113,44 @@ pub fn get_accessible_card_count(
     let cards_learned: i64 = conn.query_row(&query_learned, [], |row| row.get(0))?;
 
     Ok((total_cards, cards_learned))
+}
+
+/// Get count of ALL cards available to the user (ignores lesson unlock status)
+/// This counts all cards from packs user has permission for, regardless of lesson progress
+pub fn get_available_card_count(app_conn: &Connection, user_id: i64) -> Result<i64> {
+    #[cfg(feature = "profiling")]
+    crate::profile_log!(EventType::DbQuery {
+        operation: "count_available".into(),
+        table: "card_definitions".into(),
+    });
+
+    // Get all packs user has permission to access
+    let accessible_packs = crate::auth::db::list_accessible_pack_ids(app_conn, user_id)
+        .unwrap_or_default();
+
+    if accessible_packs.is_empty() {
+        // Only Hangul baseline cards (pack_id IS NULL)
+        let count: i64 = app_conn.query_row(
+            "SELECT COUNT(*) FROM card_definitions WHERE pack_id IS NULL",
+            [],
+            |row| row.get(0),
+        )?;
+        return Ok(count);
+    }
+
+    // Build pack list for IN clause
+    let pack_placeholders: Vec<String> = accessible_packs
+        .iter()
+        .map(|p| format!("'{}'", p.replace('\'', "''")))
+        .collect();
+    let pack_list = pack_placeholders.join(",");
+
+    // Count Hangul cards (pack_id IS NULL) + all cards from accessible packs
+    let query = format!(
+        "SELECT COUNT(*) FROM card_definitions WHERE pack_id IS NULL OR pack_id IN ({})",
+        pack_list
+    );
+    let count: i64 = app_conn.query_row(&query, [], |row| row.get(0))?;
+
+    Ok(count)
 }

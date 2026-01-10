@@ -156,12 +156,12 @@
           </a>
           <!-- Library link/expandable - show expandable menu if user has vocab access -->
           {% if nav.has_vocab_access %}
-          <div class="library-mobile-section">
-            <button type="button" onclick="toggleLibrarySubmenu(event)" class="w-full flex items-center justify-between text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 px-3 py-2 rounded-md text-base font-medium">
+          <details class="library-mobile-section group">
+            <summary class="flex items-center justify-between text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 px-3 py-2 rounded-md text-base font-medium cursor-pointer list-none">
               <span>Library</span>
-              <iconify-icon id="library-chevron" icon="heroicons:chevron-down" width="16" height="16" class="transition-transform"></iconify-icon>
-            </button>
-            <div id="library-submenu" class="hidden pl-4 space-y-1">
+              <iconify-icon icon="heroicons:chevron-down" width="16" height="16" class="transition-transform duration-200 group-open:rotate-180"></iconify-icon>
+            </summary>
+            <div class="pl-4 space-y-1">
               <a href="/library/characters" class="block text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 px-3 py-2 rounded-md text-sm">
                 Characters
               </a>
@@ -169,7 +169,7 @@
                 Vocabulary
               </a>
             </div>
-          </div>
+          </details>
           {% else %}
           <a href="/library" class="block text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 px-3 py-2 rounded-md text-base font-medium">
             Library
@@ -211,30 +211,18 @@
       iconOpen.classList.toggle('hidden');
     }
 
-    // Library submenu toggle (mobile)
-    function toggleLibrarySubmenu(event) {
-      event.stopPropagation();
-      const submenu = document.getElementById('library-submenu');
-      const chevron = document.getElementById('library-chevron');
-
-      submenu.classList.toggle('hidden');
-      chevron.style.transform = submenu.classList.contains('hidden') ? '' : 'rotate(180deg)';
-    }
-
     function closeMobileMenu() {
       const menu = document.getElementById('mobile-menu');
       const iconClosed = document.getElementById('menu-icon-closed');
       const iconOpen = document.getElementById('menu-icon-open');
-      const librarySubmenu = document.getElementById('library-submenu');
-      const libraryChevron = document.getElementById('library-chevron');
 
       if (!menu.classList.contains('hidden')) {
         menu.classList.add('hidden');
         iconClosed.classList.remove('hidden');
         iconOpen.classList.add('hidden');
-        // Reset library submenu state
-        if (librarySubmenu) librarySubmenu.classList.add('hidden');
-        if (libraryChevron) libraryChevron.style.transform = '';
+        // Reset library submenu state (close any open details elements)
+        const libraryDetails = menu.querySelector('details.library-mobile-section');
+        if (libraryDetails) libraryDetails.removeAttribute('open');
       }
     }
 

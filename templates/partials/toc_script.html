@@ -1,5 +1,114 @@
 <!-- TOC JavaScript - Include once at end of page -->
 <script>
+// Mobile TOC pack expand/collapse functions (global for onclick handlers)
+function toggleMobileTocPack(packId) {
+  const toc = document.getElementById('mobile-toc');
+  if (!toc) return;
+
+  const allPacks = toc.querySelectorAll('.mobile-toc-pack');
+  const closeBtn = document.getElementById('mobile-toc-close');
+  const targetPack = toc.querySelector(`[data-pack-id="${packId}"]`);
+  if (!targetPack) return;
+
+  const isExpanded = targetPack.classList.contains('expanded');
+
+  // Collapse all packs first (with animation)
+  allPacks.forEach(pack => {
+    if (pack !== targetPack || isExpanded) {
+      collapsePack(pack);
+    }
+  });
+
+  if (!isExpanded) {
+    // Expand the target pack
+    expandPack(targetPack);
+    if (closeBtn) {
+      closeBtn.classList.remove('hidden');
+      closeBtn.classList.add('flex');
+    }
+    // Auto-scroll TOC to show expanded pack at the start
+    setTimeout(() => {
+      const packLeft = targetPack.offsetLeft;
+      toc.scrollTo({ left: packLeft - 8, behavior: 'smooth' });
+    }, 50);
+  } else {
+    // Collapsing - hide close button
+    if (closeBtn) {
+      closeBtn.classList.add('hidden');
+      closeBtn.classList.remove('flex');
+    }
+  }
+}
+
+function expandPack(pack) {
+  pack.classList.add('expanded');
+  const chip = pack.querySelector('.pack-chip');
+  const lessons = pack.querySelector('.pack-lessons');
+  if (chip) {
+    chip.classList.remove('bg-indigo-100', 'dark:bg-indigo-900', 'text-indigo-700', 'dark:text-indigo-300');
+    chip.classList.add('bg-indigo-600', 'dark:bg-indigo-600', 'text-white');
+  }
+  if (lessons) {
+    // Animate expand
+    lessons.classList.remove('hidden');
+    lessons.classList.add('flex');
+    lessons.style.maxWidth = '0';
+    lessons.style.opacity = '0';
+    requestAnimationFrame(() => {
+      lessons.style.transition = 'max-width 300ms ease-out, opacity 200ms ease-out';
+      lessons.style.maxWidth = '1000px';
+      lessons.style.opacity = '1';
+    });
+  }
+}
+
+function collapsePack(pack) {
+  const chip = pack.querySelector('.pack-chip');
+  const lessons = pack.querySelector('.pack-lessons');
+
+  if (chip) {
+    chip.classList.remove('bg-indigo-600', 'dark:bg-indigo-600', 'text-white');
+    chip.classList.add('bg-indigo-100', 'dark:bg-indigo-900', 'text-indigo-700', 'dark:text-indigo-300');
+  }
+
+  if (lessons && pack.classList.contains('expanded')) {
+    // Animate collapse
+    lessons.style.transition = 'max-width 200ms ease-in, opacity 150ms ease-in';
+    lessons.style.maxWidth = '0';
+    lessons.style.opacity = '0';
+    setTimeout(() => {
+      lessons.classList.add('hidden');
+      lessons.classList.remove('flex');
+      lessons.style.maxWidth = '';
+      lessons.style.opacity = '';
+      lessons.style.transition = '';
+    }, 200);
+  } else if (lessons) {
+    lessons.classList.add('hidden');
+    lessons.classList.remove('flex');
+  }
+
+  pack.classList.remove('expanded');
+}
+
+function closeMobileTocPack() {
+  const toc = document.getElementById('mobile-toc');
+  if (!toc) return;
+
+  const allPacks = toc.querySelectorAll('.mobile-toc-pack');
+  const closeBtn = document.getElementById('mobile-toc-close');
+
+  // Collapse all packs with animation
+  allPacks.forEach(pack => {
+    collapsePack(pack);
+  });
+
+  if (closeBtn) {
+    closeBtn.classList.add('hidden');
+    closeBtn.classList.remove('flex');
+  }
+}
+
 document.addEventListener('DOMContentLoaded', function() {
   const sections = document.querySelectorAll('section[id]');
   const tocLinks = document.querySelectorAll('.toc-link');
@@ -50,58 +159,104 @@ document.addEventListener('DOMContentLoaded', function() {
       e.preventDefault();
       smoothScrollTo(0);
       history.pushState(null, '', window.location.pathname);
+      // Rewind mobile TOC to start
+      const mobileToc = document.querySelector('#mobile-toc');
+      if (mobileToc) {
+        mobileToc.scrollTo({ left: 0, behavior: 'smooth' });
+      }
     });
   });
 
   // Mobile TOC container for auto-scrolling
-  const mobileTocContainer = document.querySelector('nav.lg\\:hidden > div');
+  const mobileTocContainer = document.querySelector('#mobile-toc');
+
+  // Get all scrollable targets: sections (packs) and details with IDs (lessons)
+  const allTargets = document.querySelectorAll('section[id], details[id]');
 
   // Highlight active TOC link based on scroll position
-  let lastActiveSection = '';
+  let lastActiveId = '';
   function updateActiveLink() {
     const scrollPos = window.scrollY + 100;
 
-    let currentSection = '';
-    sections.forEach(section => {
-      if (section.offsetTop <= scrollPos) {
-        currentSection = section.id;
+    // Find current active target (pack section or lesson details)
+    let currentId = '';
+    allTargets.forEach(target => {
+      if (target.offsetTop <= scrollPos) {
+        currentId = target.id;
       }
     });
 
     // Auto-scroll mobile TOC when active section changes
-    if (currentSection !== lastActiveSection && mobileTocContainer) {
-      const activeLink = mobileTocContainer.querySelector(`a[href="#${currentSection}"]`);
-      if (activeLink) {
-        const container = mobileTocContainer;
-        const linkLeft = activeLink.offsetLeft;
-        const linkWidth = activeLink.offsetWidth;
-        const containerWidth = container.offsetWidth;
-        const scrollLeft = container.scrollLeft;
+    if (currentId !== lastActiveId && mobileTocContainer) {
+      // At top of page (no active section) - rewind TOC to start
+      if (!currentId || window.scrollY < 50) {
+        mobileTocContainer.scrollTo({ left: 0, behavior: 'smooth' });
+      } else {
+        // Find the active chip (lesson chip if expanded, or regular toc-link)
+        let activeChip = mobileTocContainer.querySelector(`.lesson-chip[href="#${currentId}"]`);
 
-        // Check if link is out of view
-        const linkRight = linkLeft + linkWidth;
-        const viewLeft = scrollLeft;
-        const viewRight = scrollLeft + containerWidth;
+        // If no lesson chip or it's hidden, try regular toc-link
+        if (!activeChip || activeChip.offsetParent === null) {
+          activeChip = mobileTocContainer.querySelector(`.toc-link[href="#${currentId}"]`);
+        }
 
-        if (linkLeft < viewLeft || linkRight > viewRight) {
-          // Scroll to center the active link
-          const targetScroll = linkLeft - (containerWidth / 2) + (linkWidth / 2);
-          container.scrollTo({ left: targetScroll, behavior: 'smooth' });
+        if (activeChip && activeChip.offsetParent !== null) {
+          const container = mobileTocContainer;
+          const chipLeft = activeChip.offsetLeft;
+          const chipWidth = activeChip.offsetWidth;
+          const containerWidth = container.offsetWidth;
+          const scrollLeft = container.scrollLeft;
+          const chipRight = chipLeft + chipWidth;
+          const viewRight = scrollLeft + containerWidth - 50; // Account for close button
+
+          if (chipLeft < scrollLeft || chipRight > viewRight) {
+            // Center the chip in view
+            const targetScroll = chipLeft - (containerWidth / 2) + (chipWidth / 2);
+            container.scrollTo({ left: Math.max(0, targetScroll), behavior: 'smooth' });
+          }
         }
       }
-      lastActiveSection = currentSection;
+      lastActiveId = currentId;
     }
 
+    // Update highlighting for all toc links
     tocLinks.forEach(link => {
       const href = link.getAttribute('href').slice(1);
-      if (href === currentSection) {
-        link.classList.add('bg-indigo-100', 'dark:bg-indigo-900/50', 'text-indigo-700', 'dark:text-indigo-300');
-        link.classList.remove('text-gray-600', 'dark:text-gray-400', 'bg-gray-100', 'dark:bg-gray-800');
+      const isActive = href === currentId;
+      const isLessonChip = link.classList.contains('lesson-chip');
+      const isPackChip = link.classList.contains('pack-chip');
+      const isInMobileToc = link.closest('#mobile-toc');
+
+      if (isActive) {
+        if (isLessonChip) {
+          // Active lesson chip in expandable TOC
+          link.classList.remove('bg-indigo-50', 'dark:bg-indigo-950', 'text-indigo-600');
+          link.classList.add('bg-indigo-600', 'text-white');
+        } else if (isPackChip) {
+          // Pack chips handled by expand/collapse functions
+        } else if (isInMobileToc) {
+          // Active simple mobile TOC chip
+          link.classList.remove('bg-gray-100', 'dark:bg-gray-800', 'text-gray-700', 'dark:text-gray-300');
+          link.classList.add('bg-indigo-600', 'text-white');
+        } else {
+          // Desktop TOC
+          link.classList.add('bg-indigo-100', 'dark:bg-indigo-900/50', 'text-indigo-700', 'dark:text-indigo-300');
+          link.classList.remove('text-gray-600', 'dark:text-gray-400');
+        }
       } else {
-        link.classList.remove('bg-indigo-100', 'dark:bg-indigo-900/50', 'text-indigo-700', 'dark:text-indigo-300');
-        if (link.closest('nav.lg\\:hidden')) {
+        if (isLessonChip) {
+          // Inactive lesson chip
+          link.classList.remove('bg-indigo-600', 'text-white');
+          link.classList.add('bg-indigo-50', 'dark:bg-indigo-950', 'text-indigo-600');
+        } else if (isPackChip) {
+          // Pack chips handled by expand/collapse functions
+        } else if (isInMobileToc) {
+          // Inactive simple mobile TOC chip
+          link.classList.remove('bg-indigo-600', 'text-white');
           link.classList.add('bg-gray-100', 'dark:bg-gray-800', 'text-gray-700', 'dark:text-gray-300');
         } else {
+          // Desktop TOC
+          link.classList.remove('bg-indigo-100', 'dark:bg-indigo-900/50', 'text-indigo-700', 'dark:text-indigo-300');
           link.classList.add('text-gray-600', 'dark:text-gray-400');
         }
       }

@@ -4,10 +4,10 @@ use axum::response::{Html, Redirect};
 
 use crate::auth::AuthContext;
 use super::NavContext;
-use crate::content::cards::list_enabled_packs;
 use crate::db::{
     self, CharacterStats, LogOnError, PackProgress, TierProgress,
-    get_pack_progress, get_pack_ui_metadata,
+    get_pack_progress, get_pack_ui_metadata, get_accessible_card_count,
+    get_available_card_count,
 };
 use crate::filters;
 use crate::state::AppState;
@@ -91,7 +91,8 @@ pub enum ProgressUnit {
 #[derive(Template)]
 #[template(path = "progress.html")]
 pub struct ProgressTemplate {
-  pub total_cards: i64,
+  pub total_cards: i64,       // Cards currently accessible (enabled + unlocked lessons)
+  pub available_cards: i64,   // All cards user has permission for
   pub total_reviews: i64,
   pub cards_learned: i64,
   // Hangul tier progress (kept for backwards compatibility with existing template)
@@ -124,9 +125,24 @@ pub async fn progress(
     Err(_) => return Redirect::to("/").into_response(),
   };
 
+  let app_conn = match state.auth_db.lock() {
+    Ok(conn) => conn,
+    Err(_) => return Redirect::to("/").into_response(),
+  };
+
   let all_tiers_unlocked = db::get_all_tiers_unlocked(&conn).log_warn_default("Failed to get all_tiers_unlocked");
-  let (total_cards, total_reviews, cards_learned) =
-    db::get_total_stats(&conn).log_warn_default("Failed to get total stats");
+  // Use permission-aware card count (filters by enabled packs user has access to)
+  let (total_cards, cards_learned) =
+    get_accessible_card_count(&conn, &app_conn, auth.user_id).log_warn_default("Failed to get accessible card count");
+  // All cards user has permission for (regardless of enabled/unlock status)
+  let available_cards =
+    get_available_card_count(&app_conn, auth.user_id).log_warn_default("Failed to get available card count");
+  // Total reviews - sum of reviews per card (matches original metric)
+  let total_reviews: i64 = conn.query_row(
+    "SELECT COALESCE(SUM(total_reviews), 0) FROM card_progress",
+    [],
+    |row| row.get(0),
+  ).unwrap_or(0);
   let tiers = db::get_progress_by_tier(&conn).log_warn_default("Failed to get progress by tier");
   let max_unlocked_tier = db::get_max_unlocked_tier(&conn).log_warn_default("Failed to get max unlocked tier");
 
@@ -175,22 +191,20 @@ pub async fn progress(
     all_tiers_unlocked,
   });
 
-  // Additional units: enabled vocabulary packs with lessons
-  // Need app_db connection for pack UI metadata
-  if let Ok(app_conn) = state.auth_db.lock() {
-    let enabled_packs = list_enabled_packs(&conn);
+  // Additional units: vocabulary packs user has permission to access
+  let accessible_packs = crate::auth::db::list_accessible_pack_ids(&app_conn, auth.user_id)
+      .unwrap_or_default();
 
-    for pack_id in enabled_packs {
-      // Only include packs that have UI metadata (lesson-based progression)
-      if let Ok(Some(ui_metadata)) = get_pack_ui_metadata(&app_conn, &pack_id) {
-        if ui_metadata.total_lessons.unwrap_or(0) > 0 {
-          match get_pack_progress(&conn, &app_conn, &pack_id, &ui_metadata) {
-            Ok(pack_progress) => {
-              units.push(ProgressUnit::VocabularyPack(pack_progress));
-            }
-            Err(e) => {
-              tracing::warn!("Failed to get pack progress for {}: {}", pack_id, e);
-            }
+  for pack_id in accessible_packs {
+    // Only include packs that have UI metadata (lesson-based progression)
+    if let Ok(Some(ui_metadata)) = get_pack_ui_metadata(&app_conn, &pack_id) {
+      if ui_metadata.total_lessons.unwrap_or(0) > 0 {
+        match get_pack_progress(&conn, &app_conn, &pack_id, &ui_metadata) {
+          Ok(pack_progress) => {
+            units.push(ProgressUnit::VocabularyPack(pack_progress));
+          }
+          Err(e) => {
+            tracing::warn!("Failed to get pack progress for {}: {}", pack_id, e);
           }
         }
       }
@@ -199,6 +213,7 @@ pub async fn progress(
 
   let template = ProgressTemplate {
     total_cards,
+    available_cards,
     total_reviews,
     cards_learned,
     tiers,
