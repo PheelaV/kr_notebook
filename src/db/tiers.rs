@@ -537,3 +537,116 @@ pub fn get_total_stats(conn: &Connection) -> Result<(i64, i64, i64)> {
     )?;
     Ok((total_cards, total_reviews, cards_learned))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_tier_progress(
+        tier: u8,
+        total: i64,
+        learned: i64,
+        strong: i64,
+        medium: i64,
+        weak: i64,
+    ) -> TierProgress {
+        TierProgress {
+            tier,
+            total,
+            new_cards: 0,
+            learning: 0,
+            learned,
+            total_reviews: 0,
+            is_unlocked: true,
+            is_enabled: true,
+            avg_stability_days: 0.0,
+            strong_memories: strong,
+            medium_memories: medium,
+            weak_memories: weak,
+        }
+    }
+
+    #[test]
+    fn test_tier_progress_percentage_zero_total() {
+        let progress = make_tier_progress(1, 0, 0, 0, 0, 0);
+        assert_eq!(progress.percentage(), 0);
+    }
+
+    #[test]
+    fn test_tier_progress_percentage_none_learned() {
+        let progress = make_tier_progress(1, 30, 0, 0, 0, 0);
+        assert_eq!(progress.percentage(), 0);
+    }
+
+    #[test]
+    fn test_tier_progress_percentage_partial() {
+        let progress = make_tier_progress(1, 30, 15, 0, 0, 0);
+        assert_eq!(progress.percentage(), 50);
+    }
+
+    #[test]
+    fn test_tier_progress_percentage_all_learned() {
+        let progress = make_tier_progress(1, 30, 30, 0, 0, 0);
+        assert_eq!(progress.percentage(), 100);
+    }
+
+    #[test]
+    fn test_tier_progress_percentage_rounding() {
+        // 24/30 = 80%, 25/30 = 83.33...% -> 83
+        let progress1 = make_tier_progress(1, 30, 24, 0, 0, 0);
+        assert_eq!(progress1.percentage(), 80);
+
+        let progress2 = make_tier_progress(1, 30, 25, 0, 0, 0);
+        assert_eq!(progress2.percentage(), 83);
+    }
+
+    #[test]
+    fn test_memory_strength_no_graduated_cards() {
+        let progress = make_tier_progress(1, 30, 0, 0, 0, 0);
+        assert_eq!(progress.memory_strength(), 0);
+    }
+
+    #[test]
+    fn test_memory_strength_all_strong() {
+        let progress = make_tier_progress(1, 30, 30, 30, 0, 0);
+        assert_eq!(progress.memory_strength(), 100);
+    }
+
+    #[test]
+    fn test_memory_strength_all_medium() {
+        let progress = make_tier_progress(1, 30, 30, 0, 30, 0);
+        assert_eq!(progress.memory_strength(), 60);
+    }
+
+    #[test]
+    fn test_memory_strength_all_weak() {
+        let progress = make_tier_progress(1, 30, 30, 0, 0, 30);
+        assert_eq!(progress.memory_strength(), 30);
+    }
+
+    #[test]
+    fn test_memory_strength_mixed() {
+        // 10 strong (100pts each) + 10 medium (60pts each) + 10 weak (30pts each)
+        // = (1000 + 600 + 300) / 30 = 63.33... -> 63
+        let progress = make_tier_progress(1, 30, 30, 10, 10, 10);
+        assert_eq!(progress.memory_strength(), 63);
+    }
+
+    #[test]
+    fn test_has_stability_data_no_graduated() {
+        let progress = make_tier_progress(1, 30, 0, 0, 0, 0);
+        assert!(!progress.has_stability_data());
+    }
+
+    #[test]
+    fn test_has_stability_data_with_graduated() {
+        let progress = make_tier_progress(1, 30, 10, 5, 3, 2);
+        assert!(progress.has_stability_data());
+    }
+
+    #[test]
+    fn test_has_stability_data_only_strong() {
+        let progress = make_tier_progress(1, 30, 10, 10, 0, 0);
+        assert!(progress.has_stability_data());
+    }
+}

@@ -173,3 +173,364 @@ pub(crate) fn get_available_study_cards_filtered(
 
   cards
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use crate::domain::CardType;
+
+  #[test]
+  fn test_is_korean_hangul_syllables() {
+    // Hangul syllables (U+AC00 to U+D7A3)
+    assert!(is_korean("가"));
+    assert!(is_korean("나"));
+    assert!(is_korean("한글"));
+    assert!(is_korean("안녕하세요"));
+  }
+
+  #[test]
+  fn test_is_korean_hangul_jamo() {
+    // Hangul Jamo (U+1100 to U+11FF)
+    assert!(is_korean("\u{1100}")); // ᄀ
+    assert!(is_korean("\u{1161}")); // ᅡ
+  }
+
+  #[test]
+  fn test_is_korean_compatibility_jamo() {
+    // Hangul Compatibility Jamo (U+3130 to U+318F)
+    assert!(is_korean("ㄱ"));
+    assert!(is_korean("ㅏ"));
+    assert!(is_korean("ㅎ"));
+  }
+
+  #[test]
+  fn test_is_korean_non_korean() {
+    assert!(!is_korean("abc"));
+    assert!(!is_korean("hello"));
+    assert!(!is_korean("123"));
+    assert!(!is_korean(""));
+    assert!(!is_korean("日本語"));
+    assert!(!is_korean("中文"));
+  }
+
+  #[test]
+  fn test_is_korean_mixed_content() {
+    // Mixed content with at least one Korean character
+    assert!(is_korean("hello가"));
+    assert!(is_korean("123한글abc"));
+    assert!(is_korean("test ㄱ test"));
+  }
+
+  #[test]
+  fn test_get_review_direction_forward() {
+    let card = Card {
+      id: 1,
+      front: "가".to_string(),
+      main_answer: "ga".to_string(),
+      description: None,
+      card_type: CardType::Vowel,
+      tier: 1,
+      audio_hint: None,
+      is_reverse: false,
+      pack_id: None,
+      lesson: None,
+      ease_factor: 2.5,
+      interval_days: 0,
+      repetitions: 0,
+      next_review: chrono::Utc::now(),
+      total_reviews: 0,
+      correct_reviews: 0,
+      learning_step: 0,
+      fsrs_stability: None,
+      fsrs_difficulty: None,
+      fsrs_state: None,
+    };
+
+    assert_eq!(get_review_direction(&card), ReviewDirection::KrToRom);
+  }
+
+  #[test]
+  fn test_get_review_direction_reverse() {
+    let card = Card {
+      id: 1,
+      front: "ga".to_string(),
+      main_answer: "가".to_string(),
+      description: None,
+      card_type: CardType::Vowel,
+      tier: 1,
+      audio_hint: None,
+      is_reverse: true,
+      pack_id: None,
+      lesson: None,
+      ease_factor: 2.5,
+      interval_days: 0,
+      repetitions: 0,
+      next_review: chrono::Utc::now(),
+      total_reviews: 0,
+      correct_reviews: 0,
+      learning_step: 0,
+      fsrs_stability: None,
+      fsrs_difficulty: None,
+      fsrs_state: None,
+    };
+
+    assert_eq!(get_review_direction(&card), ReviewDirection::RomToKr);
+  }
+
+  #[test]
+  fn test_get_character_type() {
+    let mut card = Card {
+      id: 1,
+      front: "가".to_string(),
+      main_answer: "ga".to_string(),
+      description: None,
+      card_type: CardType::Vowel,
+      tier: 1,
+      audio_hint: None,
+      is_reverse: false,
+      pack_id: None,
+      lesson: None,
+      ease_factor: 2.5,
+      interval_days: 0,
+      repetitions: 0,
+      next_review: chrono::Utc::now(),
+      total_reviews: 0,
+      correct_reviews: 0,
+      learning_step: 0,
+      fsrs_stability: None,
+      fsrs_difficulty: None,
+      fsrs_state: None,
+    };
+
+    assert_eq!(get_character_type(&card), "vowel");
+
+    card.card_type = CardType::Consonant;
+    assert_eq!(get_character_type(&card), "consonant");
+
+    card.card_type = CardType::Syllable;
+    assert_eq!(get_character_type(&card), "syllable");
+
+    card.card_type = CardType::Vocabulary;
+    assert_eq!(get_character_type(&card), "vocabulary");
+  }
+
+  #[test]
+  fn test_get_tracked_character_forward() {
+    let card = Card {
+      id: 1,
+      front: "가".to_string(),
+      main_answer: "ga".to_string(),
+      description: None,
+      card_type: CardType::Vowel,
+      tier: 1,
+      audio_hint: None,
+      is_reverse: false,
+      pack_id: None,
+      lesson: None,
+      ease_factor: 2.5,
+      interval_days: 0,
+      repetitions: 0,
+      next_review: chrono::Utc::now(),
+      total_reviews: 0,
+      correct_reviews: 0,
+      learning_step: 0,
+      fsrs_stability: None,
+      fsrs_difficulty: None,
+      fsrs_state: None,
+    };
+
+    // Forward card: front is Korean
+    assert_eq!(get_tracked_character(&card), "가");
+  }
+
+  #[test]
+  fn test_get_tracked_character_reverse() {
+    let card = Card {
+      id: 1,
+      front: "ga".to_string(),
+      main_answer: "가".to_string(),
+      description: None,
+      card_type: CardType::Vowel,
+      tier: 1,
+      audio_hint: None,
+      is_reverse: true,
+      pack_id: None,
+      lesson: None,
+      ease_factor: 2.5,
+      interval_days: 0,
+      repetitions: 0,
+      next_review: chrono::Utc::now(),
+      total_reviews: 0,
+      correct_reviews: 0,
+      learning_step: 0,
+      fsrs_stability: None,
+      fsrs_difficulty: None,
+      fsrs_state: None,
+    };
+
+    // Reverse card: answer is Korean
+    assert_eq!(get_tracked_character(&card), "가");
+  }
+
+  #[test]
+  fn test_parse_filter_mode_all() {
+    assert!(matches!(parse_filter_mode("all"), db::StudyFilterMode::All));
+  }
+
+  #[test]
+  fn test_parse_filter_mode_hangul() {
+    assert!(matches!(
+      parse_filter_mode("hangul"),
+      db::StudyFilterMode::HangulOnly
+    ));
+  }
+
+  #[test]
+  fn test_parse_filter_mode_pack() {
+    match parse_filter_mode("pack:vocabulary-lesson1") {
+      db::StudyFilterMode::PackOnly(id) => assert_eq!(id, "vocabulary-lesson1"),
+      _ => panic!("Expected PackOnly variant"),
+    }
+  }
+
+  #[test]
+  fn test_parse_filter_mode_unknown_defaults_to_all() {
+    assert!(matches!(
+      parse_filter_mode("unknown"),
+      db::StudyFilterMode::All
+    ));
+    assert!(matches!(parse_filter_mode(""), db::StudyFilterMode::All));
+  }
+
+  #[test]
+  fn test_generate_choices_includes_correct_answer() {
+    let card = Card {
+      id: 1,
+      front: "가".to_string(),
+      main_answer: "나".to_string(),
+      description: None,
+      card_type: CardType::Vowel,
+      tier: 1,
+      audio_hint: None,
+      is_reverse: false,
+      pack_id: None,
+      lesson: None,
+      ease_factor: 2.5,
+      interval_days: 0,
+      repetitions: 0,
+      next_review: chrono::Utc::now(),
+      total_reviews: 0,
+      correct_reviews: 0,
+      learning_step: 0,
+      fsrs_stability: None,
+      fsrs_difficulty: None,
+      fsrs_state: None,
+    };
+
+    let other_cards = vec![
+      Card {
+        id: 2,
+        front: "다".to_string(),
+        main_answer: "라".to_string(),
+        description: None,
+        card_type: CardType::Vowel,
+        tier: 1,
+        audio_hint: None,
+        is_reverse: false,
+        pack_id: None,
+        lesson: None,
+        ease_factor: 2.5,
+        interval_days: 0,
+        repetitions: 0,
+        next_review: chrono::Utc::now(),
+        total_reviews: 0,
+        correct_reviews: 0,
+        learning_step: 0,
+        fsrs_stability: None,
+        fsrs_difficulty: None,
+        fsrs_state: None,
+      },
+      Card {
+        id: 3,
+        front: "마".to_string(),
+        main_answer: "바".to_string(),
+        description: None,
+        card_type: CardType::Vowel,
+        tier: 1,
+        audio_hint: None,
+        is_reverse: false,
+        pack_id: None,
+        lesson: None,
+        ease_factor: 2.5,
+        interval_days: 0,
+        repetitions: 0,
+        next_review: chrono::Utc::now(),
+        total_reviews: 0,
+        correct_reviews: 0,
+        learning_step: 0,
+        fsrs_stability: None,
+        fsrs_difficulty: None,
+        fsrs_state: None,
+      },
+    ];
+
+    let choices = generate_choices(&card, &other_cards);
+
+    // Correct answer should always be included
+    assert!(choices.contains(&"나".to_string()));
+  }
+
+  #[test]
+  fn test_generate_choices_excludes_non_korean_distractors() {
+    let card = Card {
+      id: 1,
+      front: "가".to_string(),
+      main_answer: "나".to_string(),
+      description: None,
+      card_type: CardType::Vowel,
+      tier: 1,
+      audio_hint: None,
+      is_reverse: false,
+      pack_id: None,
+      lesson: None,
+      ease_factor: 2.5,
+      interval_days: 0,
+      repetitions: 0,
+      next_review: chrono::Utc::now(),
+      total_reviews: 0,
+      correct_reviews: 0,
+      learning_step: 0,
+      fsrs_stability: None,
+      fsrs_difficulty: None,
+      fsrs_state: None,
+    };
+
+    let other_cards = vec![Card {
+      id: 2,
+      front: "다".to_string(),
+      main_answer: "romanized".to_string(), // Non-Korean answer
+      description: None,
+      card_type: CardType::Vowel,
+      tier: 1,
+      audio_hint: None,
+      is_reverse: false,
+      pack_id: None,
+      lesson: None,
+      ease_factor: 2.5,
+      interval_days: 0,
+      repetitions: 0,
+      next_review: chrono::Utc::now(),
+      total_reviews: 0,
+      correct_reviews: 0,
+      learning_step: 0,
+      fsrs_stability: None,
+      fsrs_difficulty: None,
+      fsrs_state: None,
+    }];
+
+    let choices = generate_choices(&card, &other_cards);
+
+    // Non-Korean answers should not appear as distractors
+    assert!(!choices.contains(&"romanized".to_string()));
+  }
+}

@@ -23,16 +23,9 @@ pub fn asset_url(path: impl std::fmt::Display, _: &dyn askama::Values) -> askama
     })
 }
 
-/// Escape a string for use inside JavaScript string literals.
-/// This escapes backslashes, quotes, and newlines to prevent injection.
-///
-/// Usage in templates:
-/// ```html
-/// <script>var x = "{{ user_input|js_escape }}";</script>
-/// ```
-#[askama::filter_fn]
-pub fn js_escape(s: impl std::fmt::Display, _: &dyn askama::Values) -> askama::Result<String> {
-    let input = s.to_string();
+/// Core JS escaping logic - escapes special characters for safe use in JS strings.
+/// This is the testable core of the filter.
+pub fn escape_js_string(input: &str) -> String {
     let mut result = String::with_capacity(input.len());
     for c in input.chars() {
         match c {
@@ -48,5 +41,167 @@ pub fn js_escape(s: impl std::fmt::Display, _: &dyn askama::Values) -> askama::R
             c => result.push(c),
         }
     }
-    Ok(result)
+    result
+}
+
+/// Escape a string for use inside JavaScript string literals.
+/// This escapes backslashes, quotes, and newlines to prevent injection.
+///
+/// Usage in templates:
+/// ```html
+/// <script>var x = "{{ user_input|js_escape }}";</script>
+/// ```
+#[askama::filter_fn]
+pub fn js_escape(s: impl std::fmt::Display, _: &dyn askama::Values) -> askama::Result<String> {
+    Ok(escape_js_string(&s.to_string()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::escape_js_string;
+
+    // Note: We cannot easily test asset_url() as it depends on compile-time
+    // generated hashes. We focus on testing escape_js_string() which is critical
+    // for security (XSS prevention).
+
+    #[test]
+    fn test_js_escape_empty() {
+        assert_eq!(escape_js_string(""), "");
+    }
+
+    #[test]
+    fn test_js_escape_plain_text() {
+        assert_eq!(escape_js_string("hello world"), "hello world");
+    }
+
+    #[test]
+    fn test_js_escape_backslash() {
+        // Input: C:\path\file -> Output: C:\\path\\file
+        let result = escape_js_string("C:\\path\\file");
+        assert_eq!(result, "C:\\\\path\\\\file");
+    }
+
+    #[test]
+    fn test_js_escape_double_quote() {
+        // Input: say "hello" -> Output: say \"hello\"
+        let result = escape_js_string("say \"hello\"");
+        assert!(result.contains("\\\""));
+    }
+
+    #[test]
+    fn test_js_escape_single_quote() {
+        // Input: it's -> Output: it\'s
+        let result = escape_js_string("it's");
+        assert!(result.contains("\\'"));
+    }
+
+    #[test]
+    fn test_js_escape_newline() {
+        let result = escape_js_string("line1\nline2");
+        assert!(result.contains("\\n"));
+        assert!(!result.contains('\n'));
+    }
+
+    #[test]
+    fn test_js_escape_carriage_return() {
+        let result = escape_js_string("line1\rline2");
+        assert!(result.contains("\\r"));
+        assert!(!result.contains('\r'));
+    }
+
+    #[test]
+    fn test_js_escape_tab() {
+        let result = escape_js_string("col1\tcol2");
+        assert!(result.contains("\\t"));
+        assert!(!result.contains('\t'));
+    }
+
+    #[test]
+    fn test_js_escape_less_than() {
+        // < should become \x3c
+        let result = escape_js_string("<tag>");
+        assert!(!result.contains('<'));
+        assert!(result.contains("\\x3c"));
+    }
+
+    #[test]
+    fn test_js_escape_greater_than() {
+        // > should become \x3e
+        let result = escape_js_string("<tag>");
+        assert!(!result.contains('>'));
+        assert!(result.contains("\\x3e"));
+    }
+
+    #[test]
+    fn test_js_escape_ampersand() {
+        // & should become \x26
+        let result = escape_js_string("a & b");
+        assert!(!result.contains('&'));
+        assert!(result.contains("\\x26"));
+    }
+
+    #[test]
+    fn test_js_escape_korean_passthrough() {
+        // Korean characters should pass through unchanged
+        assert_eq!(escape_js_string("한글"), "한글");
+        assert_eq!(escape_js_string("ㄱ ㄴ ㄷ"), "ㄱ ㄴ ㄷ");
+    }
+
+    #[test]
+    fn test_js_escape_xss_script_tag() {
+        let result = escape_js_string("<script>alert(1)</script>");
+        // Should not contain literal < or >
+        assert!(!result.contains('<'));
+        assert!(!result.contains('>'));
+        // Should contain escaped versions
+        assert!(result.contains("\\x3c"));
+        assert!(result.contains("\\x3e"));
+    }
+
+    #[test]
+    fn test_js_escape_closing_script_tag() {
+        // The dangerous </script> sequence should be escaped
+        let result = escape_js_string("</script>");
+        assert!(!result.contains('<'));
+        assert!(!result.contains('>'));
+    }
+
+    #[test]
+    fn test_js_escape_string_breakout_attempt() {
+        // Attempt to break out of JS string context with quotes
+        let result = escape_js_string("\"; alert(1); //");
+        // Double quote should be escaped
+        assert!(result.starts_with("\\\""));
+    }
+
+    #[test]
+    fn test_js_escape_null_byte_passthrough() {
+        // Null bytes pass through (not a security concern for JS strings)
+        let result = escape_js_string("a\0b");
+        assert_eq!(result, "a\0b");
+    }
+
+    #[test]
+    fn test_js_escape_unicode_passthrough() {
+        // Various unicode should pass through unchanged
+        assert_eq!(escape_js_string("café"), "café");
+        assert_eq!(escape_js_string("日本語"), "日本語");
+        assert_eq!(escape_js_string("🎉"), "🎉");
+    }
+
+    #[test]
+    fn test_js_escape_preserves_length_for_simple() {
+        // Simple text should not change length
+        let input = "hello";
+        let result = escape_js_string(input);
+        assert_eq!(result.len(), input.len());
+    }
+
+    #[test]
+    fn test_js_escape_increases_length_for_special() {
+        // Escaping should increase length
+        let input = "\\";
+        let result = escape_js_string(input);
+        assert!(result.len() > input.len());
+    }
 }

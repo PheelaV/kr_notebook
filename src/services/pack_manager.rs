@@ -177,4 +177,68 @@ mod tests {
         let dir = shared_packs_dir();
         assert!(dir.to_str().unwrap().contains("packs"));
     }
+
+    // Additional PackFilter tests
+
+    #[test]
+    fn test_pack_filter_default() {
+        let filter = PackFilter::default();
+        assert!(filter.provides.is_none());
+        assert!(filter.pack_type.is_none());
+    }
+
+    #[test]
+    fn test_pack_filter_provides_audio() {
+        let filter = PackFilter::provides("audio");
+        assert_eq!(filter.provides, Some("audio".to_string()));
+    }
+
+    #[test]
+    fn test_pack_filter_provides_empty() {
+        let filter = PackFilter::provides("");
+        assert_eq!(filter.provides, Some("".to_string()));
+    }
+
+    #[test]
+    fn test_pack_filter_pack_type_audio() {
+        let filter = PackFilter::pack_type(PackType::Audio);
+        assert_eq!(filter.pack_type, Some(PackType::Audio));
+    }
+
+    #[test]
+    fn test_pack_filter_pack_type_generator() {
+        let filter = PackFilter::pack_type(PackType::Generator);
+        assert_eq!(filter.pack_type, Some(PackType::Generator));
+    }
+
+    #[test]
+    fn test_pack_filter_clone() {
+        let filter = PackFilter::provides("vocabulary");
+        let cloned = filter.clone();
+        assert_eq!(cloned.provides, filter.provides);
+        assert_eq!(cloned.pack_type, filter.pack_type);
+    }
+
+    #[test]
+    fn test_pack_filter_debug() {
+        let filter = PackFilter::provides("audio");
+        let debug = format!("{:?}", filter);
+        assert!(debug.contains("PackFilter"));
+        assert!(debug.contains("audio"));
+    }
+
+    #[test]
+    fn test_shared_packs_dir_is_static() {
+        // Should return the same reference each time
+        let dir1 = shared_packs_dir();
+        let dir2 = shared_packs_dir();
+        assert_eq!(dir1, dir2);
+    }
+
+    #[test]
+    fn test_shared_packs_dir_is_valid_path() {
+        let dir = shared_packs_dir();
+        // Should be a valid path that can be converted to str
+        assert!(dir.to_str().is_some());
+    }
 }
