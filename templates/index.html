@@ -32,7 +32,7 @@
   <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6">
     <div class="text-center">
       {% if accelerated_mode %}
-      <div class="text-5xl font-bold text-indigo-600 dark:text-indigo-400 mb-2">
+      <div data-testid="due-count" class="text-5xl font-bold text-indigo-600 dark:text-indigo-400 mb-2">
         {{ due_count + unreviewed_count }}
       </div>
       <div class="text-gray-600 dark:text-gray-400">
@@ -44,7 +44,7 @@
       </div>
       {% endif %}
       {% else %}
-      <div class="text-5xl font-bold text-indigo-600 dark:text-indigo-400 mb-2">
+      <div data-testid="due-count" class="text-5xl font-bold text-indigo-600 dark:text-indigo-400 mb-2">
         {{ due_count }}
       </div>
       <div class="text-gray-600 dark:text-gray-400">
@@ -56,10 +56,10 @@
     <div class="mt-6 space-y-3">
       {% if accelerated_mode %}
         {% if due_count + unreviewed_count > 0 %}
-        <a href="/study" class="block w-full bg-indigo-600 hover:bg-indigo-700 text-white text-center font-semibold py-3 px-4 rounded-lg transition-colors">
+        <a href="/study" data-testid="start-study-btn" class="block w-full bg-indigo-600 hover:bg-indigo-700 text-white text-center font-semibold py-3 px-4 rounded-lg transition-colors">
           Start Studying
         </a>
-        <a href="/practice" class="block w-full mt-2 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 text-center font-semibold py-3 px-4 rounded-lg transition-colors">
+        <a href="/practice" data-testid="practice-btn" class="block w-full mt-2 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 text-center font-semibold py-3 px-4 rounded-lg transition-colors">
           Practice Mode
         </a>
         {% else %}
@@ -74,16 +74,16 @@
           </div>
         </div>
         {% endif %}
-        <a href="/practice" class="block w-full bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 text-center font-semibold py-3 px-4 rounded-lg transition-colors">
+        <a href="/practice" data-testid="practice-btn" class="block w-full bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 text-center font-semibold py-3 px-4 rounded-lg transition-colors">
           Practice Mode
         </a>
         {% endif %}
       {% else %}
         {% if due_count > 0 %}
-        <a href="/study" class="block w-full bg-indigo-600 hover:bg-indigo-700 text-white text-center font-semibold py-3 px-4 rounded-lg transition-colors">
+        <a href="/study" data-testid="start-study-btn" class="block w-full bg-indigo-600 hover:bg-indigo-700 text-white text-center font-semibold py-3 px-4 rounded-lg transition-colors">
           Start Studying
         </a>
-        <a href="/practice" class="block w-full mt-2 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 text-center font-semibold py-3 px-4 rounded-lg transition-colors">
+        <a href="/practice" data-testid="practice-btn" class="block w-full mt-2 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 text-center font-semibold py-3 px-4 rounded-lg transition-colors">
           Practice Mode
         </a>
         {% if let Some(timestamp) = next_review_timestamp %}
@@ -102,7 +102,7 @@
           No cards due right now.
           {% endif %}
         </div>
-        <a href="/practice" class="block w-full bg-indigo-600 hover:bg-indigo-700 text-white text-center font-semibold py-3 px-4 rounded-lg transition-colors">
+        <a href="/practice" data-testid="practice-btn" class="block w-full bg-indigo-600 hover:bg-indigo-700 text-white text-center font-semibold py-3 px-4 rounded-lg transition-colors">
           Practice Anyway
         </a>
         {% endif %}

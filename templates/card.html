@@ -1,4 +1,4 @@
-<div id="card-container" class="text-center">
+<div id="card-container" data-testid="card-container" class="text-center">
   <div class="mb-2 flex items-center justify-center gap-2">
     <span class="text-sm text-gray-500 dark:text-gray-400">Tier {{ tier }}</span>
     <form hx-post="/diagnostic" hx-target="body" hx-swap="beforeend" class="inline">
@@ -13,7 +13,7 @@
 
   <div class="card-flip mb-6">
     <div id="card-inner" class="card-inner relative w-full h-72" onclick="this.classList.toggle('flipped')">
-      <div class="card-front absolute inset-0 bg-white dark:bg-gray-800 shadow-lg rounded-xl flex flex-col items-center justify-center cursor-pointer p-6 sm:p-10">
+      <div class="card-front absolute inset-0 bg-white dark:bg-gray-800 shadow-lg rounded-xl flex flex-col items-center justify-center cursor-pointer p-6 sm:p-10" data-testid="card-front">
         {% if is_reverse %}
         <div class="text-sm text-gray-500 dark:text-gray-400 mb-2">
           {% if is_vocabulary %}Which matches{% else %}Which letter sounds like{% endif %}
@@ -27,7 +27,7 @@
         </div>
         {% endif %}
       </div>
-      <div class="card-back absolute inset-0 bg-white dark:bg-gray-800 shadow-lg rounded-xl flex flex-col items-center justify-center cursor-pointer p-6 sm:p-10">
+      <div class="card-back absolute inset-0 bg-white dark:bg-gray-800 shadow-lg rounded-xl flex flex-col items-center justify-center cursor-pointer p-6 sm:p-10" data-testid="card-back">
         <div class="text-4xl font-bold text-indigo-600 dark:text-indigo-400 mb-3">
           {{ main_answer }}
         </div>
@@ -48,7 +48,7 @@
     <form hx-post="/review" hx-target="#card-container" hx-swap="outerHTML" id="form-again">
       <input type="hidden" name="card_id" value="{{ card_id }}">
       <input type="hidden" name="quality" value="0">
-      <button type="submit" class="w-full bg-red-500 hover:bg-red-600 text-white font-semibold py-3 px-2 rounded-lg transition-colors text-sm">
+      <button type="submit" data-testid="quality-again" class="w-full bg-red-500 hover:bg-red-600 text-white font-semibold py-3 px-2 rounded-lg transition-colors text-sm">
         <span class="hidden sm:inline">1: </span>Again
       </button>
     </form>
@@ -64,7 +64,7 @@
     <form hx-post="/review" hx-target="#card-container" hx-swap="outerHTML" id="form-good">
       <input type="hidden" name="card_id" value="{{ card_id }}">
       <input type="hidden" name="quality" value="4">
-      <button type="submit" class="w-full bg-green-500 hover:bg-green-600 text-white font-semibold py-3 px-2 rounded-lg transition-colors text-sm">
+      <button type="submit" data-testid="quality-good" class="w-full bg-green-500 hover:bg-green-600 text-white font-semibold py-3 px-2 rounded-lg transition-colors text-sm">
         <span class="hidden sm:inline">3: </span>Good
       </button>
     </form>

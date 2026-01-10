@@ -5,7 +5,7 @@
 //! instead of directly calling discovery and auth functions.
 
 use rusqlite::Connection;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use crate::auth::db as auth_db;
 use crate::content::{
@@ -60,9 +60,10 @@ pub fn get_external_paths(auth_db: &Connection) -> Vec<PathBuf> {
 
 /// Get the shared packs directory path.
 ///
-/// Consolidates `Path::new(paths::SHARED_PACKS_DIR)` that was repeated in 8+ places.
-pub fn shared_packs_dir() -> &'static Path {
-    Path::new(paths::SHARED_PACKS_DIR)
+/// Consolidates pack directory access that was repeated in 8+ places.
+/// Returns PathBuf since path is now dynamically constructed from DATA_DIR.
+pub fn shared_packs_dir() -> PathBuf {
+    PathBuf::from(paths::shared_packs_dir())
 }
 
 /// Discover all packs from all sources (shared + external).
@@ -70,7 +71,7 @@ pub fn shared_packs_dir() -> &'static Path {
 /// Does NOT filter by user permissions - returns all discoverable packs.
 pub fn discover_all_packs(auth_db: &Connection) -> Vec<PackLocation> {
     let external_paths = get_external_paths(auth_db);
-    discover_packs_with_external(shared_packs_dir(), None, None, &external_paths)
+    discover_packs_with_external(&shared_packs_dir(), None, None, &external_paths)
 }
 
 /// Get packs accessible to a specific user.
@@ -91,7 +92,7 @@ pub fn get_accessible_packs(
     // If filtering by provides, use the optimized function
     if let Some(ref content_type) = filter.provides {
         let packs =
-            find_packs_providing_with_external(shared_packs_dir(), &external_paths, content_type);
+            find_packs_providing_with_external(&shared_packs_dir(), &external_paths, content_type);
 
         return packs
             .into_iter()
@@ -109,7 +110,7 @@ pub fn get_accessible_packs(
     }
 
     // Otherwise discover all and filter
-    let all_packs = discover_packs_with_external(shared_packs_dir(), None, None, &external_paths);
+    let all_packs = discover_packs_with_external(&shared_packs_dir(), None, None, &external_paths);
 
     all_packs
         .into_iter()
@@ -176,5 +177,69 @@ mod tests {
     fn test_shared_packs_dir() {
         let dir = shared_packs_dir();
         assert!(dir.to_str().unwrap().contains("packs"));
+    }
+
+    // Additional PackFilter tests
+
+    #[test]
+    fn test_pack_filter_default() {
+        let filter = PackFilter::default();
+        assert!(filter.provides.is_none());
+        assert!(filter.pack_type.is_none());
+    }
+
+    #[test]
+    fn test_pack_filter_provides_audio() {
+        let filter = PackFilter::provides("audio");
+        assert_eq!(filter.provides, Some("audio".to_string()));
+    }
+
+    #[test]
+    fn test_pack_filter_provides_empty() {
+        let filter = PackFilter::provides("");
+        assert_eq!(filter.provides, Some("".to_string()));
+    }
+
+    #[test]
+    fn test_pack_filter_pack_type_audio() {
+        let filter = PackFilter::pack_type(PackType::Audio);
+        assert_eq!(filter.pack_type, Some(PackType::Audio));
+    }
+
+    #[test]
+    fn test_pack_filter_pack_type_generator() {
+        let filter = PackFilter::pack_type(PackType::Generator);
+        assert_eq!(filter.pack_type, Some(PackType::Generator));
+    }
+
+    #[test]
+    fn test_pack_filter_clone() {
+        let filter = PackFilter::provides("vocabulary");
+        let cloned = filter.clone();
+        assert_eq!(cloned.provides, filter.provides);
+        assert_eq!(cloned.pack_type, filter.pack_type);
+    }
+
+    #[test]
+    fn test_pack_filter_debug() {
+        let filter = PackFilter::provides("audio");
+        let debug = format!("{:?}", filter);
+        assert!(debug.contains("PackFilter"));
+        assert!(debug.contains("audio"));
+    }
+
+    #[test]
+    fn test_shared_packs_dir_is_static() {
+        // Should return the same reference each time
+        let dir1 = shared_packs_dir();
+        let dir2 = shared_packs_dir();
+        assert_eq!(dir1, dir2);
+    }
+
+    #[test]
+    fn test_shared_packs_dir_is_valid_path() {
+        let dir = shared_packs_dir();
+        // Should be a valid path that can be converted to str
+        assert!(dir.to_str().is_some());
     }
 }

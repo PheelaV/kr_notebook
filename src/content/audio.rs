@@ -52,9 +52,9 @@ pub fn find_audio_packs_for_lesson(lesson_id: &str) -> Vec<AudioSource> {
     let mut sources = Vec::new();
 
     // Check shared packs directory
-    let shared_packs = Path::new(paths::SHARED_PACKS_DIR);
+    let shared_packs = PathBuf::from(paths::shared_packs_dir());
     if shared_packs.exists() {
-        if let Ok(entries) = fs::read_dir(shared_packs) {
+        if let Ok(entries) = fs::read_dir(&shared_packs) {
             for entry in entries.filter_map(|e| e.ok()) {
                 let pack_path = entry.path();
                 if let Some(source) = check_audio_pack(&pack_path, lesson_id) {
@@ -65,7 +65,7 @@ pub fn find_audio_packs_for_lesson(lesson_id: &str) -> Vec<AudioSource> {
     }
 
     // Check for generated content (from scrapers)
-    let generated_path = Path::new(paths::SHARED_GENERATED_DIR).join("htsk").join(lesson_id);
+    let generated_path = PathBuf::from(paths::shared_generated_dir()).join("htsk").join(lesson_id);
     if generated_path.exists() {
         sources.push(AudioSource {
             base_path: generated_path,
@@ -229,7 +229,7 @@ pub fn list_available_lessons() -> Vec<String> {
     let mut lessons = HashSet::new();
 
     // Check shared generated content
-    let generated_path = Path::new(paths::SHARED_GENERATED_DIR).join("htsk");
+    let generated_path = PathBuf::from(paths::shared_generated_dir()).join("htsk");
     if generated_path.exists() {
         if let Ok(entries) = fs::read_dir(&generated_path) {
             for entry in entries.filter_map(|e| e.ok()) {
@@ -243,9 +243,9 @@ pub fn list_available_lessons() -> Vec<String> {
     }
 
     // Check packs
-    let shared_packs = Path::new(paths::SHARED_PACKS_DIR);
+    let shared_packs = PathBuf::from(paths::shared_packs_dir());
     if shared_packs.exists() {
-        if let Ok(entries) = fs::read_dir(shared_packs) {
+        if let Ok(entries) = fs::read_dir(&shared_packs) {
             for entry in entries.filter_map(|e| e.ok()) {
                 let pack_path = entry.path();
                 let manifest_path = pack_path.join("pack.json");
@@ -265,7 +265,7 @@ pub fn list_available_lessons() -> Vec<String> {
     }
 
     // Check legacy location
-    let legacy_path = Path::new(paths::HTSK_DIR);
+    let legacy_path = PathBuf::from(paths::htsk_dir());
     if legacy_path.exists() {
         if let Ok(entries) = fs::read_dir(legacy_path) {
             for entry in entries.filter_map(|e| e.ok()) {
@@ -291,8 +291,8 @@ mod tests {
     fn test_list_available_lessons() {
         // Should return list without panicking
         let lessons = list_available_lessons();
-        // May be empty or have lessons depending on environment
-        assert!(lessons.len() >= 0);
+        // Result is valid (may be empty depending on environment)
+        drop(lessons);
     }
 
     #[test]

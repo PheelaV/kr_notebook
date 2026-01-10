@@ -10,7 +10,7 @@ use serde::Deserialize;
 use std::process::Command;
 
 use crate::auth::db as auth_db;
-use crate::auth::AuthContext;
+use crate::auth::{AdminContext, AuthContext};
 use crate::db::{self, LogOnError};
 use crate::paths;
 use crate::state::AppState;
@@ -226,10 +226,8 @@ pub struct AudioRowTemplate {
 }
 
 /// Re-segment all lessons (admin only)
-pub async fn trigger_segment(auth: AuthContext, Form(form): Form<SegmentForm>) -> Html<String> {
-  if !auth.is_admin {
-    return Html(r#"<span class="text-red-600 dark:text-red-400">Admin access required</span>"#.to_string());
-  }
+pub async fn trigger_segment(_admin: AdminContext, Form(form): Form<SegmentForm>) -> Html<String> {
+  // AdminContext extractor already verified admin status (returns 403 if not admin)
 
   #[cfg(feature = "profiling")]
   crate::profile_log!(
@@ -331,10 +329,8 @@ fn row_default_padding() -> i32 {
 }
 
 /// Re-segment a single row (admin only)
-pub async fn trigger_row_segment(auth: AuthContext, Form(form): Form<RowSegmentForm>) -> Html<String> {
-  if !auth.is_admin {
-    return Html(r#"<span class="text-red-600 dark:text-red-400">Admin access required</span>"#.to_string());
-  }
+pub async fn trigger_row_segment(_admin: AdminContext, Form(form): Form<RowSegmentForm>) -> Html<String> {
+  // AdminContext extractor already verified admin status (returns 403 if not admin)
 
   #[cfg(feature = "profiling")]
   crate::profile_log!(
@@ -429,10 +425,8 @@ pub struct ManualSegmentForm {
 }
 
 /// Apply manual segment timestamps (admin only)
-pub async fn trigger_manual_segment(auth: AuthContext, Form(form): Form<ManualSegmentForm>) -> Html<String> {
-  if !auth.is_admin {
-    return Html(r#"<span class="text-red-600 dark:text-red-400">Admin access required</span>"#.to_string());
-  }
+pub async fn trigger_manual_segment(_admin: AdminContext, Form(form): Form<ManualSegmentForm>) -> Html<String> {
+  // AdminContext extractor already verified admin status (returns 403 if not admin)
 
   #[cfg(feature = "profiling")]
   crate::profile_log!(
@@ -511,10 +505,8 @@ pub struct ResetSegmentForm {
 }
 
 /// Reset manual segment timestamps to baseline (admin only)
-pub async fn trigger_reset_segment(auth: AuthContext, Form(form): Form<ResetSegmentForm>) -> Html<String> {
-  if !auth.is_admin {
-    return Html(r#"<span class="text-red-600 dark:text-red-400">Admin access required</span>"#.to_string());
-  }
+pub async fn trigger_reset_segment(_admin: AdminContext, Form(form): Form<ResetSegmentForm>) -> Html<String> {
+  // AdminContext extractor already verified admin status (returns 403 if not admin)
 
   #[cfg(feature = "profiling")]
   crate::profile_log!(
@@ -837,14 +829,12 @@ pub struct UserRowTemplate {
 
 /// Change a user's role (admin only)
 pub async fn set_user_role(
-  auth: AuthContext,
+  _admin: AdminContext,
   State(state): State<AppState>,
   headers: HeaderMap,
   Form(form): Form<SetRoleForm>,
 ) -> Response {
-  if !auth.is_admin {
-    return Redirect::to("/settings").into_response();
-  }
+  // AdminContext extractor already verified admin status (returns 403 if not admin)
 
   // Validate role
   if form.role != "user" && form.role != "admin" {
@@ -923,7 +913,11 @@ pub async fn create_group(
   Form(form): Form<CreateGroupForm>,
 ) -> Response {
   if !auth.is_admin {
-    return Redirect::to("/settings").into_response();
+    // Return appropriate error for both HTMX and regular requests
+    if is_htmx_request(&headers) {
+      return Html(error_notification("Admin access required")).into_response();
+    }
+    return (axum::http::StatusCode::FORBIDDEN, "Admin access required").into_response();
   }
 
   let auth_db = match state.auth_db.lock() {
@@ -1043,14 +1037,12 @@ fn render_group_card(conn: &rusqlite::Connection, group_id: &str) -> Option<Stri
 
 /// Add a user to a group (admin only)
 pub async fn add_to_group(
-  auth: AuthContext,
+  _admin: AdminContext,
   State(state): State<AppState>,
   headers: HeaderMap,
   Form(form): Form<GroupMemberForm>,
 ) -> Response {
-  if !auth.is_admin {
-    return Redirect::to("/settings").into_response();
-  }
+  // AdminContext extractor already verified admin status (returns 403 if not admin)
 
   let auth_db = match state.auth_db.lock() {
     Ok(conn) => conn,
@@ -1085,14 +1077,12 @@ pub async fn add_to_group(
 
 /// Remove a user from a group (admin only)
 pub async fn remove_from_group(
-  auth: AuthContext,
+  _admin: AdminContext,
   State(state): State<AppState>,
   headers: HeaderMap,
   Form(form): Form<GroupMemberForm>,
 ) -> Response {
-  if !auth.is_admin {
-    return Redirect::to("/settings").into_response();
-  }
+  // AdminContext extractor already verified admin status (returns 403 if not admin)
 
   let auth_db = match state.auth_db.lock() {
     Ok(conn) => conn,
@@ -1267,14 +1257,12 @@ pub async fn make_pack_public(
 
 /// Restrict a pack to a specific user (admin only)
 pub async fn restrict_pack_to_user(
-  auth: AuthContext,
+  _admin: AdminContext,
   State(state): State<AppState>,
   headers: HeaderMap,
   Form(form): Form<PackUserPermissionForm>,
 ) -> Response {
-  if !auth.is_admin {
-    return Redirect::to("/settings").into_response();
-  }
+  // AdminContext extractor already verified admin status (returns 403 if not admin)
 
   let auth_db = match state.auth_db.lock() {
     Ok(conn) => conn,
@@ -1309,14 +1297,12 @@ pub async fn restrict_pack_to_user(
 
 /// Remove pack restriction for a user (admin only)
 pub async fn remove_pack_user_restriction(
-  auth: AuthContext,
+  _admin: AdminContext,
   State(state): State<AppState>,
   headers: HeaderMap,
   Form(form): Form<PackUserPermissionForm>,
 ) -> Response {
-  if !auth.is_admin {
-    return Redirect::to("/settings").into_response();
-  }
+  // AdminContext extractor already verified admin status (returns 403 if not admin)
 
   let auth_db = match state.auth_db.lock() {
     Ok(conn) => conn,

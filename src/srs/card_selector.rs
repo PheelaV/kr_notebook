@@ -291,4 +291,255 @@ mod tests {
     assert_eq!(reinforced, Some(42));
     assert!(session.reinforcement_queue.is_empty());
   }
+
+  // Additional StudySession tests
+
+  #[test]
+  fn test_session_new_is_empty() {
+    let session = StudySession::new();
+    assert!(session.reinforcement_queue.is_empty());
+    assert_eq!(session.cards_since_reinforce, 0);
+    assert!(session.last_card_id.is_none());
+  }
+
+  #[test]
+  fn test_add_failed_card_no_duplicates() {
+    let mut session = StudySession::new();
+
+    session.add_failed_card(42);
+    session.add_failed_card(42); // Duplicate
+    session.add_failed_card(42); // Duplicate
+
+    assert_eq!(session.reinforcement_queue.len(), 1);
+  }
+
+  #[test]
+  fn test_add_multiple_failed_cards() {
+    let mut session = StudySession::new();
+
+    session.add_failed_card(1);
+    session.add_failed_card(2);
+    session.add_failed_card(3);
+
+    assert_eq!(session.reinforcement_queue.len(), 3);
+  }
+
+  #[test]
+  fn test_remove_from_reinforcement() {
+    let mut session = StudySession::new();
+
+    session.add_failed_card(1);
+    session.add_failed_card(2);
+    session.add_failed_card(3);
+
+    session.remove_from_reinforcement(2);
+
+    assert_eq!(session.reinforcement_queue.len(), 2);
+    assert!(!session.reinforcement_queue.contains(&2));
+  }
+
+  #[test]
+  fn test_remove_nonexistent_card() {
+    let mut session = StudySession::new();
+
+    session.add_failed_card(1);
+    session.remove_from_reinforcement(999); // Not in queue
+
+    assert_eq!(session.reinforcement_queue.len(), 1);
+  }
+
+  #[test]
+  fn test_should_show_reinforcement_empty_queue() {
+    let mut session = StudySession::new();
+
+    // Even with counter at 3, empty queue = false
+    session.increment_counter();
+    session.increment_counter();
+    session.increment_counter();
+
+    assert!(!session.should_show_reinforcement());
+  }
+
+  #[test]
+  fn test_should_show_reinforcement_needs_3_cards() {
+    let mut session = StudySession::new();
+    session.add_failed_card(42);
+
+    assert!(!session.should_show_reinforcement()); // counter = 0
+
+    session.increment_counter();
+    assert!(!session.should_show_reinforcement()); // counter = 1
+
+    session.increment_counter();
+    assert!(!session.should_show_reinforcement()); // counter = 2
+
+    session.increment_counter();
+    assert!(session.should_show_reinforcement()); // counter = 3
+  }
+
+  #[test]
+  fn test_pop_reinforcement_resets_counter() {
+    let mut session = StudySession::new();
+    session.add_failed_card(42);
+
+    session.increment_counter();
+    session.increment_counter();
+    session.increment_counter();
+
+    let _ = session.pop_reinforcement();
+
+    assert_eq!(session.cards_since_reinforce, 0);
+  }
+
+  #[test]
+  fn test_pop_reinforcement_fifo_order() {
+    let mut session = StudySession::new();
+    session.add_failed_card(1);
+    session.add_failed_card(2);
+    session.add_failed_card(3);
+
+    // Get to 3 cards first
+    session.increment_counter();
+    session.increment_counter();
+    session.increment_counter();
+
+    // Should return in FIFO order
+    assert_eq!(session.pop_reinforcement(), Some(1));
+
+    // Need to wait for 3 more cards
+    session.increment_counter();
+    session.increment_counter();
+    session.increment_counter();
+    assert_eq!(session.pop_reinforcement(), Some(2));
+  }
+
+  // Weight calculation tests
+
+  #[test]
+  fn test_weight_perfect_success_rate() {
+    let weight = calculate_card_weight(10, 10, &[]);
+    // 100% success rate: weight = 1.0 * (2.0 - 1.0) = 1.0
+    // Plus review count factor (>=5 reviews = no boost)
+    // Plus no recent reviews boost: 1.5x
+    assert!(weight >= 1.0 && weight < 2.0);
+  }
+
+  #[test]
+  fn test_weight_zero_success_rate() {
+    let weight = calculate_card_weight(10, 0, &[]);
+    // 0% success rate: factor = 2.0 - 0.0 = 2.0
+    // This gives higher weight than perfect success
+    assert!(weight >= 2.0);
+  }
+
+  #[test]
+  fn test_weight_recent_failure_boost() {
+    let recent_fail = RecentReview {
+      reviewed_at: Utc::now() - Duration::minutes(2),
+      is_correct: false,
+    };
+    let weight = calculate_card_weight(5, 4, &[recent_fail]);
+
+    // Recent failure (< 5 min) gives 10x multiplier
+    assert!(weight >= 10.0);
+  }
+
+  #[test]
+  fn test_weight_30min_failure_boost() {
+    let recent_fail = RecentReview {
+      reviewed_at: Utc::now() - Duration::minutes(15),
+      is_correct: false,
+    };
+    let weight = calculate_card_weight(5, 4, &[recent_fail]);
+
+    // 15 min ago failure gives 3x multiplier
+    assert!(weight >= 3.0);
+  }
+
+  #[test]
+  fn test_weight_hour_failure_boost() {
+    let recent_fail = RecentReview {
+      reviewed_at: Utc::now() - Duration::minutes(45),
+      is_correct: false,
+    };
+    let weight = calculate_card_weight(5, 4, &[recent_fail]);
+
+    // 45 min ago failure gives 1.5x multiplier
+    assert!(weight >= 1.5);
+  }
+
+  #[test]
+  fn test_weight_barely_reviewed_boost() {
+    // Card with 1 review
+    let weight1 = calculate_card_weight(1, 1, &[]);
+    // Card with 10 reviews
+    let weight10 = calculate_card_weight(10, 10, &[]);
+
+    // Barely reviewed cards should have higher weight
+    assert!(weight1 > weight10);
+  }
+
+  #[test]
+  fn test_weight_time_since_last_review() {
+    let recent = RecentReview {
+      reviewed_at: Utc::now() - Duration::hours(1),
+      is_correct: true,
+    };
+    let old = RecentReview {
+      reviewed_at: Utc::now() - Duration::hours(10),
+      is_correct: true,
+    };
+
+    let weight_recent = calculate_card_weight(5, 5, &[recent]);
+    let weight_old = calculate_card_weight(5, 5, &[old]);
+
+    // Older last review should have higher weight
+    assert!(weight_old > weight_recent);
+  }
+
+  // CardWeight struct tests
+
+  #[test]
+  fn test_card_weight_struct() {
+    let cw = CardWeight {
+      card_id: 42,
+      weight: 2.5,
+    };
+    assert_eq!(cw.card_id, 42);
+    assert!((cw.weight - 2.5).abs() < f64::EPSILON);
+  }
+
+  // Weighted selection tests
+
+  #[test]
+  fn test_weighted_select_single_card() {
+    let weights = vec![CardWeight { card_id: 42, weight: 1.0 }];
+    let result = weighted_random_select(&weights, None);
+    assert_eq!(result, Some(42));
+  }
+
+  #[test]
+  fn test_weighted_select_excludes_card() {
+    let weights = vec![
+      CardWeight { card_id: 1, weight: 1.0 },
+      CardWeight { card_id: 2, weight: 1.0 },
+    ];
+    // Always select when excluding the other option
+    let result = weighted_random_select(&weights, Some(1));
+    assert_eq!(result, Some(2));
+  }
+
+  #[test]
+  fn test_weighted_select_empty() {
+    let weights: Vec<CardWeight> = vec![];
+    let result = weighted_random_select(&weights, None);
+    assert_eq!(result, None);
+  }
+
+  #[test]
+  fn test_weighted_select_all_excluded() {
+    let weights = vec![CardWeight { card_id: 42, weight: 1.0 }];
+    let result = weighted_random_select(&weights, Some(42));
+    assert_eq!(result, None);
+  }
 }

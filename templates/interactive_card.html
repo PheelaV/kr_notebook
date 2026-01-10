@@ -1,4 +1,4 @@
-<div id="card-container" class="text-center">
+<div id="card-container" data-testid="card-container" class="text-center">
   <div class="mb-2 flex items-center justify-center gap-2">
     <span class="text-sm text-gray-500 dark:text-gray-400">Tier {{ tier }}</span>
   </div>
@@ -10,12 +10,12 @@
     <div class="text-base sm:text-lg text-gray-500 dark:text-gray-400 mb-2">
       {% if is_vocabulary %}Which matches{% else %}Which letter sounds like{% endif %}
     </div>
-    <div class="text-5xl sm:text-7xl font-bold text-gray-900 dark:text-white mb-4">
+    <div data-testid="card-front" class="text-5xl sm:text-7xl font-bold text-gray-900 dark:text-white mb-4">
       {{ front }}
     </div>
     {% else %}
     <!-- Forward card: Korean -> romanization -->
-    <div class="text-5xl sm:text-7xl font-bold text-gray-900 dark:text-white mb-4">
+    <div data-testid="card-front" class="text-5xl sm:text-7xl font-bold text-gray-900 dark:text-white mb-4">
       {{ front }}
     </div>
     {% endif %}
@@ -39,7 +39,7 @@
 
         {% include "partials/multiple_choice_grid.html" %}
 
-        <button type="submit" id="submit-btn" disabled
+        <button type="submit" id="submit-btn" data-testid="submit-answer" disabled
                 class="w-full bg-indigo-500 hover:bg-indigo-600 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-semibold py-3 px-4 rounded-lg transition-colors">
           Check <span class="text-xs opacity-75">(Enter)</span>
         </button>
@@ -60,6 +60,7 @@
           <input type="text"
                  name="answer"
                  id="answer-input"
+                 data-testid="answer-input"
                  placeholder="Type your answer..."
                  autocomplete="off"
                  autofocus
@@ -70,10 +71,12 @@
         <!-- Study mode: Check and Hint buttons -->
         <div class="grid grid-cols-2 gap-3 mb-4">
           <button type="submit"
+                  data-testid="submit-answer"
                   class="w-full bg-indigo-500 hover:bg-indigo-600 text-white font-semibold py-3 px-4 rounded-lg transition-colors">
             Check
           </button>
           <button type="button" id="hint-btn"
+                  data-testid="hint-button"
                   onclick="CardInteractions.showHint()"
                   class="w-full bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 font-semibold py-3 px-4 rounded-lg transition-colors">
             Hint <span class="text-xs opacity-75">(H)</span>
@@ -82,6 +85,7 @@
         {% else %}
         <!-- Practice mode: Just Check button -->
         <button type="submit"
+                data-testid="submit-answer"
                 class="w-full bg-indigo-500 hover:bg-indigo-600 text-white font-semibold py-3 px-4 rounded-lg transition-colors">
           Check
         </button>
@@ -90,7 +94,7 @@
 
       {% if is_tracked %}
       <!-- Hint Display Area (study mode only) -->
-      <div id="hint-area" class="hidden">
+      <div id="hint-area" data-testid="hint-area" class="hidden">
         <div class="p-3 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700 rounded-lg text-amber-800 dark:text-amber-200">
           <span id="hint-text"></span>
         </div>
@@ -107,7 +111,7 @@
 
     {% if validated %}
     <!-- Result Phase -->
-    <div id="result-phase">
+    <div id="result-phase" data-testid="result-phase">
       {% include "partials/card_result.html" %}
 
       {% if is_tracked %}
@@ -116,6 +120,7 @@
         <input type="hidden" name="card_id" value="{{ card_id }}">
         <input type="hidden" name="session_id" value="{{ session_id }}">
         <button type="submit"
+                data-testid="next-card"
                 class="w-full bg-indigo-500 hover:bg-indigo-600 text-white font-semibold py-3 px-6 rounded-lg transition-colors text-lg">
           Next Card <span class="text-sm opacity-75">(Enter)</span>
         </button>

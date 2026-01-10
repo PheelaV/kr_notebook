@@ -9,7 +9,7 @@ use chrono::Utc;
 use rusqlite::{params, Connection};
 use serde::Deserialize;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::domain::CardType;
 
@@ -59,7 +59,7 @@ pub fn load_cards_from_pack(pack_dir: &Path, cards_file: &str) -> Result<Vec<Car
 /// Looks for the baseline pack at `data/content/packs/baseline/cards.json`.
 /// Returns None if the pack doesn't exist (fallback to hardcoded data).
 pub fn load_baseline_cards() -> Option<Vec<CardDefinition>> {
-    let baseline_dir = Path::new(crate::paths::SHARED_PACKS_DIR).join("baseline");
+    let baseline_dir = PathBuf::from(crate::paths::shared_packs_dir()).join("baseline");
 
     match load_cards_from_pack(&baseline_dir, "cards.json") {
         Ok(cards) => {
@@ -309,8 +309,9 @@ pub fn get_enabled_packs_info(user_conn: &Connection) -> Vec<EnabledPackInfo> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::packs::PackScope;
+    use super::*;
+    use crate::testing::TestEnv;
     use std::fs;
     use tempfile::TempDir;
 
@@ -355,69 +356,14 @@ mod tests {
         assert!(matches!(result, Err(CardLoadError::FileNotFound(_))));
     }
 
-    fn create_test_db() -> (TempDir, Connection, Connection) {
-        let temp = TempDir::new().unwrap();
-
-        // Create app.db with content_packs and card_definitions tables
-        let app_db_path = temp.path().join("app.db");
-        let app_conn = Connection::open(&app_db_path).unwrap();
-        app_conn
-            .execute_batch(
-                r#"
-                CREATE TABLE content_packs (
-                    id TEXT PRIMARY KEY,
-                    name TEXT NOT NULL,
-                    version TEXT NOT NULL,
-                    description TEXT,
-                    pack_type TEXT NOT NULL,
-                    scope TEXT NOT NULL,
-                    source_path TEXT NOT NULL,
-                    installed_at TEXT NOT NULL
-                );
-                CREATE TABLE card_definitions (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    front TEXT NOT NULL,
-                    main_answer TEXT NOT NULL,
-                    description TEXT,
-                    card_type TEXT NOT NULL,
-                    tier INTEGER NOT NULL,
-                    audio_hint TEXT,
-                    is_reverse INTEGER NOT NULL DEFAULT 0,
-                    pack_id TEXT,
-                    lesson INTEGER,
-                    FOREIGN KEY (pack_id) REFERENCES content_packs(id)
-                );
-            "#,
-            )
-            .unwrap();
-
-        // Create user learning.db with enabled_packs table
-        let user_db_path = temp.path().join("learning.db");
-        let user_conn = Connection::open(&user_db_path).unwrap();
-        user_conn
-            .execute_batch(
-                r#"
-                CREATE TABLE enabled_packs (
-                    pack_id TEXT PRIMARY KEY,
-                    enabled_at TEXT NOT NULL,
-                    cards_created INTEGER DEFAULT 0,
-                    config TEXT
-                );
-            "#,
-            )
-            .unwrap();
-
-        (temp, app_conn, user_conn)
-    }
-
     fn create_test_pack(dir: &Path, cards_json: &str) {
         fs::write(dir.join("cards.json"), cards_json).unwrap();
     }
 
     #[test]
     fn test_enable_card_pack() {
-        let (temp, app_conn, user_conn) = create_test_db();
-        let pack_dir = temp.path().join("test-pack");
+        let env = TestEnv::new().unwrap();
+        let pack_dir = env.path().join("test-pack");
         fs::create_dir(&pack_dir).unwrap();
 
         let cards_json = r#"{
@@ -428,25 +374,37 @@ mod tests {
         }"#;
         create_test_pack(&pack_dir, cards_json);
 
-        let result = enable_card_pack(&app_conn, &user_conn, "test-pack", "Test Pack", "1.0.0", None, &PackScope::Global, &pack_dir, "cards.json").unwrap();
+        let result = enable_card_pack(
+            &env.app_conn,
+            &env.user_conn,
+            "test-pack",
+            "Test Pack",
+            "1.0.0",
+            None,
+            &PackScope::Global,
+            &pack_dir,
+            "cards.json",
+        )
+        .unwrap();
 
         assert_eq!(result.cards_inserted, 2);
         assert_eq!(result.cards_skipped, 0);
 
         // Check cards were inserted
-        let count: i64 = app_conn
+        let count: i64 = env
+            .app_conn
             .query_row("SELECT COUNT(*) FROM card_definitions", [], |row| row.get(0))
             .unwrap();
         assert_eq!(count, 2);
 
         // Check pack is recorded as enabled
-        assert!(is_pack_enabled(&user_conn, "test-pack"));
+        assert!(is_pack_enabled(&env.user_conn, "test-pack"));
     }
 
     #[test]
     fn test_enable_card_pack_skips_duplicates() {
-        let (temp, app_conn, user_conn) = create_test_db();
-        let pack_dir = temp.path().join("test-pack");
+        let env = TestEnv::new().unwrap();
+        let pack_dir = env.path().join("test-pack");
         fs::create_dir(&pack_dir).unwrap();
 
         let cards_json = r#"{
@@ -457,16 +415,39 @@ mod tests {
         create_test_pack(&pack_dir, cards_json);
 
         // First enable
-        let result1 = enable_card_pack(&app_conn, &user_conn, "test-pack", "Test Pack", "1.0.0", None, &PackScope::Global, &pack_dir, "cards.json").unwrap();
+        let result1 = enable_card_pack(
+            &env.app_conn,
+            &env.user_conn,
+            "test-pack",
+            "Test Pack",
+            "1.0.0",
+            None,
+            &PackScope::Global,
+            &pack_dir,
+            "cards.json",
+        )
+        .unwrap();
         assert_eq!(result1.cards_inserted, 1);
 
         // Second enable should skip
-        let result2 = enable_card_pack(&app_conn, &user_conn, "test-pack", "Test Pack", "1.0.0", None, &PackScope::Global, &pack_dir, "cards.json").unwrap();
+        let result2 = enable_card_pack(
+            &env.app_conn,
+            &env.user_conn,
+            "test-pack",
+            "Test Pack",
+            "1.0.0",
+            None,
+            &PackScope::Global,
+            &pack_dir,
+            "cards.json",
+        )
+        .unwrap();
         assert_eq!(result2.cards_inserted, 0);
         assert_eq!(result2.cards_skipped, 1);
 
         // Should still only have 1 card
-        let count: i64 = app_conn
+        let count: i64 = env
+            .app_conn
             .query_row("SELECT COUNT(*) FROM card_definitions", [], |row| row.get(0))
             .unwrap();
         assert_eq!(count, 1);
@@ -474,23 +455,35 @@ mod tests {
 
     #[test]
     fn test_disable_pack() {
-        let (temp, app_conn, user_conn) = create_test_db();
-        let pack_dir = temp.path().join("test-pack");
+        let env = TestEnv::new().unwrap();
+        let pack_dir = env.path().join("test-pack");
         fs::create_dir(&pack_dir).unwrap();
 
         let cards_json = r#"{"cards": [{"front": "A", "main_answer": "a", "card_type": "Vowel", "tier": 1, "is_reverse": false}]}"#;
         create_test_pack(&pack_dir, cards_json);
 
         // Enable then disable
-        enable_card_pack(&app_conn, &user_conn, "test-pack", "Test Pack", "1.0.0", None, &PackScope::Global, &pack_dir, "cards.json").unwrap();
-        assert!(is_pack_enabled(&user_conn, "test-pack"));
+        enable_card_pack(
+            &env.app_conn,
+            &env.user_conn,
+            "test-pack",
+            "Test Pack",
+            "1.0.0",
+            None,
+            &PackScope::Global,
+            &pack_dir,
+            "cards.json",
+        )
+        .unwrap();
+        assert!(is_pack_enabled(&env.user_conn, "test-pack"));
 
-        let deleted = disable_pack(&user_conn, "test-pack").unwrap();
+        let deleted = disable_pack(&env.user_conn, "test-pack").unwrap();
         assert!(deleted);
-        assert!(!is_pack_enabled(&user_conn, "test-pack"));
+        assert!(!is_pack_enabled(&env.user_conn, "test-pack"));
 
         // Cards should still exist in app.db
-        let count: i64 = app_conn
+        let count: i64 = env
+            .app_conn
             .query_row("SELECT COUNT(*) FROM card_definitions", [], |row| row.get(0))
             .unwrap();
         assert_eq!(count, 1);
@@ -498,21 +491,32 @@ mod tests {
 
     #[test]
     fn test_list_enabled_packs() {
-        let (temp, app_conn, user_conn) = create_test_db();
+        let env = TestEnv::new().unwrap();
 
         // Create and enable two packs
         for i in 1..=2 {
-            let pack_dir = temp.path().join(format!("pack{}", i));
+            let pack_dir = env.path().join(format!("pack{}", i));
             fs::create_dir(&pack_dir).unwrap();
             let cards_json = format!(
                 r#"{{"cards": [{{"front": "{}", "main_answer": "x", "card_type": "Vowel", "tier": 1, "is_reverse": false}}]}}"#,
                 i
             );
             create_test_pack(&pack_dir, &cards_json);
-            enable_card_pack(&app_conn, &user_conn, &format!("pack{}", i), &format!("Pack {}", i), "1.0.0", None, &PackScope::Global, &pack_dir, "cards.json").unwrap();
+            enable_card_pack(
+                &env.app_conn,
+                &env.user_conn,
+                &format!("pack{}", i),
+                &format!("Pack {}", i),
+                "1.0.0",
+                None,
+                &PackScope::Global,
+                &pack_dir,
+                "cards.json",
+            )
+            .unwrap();
         }
 
-        let enabled = list_enabled_packs(&user_conn);
+        let enabled = list_enabled_packs(&env.user_conn);
         assert_eq!(enabled.len(), 2);
         assert!(enabled.contains(&"pack1".to_string()));
         assert!(enabled.contains(&"pack2".to_string()));
@@ -520,16 +524,27 @@ mod tests {
 
     #[test]
     fn test_get_enabled_packs_info() {
-        let (temp, app_conn, user_conn) = create_test_db();
-        let pack_dir = temp.path().join("test-pack");
+        let env = TestEnv::new().unwrap();
+        let pack_dir = env.path().join("test-pack");
         fs::create_dir(&pack_dir).unwrap();
 
         let cards_json = r#"{"cards": [{"front": "A", "main_answer": "a", "card_type": "Vowel", "tier": 1, "is_reverse": false}]}"#;
         create_test_pack(&pack_dir, cards_json);
 
-        enable_card_pack(&app_conn, &user_conn, "test-pack", "Test Pack", "1.0.0", None, &PackScope::Global, &pack_dir, "cards.json").unwrap();
+        enable_card_pack(
+            &env.app_conn,
+            &env.user_conn,
+            "test-pack",
+            "Test Pack",
+            "1.0.0",
+            None,
+            &PackScope::Global,
+            &pack_dir,
+            "cards.json",
+        )
+        .unwrap();
 
-        let info = get_enabled_packs_info(&user_conn);
+        let info = get_enabled_packs_info(&env.user_conn);
         assert_eq!(info.len(), 1);
         assert_eq!(info[0].pack_id, "test-pack");
         assert!(info[0].cards_created);
@@ -571,8 +586,8 @@ mod tests {
 
     #[test]
     fn test_enable_card_pack_with_lessons() {
-        let (temp, app_conn, user_conn) = create_test_db();
-        let pack_dir = temp.path().join("vocab-pack");
+        let env = TestEnv::new().unwrap();
+        let pack_dir = env.path().join("vocab-pack");
         fs::create_dir(&pack_dir).unwrap();
 
         let cards_json = r#"{
@@ -583,15 +598,36 @@ mod tests {
         }"#;
         create_test_pack(&pack_dir, cards_json);
 
-        let result = enable_card_pack(&app_conn, &user_conn, "vocab-pack", "Vocab Pack", "1.0.0", None, &PackScope::Global, &pack_dir, "cards.json").unwrap();
+        let result = enable_card_pack(
+            &env.app_conn,
+            &env.user_conn,
+            "vocab-pack",
+            "Vocab Pack",
+            "1.0.0",
+            None,
+            &PackScope::Global,
+            &pack_dir,
+            "cards.json",
+        )
+        .unwrap();
         assert_eq!(result.cards_inserted, 2);
 
         // Verify lessons are stored
-        let lesson1_count: i64 = app_conn
-            .query_row("SELECT COUNT(*) FROM card_definitions WHERE lesson = 1", [], |row| row.get(0))
+        let lesson1_count: i64 = env
+            .app_conn
+            .query_row(
+                "SELECT COUNT(*) FROM card_definitions WHERE lesson = 1",
+                [],
+                |row| row.get(0),
+            )
             .unwrap();
-        let lesson2_count: i64 = app_conn
-            .query_row("SELECT COUNT(*) FROM card_definitions WHERE lesson = 2", [], |row| row.get(0))
+        let lesson2_count: i64 = env
+            .app_conn
+            .query_row(
+                "SELECT COUNT(*) FROM card_definitions WHERE lesson = 2",
+                [],
+                |row| row.get(0),
+            )
             .unwrap();
         assert_eq!(lesson1_count, 1);
         assert_eq!(lesson2_count, 1);

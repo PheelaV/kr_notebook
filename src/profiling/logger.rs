@@ -163,6 +163,7 @@ mod tests {
         let event = ProfileEvent::new(EventType::HandlerStart {
             route: "/study".into(),
             method: "GET".into(),
+            username: Some("test_user".into()),
         });
         let json = serde_json::to_string(&event).unwrap();
         assert!(json.contains("handler_start"));

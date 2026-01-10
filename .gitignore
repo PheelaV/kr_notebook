@@ -53,5 +53,23 @@ static/*
 # Logs
 *.log
 
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Python virtual environments
+.venv/
+venv/
+
+# Node.js dependencies
+node_modules/
+
+# Playwright test artifacts
+playwright-report/
+test-results/
+.playwright/
+
 # Claude Code settings
 .claude/

@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex};
 
 use super::db as auth_db;
 use crate::db::run_migrations_with_app_db;
-use crate::paths::AUTH_DB_PATH;
+use crate::paths;
 use crate::state::AppState;
 use std::path::Path;
 
@@ -72,7 +72,8 @@ impl FromRequestParts<AppState> for AuthContext {
 
         // Ensure schema is up to date (adds new columns if missing)
         // Pass app.db path for legacy cards → card_progress migration
-        let app_db_path = Path::new(AUTH_DB_PATH);
+        let app_db_path_str = paths::auth_db_path();
+        let app_db_path = Path::new(&app_db_path_str);
         run_migrations_with_app_db(&conn, Some(app_db_path)).map_err(|_| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -83,7 +84,7 @@ impl FromRequestParts<AppState> for AuthContext {
 
         // Attach app.db for cross-database queries (card_definitions)
         conn.execute(
-            &format!("ATTACH DATABASE '{}' AS app", AUTH_DB_PATH),
+            &format!("ATTACH DATABASE '{}' AS app", app_db_path_str),
             [],
         )
         .map_err(|_| {
@@ -114,6 +115,56 @@ impl FromRequestParts<AppState> for AuthContext {
             is_admin,
             user_db: Arc::new(Mutex::new(conn)),
             has_vocab_access,
+        })
+    }
+}
+
+/// Admin-only authentication extractor.
+/// Requires the user to be authenticated AND have admin privileges.
+/// Returns 403 Forbidden if user is not admin (checked BEFORE any other extractors).
+/// This ensures admin checks happen before form parsing to avoid information leakage.
+#[derive(Clone)]
+pub struct AdminContext {
+    pub user_id: i64,
+    pub username: String,
+    pub user_db: Arc<Mutex<Connection>>,
+    pub has_vocab_access: bool,
+}
+
+impl AdminContext {
+    /// Convert to regular AuthContext (is_admin is always true)
+    pub fn into_auth_context(self) -> AuthContext {
+        AuthContext {
+            user_id: self.user_id,
+            username: self.username,
+            is_admin: true,
+            user_db: self.user_db,
+            has_vocab_access: self.has_vocab_access,
+        }
+    }
+}
+
+impl FromRequestParts<AppState> for AdminContext {
+    type Rejection = Response;
+
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &AppState,
+    ) -> Result<Self, Self::Rejection> {
+        // First, get the auth context (validates session)
+        let auth = AuthContext::from_request_parts(parts, state).await?;
+
+        // Check admin status BEFORE any form parsing
+        if !auth.is_admin {
+            // Return 403 Forbidden for non-admin users
+            return Err((StatusCode::FORBIDDEN, "Admin access required").into_response());
+        }
+
+        Ok(AdminContext {
+            user_id: auth.user_id,
+            username: auth.username,
+            user_db: auth.user_db,
+            has_vocab_access: auth.has_vocab_access,
         })
     }
 }

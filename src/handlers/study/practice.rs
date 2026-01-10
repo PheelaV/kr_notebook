@@ -180,7 +180,7 @@ pub async fn practice_next(
   let filter = parse_filter_mode(&current_filter);
 
   // Get next random card, excluding sibling of the just-practiced card
-  let cards = db::get_practice_cards_filtered(&conn, &app_conn, auth.user_id, 1, Some(form.card_id), &filter)
+  let cards = db::get_practice_cards_filtered(&conn, &app_conn, auth.user_id, 1, form.card_id, &filter)
     .log_warn_default("Failed to get practice cards");
 
   if let Some(next_card) = cards.first() {

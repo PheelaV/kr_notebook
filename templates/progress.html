@@ -54,7 +54,7 @@
     </h2>
     {% if can_unlock_next %}
     <form action="/unlock-tier" method="post">
-      <button type="submit" class="bg-green-500 hover:bg-green-600 text-white font-semibold py-2 px-4 rounded-lg transition-colors text-sm">
+      <button type="submit" data-testid="unlock-tier-btn" class="bg-green-500 hover:bg-green-600 text-white font-semibold py-2 px-4 rounded-lg transition-colors text-sm">
         Unlock Tier {{ max_unlocked_tier + 1 }}
       </button>
     </form>
