@@ -1,0 +1,77 @@
+import { test, expect } from '../fixtures/auth';
+
+test.describe('Registration', () => {
+  test('should display registration form', async ({ page }) => {
+    await page.goto('/register');
+
+    await expect(page.locator('[data-testid="register-username"]')).toBeVisible();
+    await expect(page.locator('[data-testid="register-password"]')).toBeVisible();
+    await expect(page.locator('[data-testid="register-confirm"]')).toBeVisible();
+    await expect(page.locator('[data-testid="register-submit"]')).toBeVisible();
+  });
+
+  test('should have link to login page', async ({ page }) => {
+    await page.goto('/register');
+
+    await expect(page.locator('a[href="/login"]')).toBeVisible();
+  });
+
+  test('should show error for duplicate username', async ({ page, testUser }) => {
+    // testUser is already created by the fixture
+    await page.goto('/register');
+
+    // Try to register with the same username
+    await page.fill('[data-testid="register-username"]', testUser.username);
+    await page.fill('[data-testid="register-password"]', 'newpassword123');
+    await page.fill('[data-testid="register-confirm"]', 'newpassword123');
+    await page.click('[data-testid="register-submit"]');
+
+    // Should show error message
+    await expect(page.locator('[data-testid="register-error"]')).toBeVisible();
+    // Should stay on register page
+    await expect(page).toHaveURL(/\/register/);
+  });
+
+  test('should redirect to home after successful registration', async ({ page }) => {
+    const uniqueUsername = `_test_reg_${Date.now()}`;
+
+    await page.goto('/register');
+    await page.fill('[data-testid="register-username"]', uniqueUsername);
+    await page.fill('[data-testid="register-password"]', 'testpass123');
+    await page.fill('[data-testid="register-confirm"]', 'testpass123');
+
+    await Promise.all([
+      page.waitForURL('/'),
+      page.click('[data-testid="register-submit"]'),
+    ]);
+
+    // Should be on home page
+    await expect(page).toHaveURL('/');
+  });
+
+  test('should show validation error for short username', async ({ page }) => {
+    await page.goto('/register');
+
+    // Try with a 2-character username (too short)
+    await page.fill('[data-testid="register-username"]', 'ab');
+    await page.fill('[data-testid="register-password"]', 'testpass123');
+    await page.fill('[data-testid="register-confirm"]', 'testpass123');
+    await page.click('[data-testid="register-submit"]');
+
+    // Browser validation should prevent submission (pattern requires 3-32 chars)
+    // The form won't submit so we should still be on register page
+    await expect(page).toHaveURL(/\/register/);
+  });
+
+  test('should require password confirmation to match', async ({ page }) => {
+    await page.goto('/register');
+
+    await page.fill('[data-testid="register-username"]', `_test_mismatch_${Date.now()}`);
+    await page.fill('[data-testid="register-password"]', 'password123');
+    await page.fill('[data-testid="register-confirm"]', 'differentpassword');
+    await page.click('[data-testid="register-submit"]');
+
+    // Should show error or stay on page (password mismatch is client-side validated)
+    await expect(page).toHaveURL(/\/register/);
+  });
+});

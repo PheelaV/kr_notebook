@@ -17,13 +17,13 @@
   <div id="notifications" class="mb-4"></div>
 
   <!-- Dark Mode - uses localStorage (client-side) -->
-  <section id="appearance" class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6 scroll-mt-16">
+  <section id="appearance" data-testid="appearance-section" class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6 scroll-mt-16">
     <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">
       Appearance
     </h2>
 
     <label class="flex items-center cursor-pointer">
-      <input type="checkbox" id="darkModeToggle"
+      <input type="checkbox" id="darkModeToggle" data-testid="dark-mode-toggle"
              onclick="toggleDarkMode(); this.checked = isDarkMode();"
              class="w-5 h-5 text-indigo-600 rounded focus:ring-indigo-500 dark:focus:ring-indigo-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600">
       <span class="ml-3 text-gray-900 dark:text-gray-100">Dark Mode</span>
@@ -34,7 +34,7 @@
   </section>
 
   <!-- Learning Settings -->
-  <form id="learning" method="POST" action="/settings" class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6 scroll-mt-16">
+  <form id="learning" data-testid="learning-section" method="POST" action="/settings" class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6 scroll-mt-16">
     <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">
       Learning
     </h2>
@@ -42,7 +42,7 @@
     <!-- Unlock All Tiers -->
     <div class="mb-6">
       <label class="flex items-center cursor-pointer">
-        <input type="checkbox" name="all_tiers_unlocked" value="true" id="allTiersToggle"
+        <input type="checkbox" name="all_tiers_unlocked" value="true" id="allTiersToggle" data-testid="all-tiers-toggle"
                {% if all_tiers_unlocked %}checked{% endif %}
                onchange="toggleTierOptions()"
                class="w-5 h-5 text-indigo-600 rounded focus:ring-indigo-500 dark:focus:ring-indigo-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600">
@@ -161,7 +161,7 @@
       </div>
     </div>
 
-    <button type="submit"
+    <button type="submit" data-testid="settings-submit"
             class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800">
       Save Settings
     </button>
@@ -226,7 +226,7 @@
   </section>
 
   <!-- Data Management -->
-  <section id="data" class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6 scroll-mt-16">
+  <section id="data" data-testid="data-section" class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6 scroll-mt-16">
     <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">
       Data Management
     </h2>
@@ -234,7 +234,7 @@
     <div class="space-y-4">
       <!-- Export -->
       <div>
-        <a href="/settings/export"
+        <a href="/settings/export" data-testid="export-btn"
            class="inline-flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 focus:ring-2 focus:ring-green-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800">
           <iconify-icon icon="heroicons:arrow-down-tray" class="mr-2" width="16" height="16"></iconify-icon>
           Export Data
@@ -248,7 +248,7 @@
       <div>
         <form method="POST" action="/settings/import" enctype="multipart/form-data" class="space-y-2">
           <div class="flex items-center gap-3">
-            <label class="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 cursor-pointer focus-within:ring-2 focus-within:ring-blue-500 focus-within:ring-offset-2 dark:focus-within:ring-offset-gray-800">
+            <label data-testid="import-btn" class="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 cursor-pointer focus-within:ring-2 focus-within:ring-blue-500 focus-within:ring-offset-2 dark:focus-within:ring-offset-gray-800">
               <iconify-icon icon="heroicons:arrow-up-tray" class="mr-2" width="16" height="16"></iconify-icon>
               Import Data
               <input type="file" name="database" accept=".db" class="hidden" onchange="this.form.querySelector('[type=submit]').disabled=false; this.form.querySelector('.file-name').textContent = this.files[0]?.name || 'No file selected';">
@@ -269,7 +269,7 @@
 
   {% if is_admin %}
   <!-- User Management (Admin Only) -->
-  <section id="users" class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6 scroll-mt-16">
+  <section id="users" data-testid="user-management" class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6 scroll-mt-16">
     <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">
       User Management
       <span class="ml-2 text-xs font-normal text-gray-500 dark:text-gray-400">(admin only)</span>
@@ -294,7 +294,7 @@
   </section>
 
   <!-- User Groups (Admin Only) -->
-  <section id="groups" class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6 scroll-mt-16">
+  <section id="groups" data-testid="group-management" class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6 scroll-mt-16">
     <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">
       User Groups
       <span class="ml-2 text-xs font-normal text-gray-500 dark:text-gray-400">(admin only)</span>
@@ -333,7 +333,7 @@
   </section>
 
   <!-- Guest Management (Admin Only) -->
-  <section id="guests" class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6 scroll-mt-16">
+  <section id="guests" data-testid="guest-management" class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6 scroll-mt-16">
     <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">
       Guest Management
       <span class="ml-2 text-xs font-normal text-gray-500 dark:text-gray-400">(admin only)</span>
@@ -360,7 +360,7 @@
   </section>
 
   <!-- External Pack Paths (Admin Only) -->
-  <section id="pack-paths" class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6 scroll-mt-16">
+  <section id="pack-paths" data-testid="pack-paths-section" class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6 scroll-mt-16">
     <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">
       External Pack Paths
       <span class="ml-2 text-xs font-normal text-gray-500 dark:text-gray-400">(admin only)</span>

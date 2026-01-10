@@ -1443,3 +1443,316 @@ def list_test_envs() -> None:
         user_count = len(list(users_dir.glob("*"))) if users_dir.exists() else 0
 
         click.echo(f"  {name:20} v{version}  {cards:3} cards  {user_count:3} users  [{status}]")
+
+
+# =============================================================================
+# User Role Management
+# =============================================================================
+
+
+@cli.command("set-role")
+@click.argument("username")
+@click.argument("role", type=click.Choice(["user", "admin"]))
+@click.option(
+    "--data-dir",
+    "-d",
+    type=click.Path(),
+    default=None,
+    help="Data directory (for test environments).",
+)
+def set_role(username: str, role: str, data_dir: str | None) -> None:
+    """Set a user's role (user or admin).
+
+    Example:
+        db-manager set-role alice admin
+        db-manager set-role bob user --data-dir data/test/e2e
+    """
+    app_db = get_app_db_path(Path(data_dir) if data_dir else None)
+
+    if not app_db.exists():
+        raise click.ClickException(f"Auth database not found: {app_db}")
+
+    if not user_exists_in_env(username, Path(data_dir) if data_dir else None):
+        raise click.ClickException(f"User not found: {username}")
+
+    conn = sqlite3.connect(app_db)
+    try:
+        conn.execute(
+            "UPDATE users SET role = ? WHERE username = ?",
+            (role, username),
+        )
+        conn.commit()
+        click.echo(f"Set {username} role to {role}")
+    finally:
+        conn.close()
+
+
+# =============================================================================
+# Group Management
+# =============================================================================
+
+
+@cli.command("create-group")
+@click.argument("group_id")
+@click.argument("name")
+@click.option(
+    "--description",
+    "-desc",
+    type=str,
+    default=None,
+    help="Optional group description.",
+)
+@click.option(
+    "--data-dir",
+    "-d",
+    type=click.Path(),
+    default=None,
+    help="Data directory (for test environments).",
+)
+def create_group(group_id: str, name: str, description: str | None, data_dir: str | None) -> None:
+    """Create a new user group.
+
+    Example:
+        db-manager create-group premium "Premium Users"
+        db-manager create-group beta "Beta Testers" --description "Early access group"
+    """
+    app_db = get_app_db_path(Path(data_dir) if data_dir else None)
+
+    if not app_db.exists():
+        raise click.ClickException(f"Auth database not found: {app_db}")
+
+    conn = sqlite3.connect(app_db)
+    try:
+        # Check if group already exists
+        existing = conn.execute(
+            "SELECT id FROM groups WHERE id = ?", (group_id,)
+        ).fetchone()
+        if existing:
+            raise click.ClickException(f"Group already exists: {group_id}")
+
+        conn.execute(
+            "INSERT INTO groups (id, name, description) VALUES (?, ?, ?)",
+            (group_id, name, description),
+        )
+        conn.commit()
+        click.echo(f"Created group: {group_id} ({name})")
+    finally:
+        conn.close()
+
+
+@cli.command("delete-group")
+@click.argument("group_id")
+@click.option(
+    "--yes",
+    "-y",
+    is_flag=True,
+    help="Skip confirmation prompt.",
+)
+@click.option(
+    "--data-dir",
+    "-d",
+    type=click.Path(),
+    default=None,
+    help="Data directory (for test environments).",
+)
+def delete_group(group_id: str, yes: bool, data_dir: str | None) -> None:
+    """Delete a user group and all memberships.
+
+    Example:
+        db-manager delete-group beta
+        db-manager delete-group old-group --yes
+    """
+    app_db = get_app_db_path(Path(data_dir) if data_dir else None)
+
+    if not app_db.exists():
+        raise click.ClickException(f"Auth database not found: {app_db}")
+
+    conn = sqlite3.connect(app_db)
+    try:
+        # Check if group exists
+        existing = conn.execute(
+            "SELECT name FROM groups WHERE id = ?", (group_id,)
+        ).fetchone()
+        if not existing:
+            raise click.ClickException(f"Group not found: {group_id}")
+
+        group_name = existing[0]
+
+        # Count members
+        member_count = conn.execute(
+            "SELECT COUNT(*) FROM group_members WHERE group_id = ?", (group_id,)
+        ).fetchone()[0]
+
+        if not yes:
+            click.confirm(
+                f"Delete group '{group_name}' ({group_id}) with {member_count} members?",
+                abort=True,
+            )
+
+        # Delete memberships first
+        conn.execute("DELETE FROM group_members WHERE group_id = ?", (group_id,))
+        # Delete pack permissions for this group
+        conn.execute("DELETE FROM pack_group_permissions WHERE group_id = ?", (group_id,))
+        # Delete the group
+        conn.execute("DELETE FROM groups WHERE id = ?", (group_id,))
+        conn.commit()
+
+        click.echo(f"Deleted group: {group_id}")
+    finally:
+        conn.close()
+
+
+@cli.command("add-to-group")
+@click.argument("username")
+@click.argument("group_id")
+@click.option(
+    "--data-dir",
+    "-d",
+    type=click.Path(),
+    default=None,
+    help="Data directory (for test environments).",
+)
+def add_to_group(username: str, group_id: str, data_dir: str | None) -> None:
+    """Add a user to a group.
+
+    Example:
+        db-manager add-to-group alice premium
+    """
+    app_db = get_app_db_path(Path(data_dir) if data_dir else None)
+
+    if not app_db.exists():
+        raise click.ClickException(f"Auth database not found: {app_db}")
+
+    conn = sqlite3.connect(app_db)
+    try:
+        # Get user ID
+        user = conn.execute(
+            "SELECT id FROM users WHERE username = ?", (username,)
+        ).fetchone()
+        if not user:
+            raise click.ClickException(f"User not found: {username}")
+        user_id = user[0]
+
+        # Check group exists
+        group = conn.execute(
+            "SELECT name FROM groups WHERE id = ?", (group_id,)
+        ).fetchone()
+        if not group:
+            raise click.ClickException(f"Group not found: {group_id}")
+
+        # Check if already a member
+        existing = conn.execute(
+            "SELECT 1 FROM group_members WHERE group_id = ? AND user_id = ?",
+            (group_id, user_id),
+        ).fetchone()
+        if existing:
+            click.echo(f"{username} is already a member of {group_id}")
+            return
+
+        conn.execute(
+            "INSERT INTO group_members (group_id, user_id) VALUES (?, ?)",
+            (group_id, user_id),
+        )
+        conn.commit()
+        click.echo(f"Added {username} to group {group_id}")
+    finally:
+        conn.close()
+
+
+@cli.command("remove-from-group")
+@click.argument("username")
+@click.argument("group_id")
+@click.option(
+    "--data-dir",
+    "-d",
+    type=click.Path(),
+    default=None,
+    help="Data directory (for test environments).",
+)
+def remove_from_group(username: str, group_id: str, data_dir: str | None) -> None:
+    """Remove a user from a group.
+
+    Example:
+        db-manager remove-from-group alice premium
+    """
+    app_db = get_app_db_path(Path(data_dir) if data_dir else None)
+
+    if not app_db.exists():
+        raise click.ClickException(f"Auth database not found: {app_db}")
+
+    conn = sqlite3.connect(app_db)
+    try:
+        # Get user ID
+        user = conn.execute(
+            "SELECT id FROM users WHERE username = ?", (username,)
+        ).fetchone()
+        if not user:
+            raise click.ClickException(f"User not found: {username}")
+        user_id = user[0]
+
+        # Check if member
+        existing = conn.execute(
+            "SELECT 1 FROM group_members WHERE group_id = ? AND user_id = ?",
+            (group_id, user_id),
+        ).fetchone()
+        if not existing:
+            click.echo(f"{username} is not a member of {group_id}")
+            return
+
+        conn.execute(
+            "DELETE FROM group_members WHERE group_id = ? AND user_id = ?",
+            (group_id, user_id),
+        )
+        conn.commit()
+        click.echo(f"Removed {username} from group {group_id}")
+    finally:
+        conn.close()
+
+
+@cli.command("list-groups")
+@click.option(
+    "--data-dir",
+    "-d",
+    type=click.Path(),
+    default=None,
+    help="Data directory (for test environments).",
+)
+def list_groups(data_dir: str | None) -> None:
+    """List all groups and their members.
+
+    Example:
+        db-manager list-groups
+    """
+    app_db = get_app_db_path(Path(data_dir) if data_dir else None)
+
+    if not app_db.exists():
+        raise click.ClickException(f"Auth database not found: {app_db}")
+
+    conn = sqlite3.connect(app_db)
+    try:
+        groups = conn.execute(
+            "SELECT id, name, description FROM groups ORDER BY id"
+        ).fetchall()
+
+        if not groups:
+            click.echo("No groups found.")
+            return
+
+        click.echo(click.style("=== Groups ===", bold=True))
+        for group_id, name, desc in groups:
+            # Get members
+            members = conn.execute(
+                """SELECT u.username FROM group_members gm
+                   JOIN users u ON gm.user_id = u.id
+                   WHERE gm.group_id = ?
+                   ORDER BY u.username""",
+                (group_id,),
+            ).fetchall()
+
+            member_str = ", ".join(m[0] for m in members) if members else "(empty)"
+            click.echo(f"\n{click.style(name, bold=True)} ({group_id})")
+            if desc:
+                click.echo(f"  {desc}")
+            click.echo(f"  Members: {member_str}")
+    finally:
+        conn.close()

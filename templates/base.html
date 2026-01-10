@@ -109,11 +109,11 @@
             <div class="h-5 w-px bg-gray-300 dark:bg-gray-600 mx-2"></div>
             <div class="flex items-center">
               <span id="nav-username" class="text-gray-500 dark:text-gray-400 text-sm px-3 py-2"></span>
-              <a href="/settings" class="inline-flex items-center text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 p-2 rounded-md" title="Settings">
+              <a href="/settings" data-testid="nav-settings" class="inline-flex items-center text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 p-2 rounded-md" title="Settings">
                 <iconify-icon icon="heroicons:cog-6-tooth" width="20" height="20"></iconify-icon>
               </a>
               <form action="/logout" method="POST" class="inline-flex items-center">
-                <button type="submit" class="inline-flex items-center text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 p-2 rounded-md" title="Logout">
+                <button type="submit" data-testid="logout-btn" class="inline-flex items-center text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 p-2 rounded-md" title="Logout">
                   <iconify-icon icon="heroicons:arrow-right-start-on-rectangle" width="20" height="20"></iconify-icon>
                 </button>
               </form>

@@ -60,6 +60,96 @@ export default defineConfig({
       },
     },
 
+    // ==================== Registration Tests ====================
+    // Tests for user registration flow
+    {
+      name: 'registration-tests',
+      testMatch: 'registration.spec.ts',
+      use: {
+        ...devices['Desktop Chrome'],
+        baseURL: 'http://localhost:3003',
+      },
+      metadata: {
+        dataDir: 'data/test/e2e-registration',
+        port: 3003,
+      },
+    },
+
+    // ==================== Admin Tests ====================
+    // Tests for admin access control and user role management
+    {
+      name: 'admin-tests',
+      testMatch: 'admin.spec.ts',
+      use: {
+        ...devices['Desktop Chrome'],
+        baseURL: 'http://localhost:3004',
+      },
+      metadata: {
+        dataDir: 'data/test/e2e-admin',
+        port: 3004,
+      },
+    },
+
+    // ==================== Groups Tests ====================
+    // Tests for group CRUD and membership
+    {
+      name: 'groups-tests',
+      testMatch: 'groups.spec.ts',
+      use: {
+        ...devices['Desktop Chrome'],
+        baseURL: 'http://localhost:3005',
+      },
+      metadata: {
+        dataDir: 'data/test/e2e-groups',
+        port: 3005,
+      },
+    },
+
+    // ==================== Pack Permissions Tests ====================
+    // Tests for pack visibility and permission management
+    {
+      name: 'pack-permissions-tests',
+      testMatch: 'pack-permissions.spec.ts',
+      use: {
+        ...devices['Desktop Chrome'],
+        baseURL: 'http://localhost:3006',
+      },
+      metadata: {
+        dataDir: 'data/test/e2e-packs',
+        port: 3006,
+      },
+    },
+
+    // ==================== Settings Tests ====================
+    // Tests for user settings and data management
+    {
+      name: 'settings-tests',
+      testMatch: 'settings.spec.ts',
+      use: {
+        ...devices['Desktop Chrome'],
+        baseURL: 'http://localhost:3007',
+      },
+      metadata: {
+        dataDir: 'data/test/e2e-settings',
+        port: 3007,
+      },
+    },
+
+    // ==================== Menu Visibility Tests ====================
+    // Tests for conditional menu visibility (admin vs regular user)
+    {
+      name: 'menu-visibility-tests',
+      testMatch: 'menu-visibility.spec.ts',
+      use: {
+        ...devices['Desktop Chrome'],
+        baseURL: 'http://localhost:3008',
+      },
+      metadata: {
+        dataDir: 'data/test/e2e-menu',
+        port: 3008,
+      },
+    },
+
     // ==================== Cross-Browser (Optional) ====================
     // Run the same tests on different browsers (shares server with auth-tests)
     // Uncomment to enable cross-browser testing

@@ -86,6 +86,23 @@ export function deleteTestUser(username: string, dataDir?: string): void {
   }
 }
 
+// Set user role via db-manager CLI (environment-aware)
+export function setUserRole(username: string, role: 'user' | 'admin', dataDir?: string): void {
+  const dataDirArg = dataDir ? ` --data-dir "${dataDir}"` : '';
+  const cmd = `uv run db-manager set-role ${username} ${role}${dataDirArg}`;
+
+  try {
+    execSync(cmd, {
+      cwd: PY_SCRIPTS_DIR,
+      stdio: 'pipe',
+    });
+  } catch (e) {
+    const error = e as { stderr?: Buffer };
+    const stderr = error.stderr?.toString() || '';
+    throw new Error(`Failed to set role for ${username}: ${stderr}`);
+  }
+}
+
 // Apply scenario preset via db-manager CLI (environment-aware)
 export function setupScenario(username: string, scenario: string, dataDir?: string): void {
   const dataDirArg = dataDir ? ` --data-dir "${dataDir}"` : '';
@@ -119,7 +136,9 @@ export async function login(page: Page, user: TestUser): Promise<void> {
 // Extended test fixture with authentication
 export const test = base.extend<{
   testUser: TestUser;
+  adminUser: TestUser;
   authenticatedPage: Page;
+  adminPage: Page;
   dataDir: string;
 }>({
   // Provide the data directory for the current project
@@ -129,8 +148,21 @@ export const test = base.extend<{
 
   // Create a unique test user for each test
   testUser: async ({ dataDir }, use) => {
-    const username = `_test_e2e_${Date.now()}`;
+    // Add random suffix to avoid collisions when tests start simultaneously
+    const randomSuffix = Math.random().toString(36).substring(2, 6);
+    const username = `_test_e2e_${Date.now()}_${randomSuffix}`;
     const user = createTestUser(username, 'test123', dataDir);
+    await use(user);
+    deleteTestUser(username, dataDir);
+  },
+
+  // Create an admin user for each test
+  adminUser: async ({ dataDir }, use) => {
+    // Add random suffix to avoid collisions when tests start simultaneously
+    const randomSuffix = Math.random().toString(36).substring(2, 6);
+    const username = `_test_admin_${Date.now()}_${randomSuffix}`;
+    const user = createTestUser(username, 'admin123', dataDir);
+    setUserRole(username, 'admin', dataDir);
     await use(user);
     deleteTestUser(username, dataDir);
   },
@@ -139,6 +171,14 @@ export const test = base.extend<{
   authenticatedPage: async ({ page, testUser }, use) => {
     await login(page, testUser);
     await use(page);
+  },
+
+  // Provide an authenticated page with admin privileges
+  adminPage: async ({ browser, adminUser }, use) => {
+    const page = await browser.newPage();
+    await login(page, adminUser);
+    await use(page);
+    await page.close();
   },
 });
 
