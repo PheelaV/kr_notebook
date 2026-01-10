@@ -10,11 +10,12 @@
    - data-choice="..." for the answer value
    - class="choice-btn" for event delegation targeting
 #}
-<div class="grid grid-cols-2 gap-2 sm:gap-3 mb-4">
+<div class="grid grid-cols-2 gap-2 sm:gap-3 mb-4" data-testid="choice-grid">
   {% for choice in choices %}
   <button type="button"
           id="choice-{{ loop.index }}"
           data-choice="{{ choice }}"
+          data-testid="choice-option"
           class="choice-btn relative text-3xl sm:text-4xl p-4 sm:p-6 min-h-[4rem] sm:min-h-[5rem] bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 active:bg-indigo-200 dark:active:bg-indigo-800 text-gray-900 dark:text-white font-bold rounded-lg transition-colors border-2 border-transparent touch-manipulation">
     <span class="absolute top-1 left-2 text-xs font-normal text-gray-400 dark:text-gray-500">{{ loop.index }}</span>
     {{ choice }}

@@ -53,12 +53,20 @@ pub fn load_database_path() -> PathBuf {
 /// Server address to bind to
 pub const SERVER_ADDR: &str = "0.0.0.0";
 
-/// Server port
-pub const SERVER_PORT: u16 = 3000;
+/// Default server port
+const DEFAULT_PORT: u16 = 3000;
+
+/// Get the server port (from PORT env var or default 3000)
+pub fn server_port() -> u16 {
+    std::env::var("PORT")
+        .ok()
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(DEFAULT_PORT)
+}
 
 /// Get the full server bind address
 pub fn server_bind_addr() -> String {
-    format!("{}:{}", SERVER_ADDR, SERVER_PORT)
+    format!("{}:{}", SERVER_ADDR, server_port())
 }
 
 // ==================== Session Configuration ====================

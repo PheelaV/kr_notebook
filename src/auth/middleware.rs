@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex};
 
 use super::db as auth_db;
 use crate::db::run_migrations_with_app_db;
-use crate::paths::AUTH_DB_PATH;
+use crate::paths;
 use crate::state::AppState;
 use std::path::Path;
 
@@ -72,7 +72,8 @@ impl FromRequestParts<AppState> for AuthContext {
 
         // Ensure schema is up to date (adds new columns if missing)
         // Pass app.db path for legacy cards → card_progress migration
-        let app_db_path = Path::new(AUTH_DB_PATH);
+        let app_db_path_str = paths::auth_db_path();
+        let app_db_path = Path::new(&app_db_path_str);
         run_migrations_with_app_db(&conn, Some(app_db_path)).map_err(|_| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -83,7 +84,7 @@ impl FromRequestParts<AppState> for AuthContext {
 
         // Attach app.db for cross-database queries (card_definitions)
         conn.execute(
-            &format!("ATTACH DATABASE '{}' AS app", AUTH_DB_PATH),
+            &format!("ATTACH DATABASE '{}' AS app", app_db_path_str),
             [],
         )
         .map_err(|_| {

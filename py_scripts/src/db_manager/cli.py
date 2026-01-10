@@ -44,21 +44,29 @@ def ensure_dirs() -> None:
     USERS_DIR.mkdir(parents=True, exist_ok=True)
 
 
-def get_user_db_path(username: str) -> Path:
+def get_user_db_path(username: str, data_dir: Path | None = None) -> Path:
     """Get the learning database path for a user."""
-    return USERS_DIR / username / "learning.db"
+    users_base = (Path(data_dir) / "users") if data_dir else USERS_DIR
+    return users_base / username / "learning.db"
 
 
-def get_user_scenario_dir(username: str) -> Path:
+def get_user_scenario_dir(username: str, data_dir: Path | None = None) -> Path:
     """Get the scenario directory for a user."""
-    return SCENARIOS_DIR / username
+    scenarios_base = (Path(data_dir) / "scenarios") if data_dir else SCENARIOS_DIR
+    return scenarios_base / username
 
 
-def user_exists(username: str) -> bool:
-    """Check if a user exists in the auth database."""
-    if not AUTH_DB.exists():
+def get_app_db_path(data_dir: Path | None = None) -> Path:
+    """Get app.db path for given data directory."""
+    return (Path(data_dir) / "app.db") if data_dir else AUTH_DB
+
+
+def user_exists_in_env(username: str, data_dir: Path | None = None) -> bool:
+    """Check if a user exists in the auth database (environment-aware)."""
+    app_db = get_app_db_path(data_dir)
+    if not app_db.exists():
         return False
-    conn = sqlite3.connect(AUTH_DB)
+    conn = sqlite3.connect(app_db)
     try:
         count = conn.execute(
             "SELECT COUNT(*) FROM users WHERE username = ?", (username,)
@@ -66,6 +74,11 @@ def user_exists(username: str) -> bool:
         return count > 0
     finally:
         conn.close()
+
+
+def user_exists(username: str) -> bool:
+    """Check if a user exists in the auth database (uses default DATA_DIR)."""
+    return user_exists_in_env(username, None)
 
 
 def list_all_users() -> list[tuple[str, bool, str | None]]:
@@ -82,18 +95,31 @@ def list_all_users() -> list[tuple[str, bool, str | None]]:
         conn.close()
 
 
-def hash_password_argon2(password: str) -> str:
-    """Hash password using argon2id (compatible with Rust argon2 crate)."""
+def hash_password_for_storage(password: str, username: str) -> str:
+    """Hash password for storage, matching the browser→server flow.
+
+    The web app uses two-stage hashing:
+    1. Client computes SHA256(password:username)
+    2. Server applies Argon2 to the SHA256 hash
+
+    This function replicates both stages for CLI user creation.
+    """
+    import hashlib
+
+    # Stage 1: Client-side SHA256 (password:username)
+    # Note: Browser's auth.js uses username.toLowerCase() at line 85
+    client_hash = hashlib.sha256(f"{password}:{username.lower()}".encode()).hexdigest()
+
+    # Stage 2: Server-side Argon2
     try:
         from argon2 import PasswordHasher
         ph = PasswordHasher()
-        return ph.hash(password)
+        return ph.hash(client_hash)
     except ImportError:
-        # Fallback: use a simple bcrypt-style placeholder
-        # This won't work for actual login but is fine for test scenarios
-        import hashlib
-        click.echo(click.style("Warning: argon2-cffi not installed, using simple hash", fg="yellow"))
-        return f"$test${hashlib.sha256(password.encode()).hexdigest()}"
+        raise click.ClickException(
+            "argon2-cffi is required for password hashing. "
+            "Install with: pip install argon2-cffi"
+        )
 
 
 # ==================== CLI Groups ====================
@@ -161,7 +187,7 @@ def create_user(username: str, password: str | None, guest: bool) -> None:
         init_auth_db(AUTH_DB)
 
     # Add user to auth database
-    password_hash = hash_password_argon2(password)
+    password_hash = hash_password_for_storage(password, username)
     now = datetime.now().isoformat()
 
     conn = sqlite3.connect(AUTH_DB)
@@ -192,32 +218,64 @@ def create_user(username: str, password: str | None, guest: bool) -> None:
     is_flag=True,
     help="Skip confirmation prompt.",
 )
-def delete_user(username: str, yes: bool) -> None:
+@click.option(
+    "--data-dir",
+    "-d",
+    type=click.Path(),
+    default=None,
+    help="Data directory (for test environments).",
+)
+def delete_user(username: str, yes: bool, data_dir: str | None) -> None:
     """Delete a user and all their data.
 
     Removes:
-    - Entry from data/app.db
-    - Directory data/users/{username}/ (including learning.db)
-    - Any scenarios in data/scenarios/{username}/
+    - Entry from app.db
+    - Directory users/{username}/ (including learning.db)
+    - Any scenarios
 
     Example:
         db-manager delete-user alice
         db-manager delete-user bob --yes
+        db-manager delete-user _test_user --data-dir data/test/auth --yes
     """
-    if not user_exists(username):
+    # Determine paths based on data-dir option
+    if data_dir:
+        env_dir = Path(data_dir)
+        app_db = env_dir / "app.db"
+        users_base = env_dir / "users"
+        scenarios_base = env_dir / "scenarios"
+    else:
+        app_db = AUTH_DB
+        users_base = USERS_DIR
+        scenarios_base = SCENARIOS_DIR
+
+    if not app_db.exists():
+        raise click.ClickException(f"Database not found: {app_db}")
+
+    # Check if user exists
+    conn = sqlite3.connect(app_db)
+    try:
+        exists = conn.execute(
+            "SELECT COUNT(*) FROM users WHERE username = ?",
+            (username,)
+        ).fetchone()[0]
+    finally:
+        conn.close()
+
+    if not exists:
         raise click.ClickException(f"User not found: {username}")
 
     if not yes:
         click.echo(f"This will delete user '{username}' and ALL their data:")
-        click.echo(f"  - Auth entry in {AUTH_DB}")
-        click.echo(f"  - User directory {USERS_DIR / username}")
-        click.echo(f"  - Scenarios in {SCENARIOS_DIR / username}")
+        click.echo(f"  - Auth entry in {app_db}")
+        click.echo(f"  - User directory {users_base / username}")
+        click.echo(f"  - Scenarios in {scenarios_base / username}")
         if not click.confirm("Continue?"):
             click.echo("Aborted.")
             return
 
     # Delete from auth database
-    conn = sqlite3.connect(AUTH_DB)
+    conn = sqlite3.connect(app_db)
     try:
         conn.execute("DELETE FROM users WHERE username = ?", (username,))
         conn.commit()
@@ -226,13 +284,13 @@ def delete_user(username: str, yes: bool) -> None:
         conn.close()
 
     # Delete user directory
-    user_dir = USERS_DIR / username
+    user_dir = users_base / username
     if user_dir.exists():
         shutil.rmtree(user_dir)
         click.echo(f"Deleted user directory: {user_dir}")
 
     # Delete scenarios
-    scenario_dir = get_user_scenario_dir(username)
+    scenario_dir = scenarios_base / username
     if scenario_dir.exists():
         shutil.rmtree(scenario_dir)
         click.echo(f"Deleted scenarios: {scenario_dir}")
@@ -481,11 +539,32 @@ def _apply_tier3_unlock(conn: sqlite3.Connection, echo: callable) -> None:
 
 @_register_preset("all_graduated", "All tiers unlocked and graduated")
 def _apply_all_graduated(conn: sqlite3.Connection, echo: callable) -> None:
-    echo("Setting all cards to graduated...")
+    echo("Setting all cards to graduated state...")
+
+    # Update legacy cards table (for backwards compatibility)
     conn.execute(f"UPDATE cards SET {GRADUATED_CARD_SQL}")
+
+    # Insert graduated state into card_progress for all baseline cards (IDs 1-80)
+    # The Rust app uses card_progress for SRS state, not the legacy cards table
+    graduated_sql = """
+        INSERT OR REPLACE INTO card_progress (
+            card_id, ease_factor, interval_days, repetitions, next_review,
+            total_reviews, correct_reviews, learning_step,
+            fsrs_stability, fsrs_difficulty, fsrs_state
+        ) VALUES (
+            ?, 2.5, 7, 5, datetime('now', '+7 days'),
+            10, 5, 4, 7.0, 5.0, 'Review'
+        )
+    """
+    # Insert for all 80 baseline Hangul cards (IDs are 1-80 from cargo run --init-db)
+    for card_id in range(1, 81):
+        conn.execute(graduated_sql, (card_id,))
+
     conn.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('max_unlocked_tier', '4')")
-    conn.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('all_tiers_unlocked', 'true')")
+    # Note: NOT enabling all_tiers_unlocked to avoid accelerated mode showing unreviewed-today cards
+    conn.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('all_tiers_unlocked', 'false')")
     conn.commit()
+    echo(f"Inserted graduated state for 80 cards into card_progress")
 
 
 # ==================== Scenario Commands ====================
@@ -506,16 +585,24 @@ def _apply_all_graduated(conn: sqlite3.Connection, echo: callable) -> None:
     is_flag=True,
     help="List available scenario presets.",
 )
-def create_scenario(preset: str | None, user: str | None, list_presets: bool) -> None:
+@click.option(
+    "--data-dir",
+    "-d",
+    type=click.Path(),
+    default=None,
+    help="Data directory (for test environments).",
+)
+def create_scenario(preset: str | None, user: str | None, list_presets: bool, data_dir: str | None) -> None:
     """Create a test scenario from a preset.
 
     Creates a modified copy of the user's learning database for testing.
-    Scenarios are stored in data/scenarios/{username}/{preset}.db
+    Scenarios are stored in {data_dir}/scenarios/{username}/{preset}.db
 
     Examples:
         db-manager create-scenario --list
         db-manager create-scenario --user alice tier3_fresh
         db-manager create-scenario --user bob tier1_new
+        db-manager create-scenario --user bob tier1_new --data-dir data/test/e2e
     """
     ensure_dirs()
 
@@ -537,11 +624,14 @@ def create_scenario(preset: str | None, user: str | None, list_presets: bool) ->
             f"Run 'db-manager create-scenario --list' to see available presets."
         )
 
-    if not user_exists(user):
+    # Convert data_dir to Path if provided
+    env_dir = Path(data_dir) if data_dir else None
+
+    if not user_exists_in_env(user, env_dir):
         raise click.ClickException(f"User not found: {user}")
 
     # Source: user's current learning database or golden reference
-    source_db = get_user_db_path(user)
+    source_db = get_user_db_path(user, env_dir)
     if not source_db.exists():
         # Try golden reference
         if GOLDEN_LEARNING_DB.exists():
@@ -554,7 +644,7 @@ def create_scenario(preset: str | None, user: str | None, list_presets: bool) ->
             )
 
     # Create scenario directory for user
-    scenario_dir = get_user_scenario_dir(user)
+    scenario_dir = get_user_scenario_dir(user, env_dir)
     scenario_dir.mkdir(parents=True, exist_ok=True)
 
     scenario_path = scenario_dir / f"{preset}.db"
@@ -574,7 +664,8 @@ def create_scenario(preset: str | None, user: str | None, list_presets: bool) ->
         apply_fn(conn, click.echo)
         click.echo(click.style(f"Scenario created: {scenario_path}", fg="green"))
         click.echo()
-        click.echo(f"To use: db-manager use --user {user} {preset}")
+        data_dir_arg = f" --data-dir {data_dir}" if data_dir else ""
+        click.echo(f"To use: db-manager use --user {user} {preset}{data_dir_arg}")
     finally:
         conn.close()
 
@@ -588,7 +679,14 @@ def create_scenario(preset: str | None, user: str | None, list_presets: bool) ->
     required=True,
     help="Username to switch database for.",
 )
-def use_scenario(name: str, user: str) -> None:
+@click.option(
+    "--data-dir",
+    "-d",
+    type=click.Path(),
+    default=None,
+    help="Data directory (for test environments).",
+)
+def use_scenario(name: str, user: str, data_dir: str | None) -> None:
     """Switch a user's database to a scenario or back to production.
 
     Copies the scenario database over the user's learning.db.
@@ -597,13 +695,20 @@ def use_scenario(name: str, user: str) -> None:
     Examples:
         db-manager use --user alice tier3_fresh   # Use scenario
         db-manager use --user alice production    # Restore original
+        db-manager use --user alice tier1_new --data-dir data/test/e2e
     """
-    if not user_exists(user):
+    # Convert data_dir to Path if provided
+    env_dir = Path(data_dir) if data_dir else None
+
+    if not user_exists_in_env(user, env_dir):
         raise click.ClickException(f"User not found: {user}")
 
-    user_db = get_user_db_path(user)
-    scenario_dir = get_user_scenario_dir(user)
-    backup_dir = BACKUPS_DIR / user
+    user_db = get_user_db_path(user, env_dir)
+    scenario_dir = get_user_scenario_dir(user, env_dir)
+
+    # Backup directory within the environment
+    backup_base = (Path(data_dir) / "backups") if data_dir else BACKUPS_DIR
+    backup_dir = backup_base / user
     backup_dir.mkdir(parents=True, exist_ok=True)
 
     if name == "production":
@@ -642,6 +747,61 @@ def use_scenario(name: str, user: str) -> None:
     click.echo(click.style(f"Switched to scenario: {name}", fg="green"))
     click.echo()
     click.echo("Restart the server to use the new database state.")
+
+
+# ==================== Apply Preset Command ====================
+
+
+@cli.command("apply-preset")
+@click.argument("preset")
+@click.option(
+    "--user",
+    "-u",
+    type=str,
+    required=True,
+    help="Username to apply preset to.",
+)
+@click.option(
+    "--data-dir",
+    "-d",
+    type=click.Path(),
+    default=None,
+    help="Data directory (for test environments).",
+)
+def apply_preset(preset: str, user: str, data_dir: str | None) -> None:
+    """Apply a scenario preset directly to a user's learning database.
+
+    Unlike 'use' which switches to a pre-created scenario file, this command
+    applies the preset transformations directly to the user's learning.db.
+    Useful for E2E tests that need to set up scenarios on-the-fly.
+
+    Examples:
+        db-manager apply-preset tier1_new --user alice
+        db-manager apply-preset tier3_fresh --user bob --data-dir data/test/e2e
+    """
+    # Convert data_dir to Path if provided
+    env_dir = Path(data_dir).resolve() if data_dir else None
+
+    if not user_exists_in_env(user, env_dir):
+        raise click.ClickException(f"User not found: {user}")
+
+    if preset not in SCENARIO_PRESETS:
+        raise click.ClickException(
+            f"Unknown preset: {preset}\n"
+            f"Available: {', '.join(SCENARIO_PRESETS.keys())}"
+        )
+
+    user_db = get_user_db_path(user, env_dir)
+    if not user_db.exists():
+        raise click.ClickException(f"Learning database not found: {user_db}")
+
+    desc, apply_fn = SCENARIO_PRESETS[preset]
+    conn = sqlite3.connect(user_db)
+    try:
+        apply_fn(conn, click.echo)
+        click.echo(click.style(f"Applied preset '{preset}' to {user}", fg="green"))
+    finally:
+        conn.close()
 
 
 # ==================== List Command ====================
@@ -841,11 +1001,27 @@ def init_auth_db(db_path: Path) -> None:
 
 
 def init_learning_db(db_path: Path) -> None:
-    """Initialize a learning database with schema and seed cards."""
+    """Initialize a learning database with schema matching Rust app."""
     conn = sqlite3.connect(db_path)
     try:
-        # Create schema
+        # Create schema matching src/db/schema.rs
         conn.executescript("""
+            -- card_progress: User's progress on cards (definitions are in app.db)
+            CREATE TABLE IF NOT EXISTS card_progress (
+                card_id INTEGER PRIMARY KEY,
+                ease_factor REAL NOT NULL DEFAULT 2.5,
+                interval_days INTEGER NOT NULL DEFAULT 0,
+                repetitions INTEGER NOT NULL DEFAULT 0,
+                next_review TEXT NOT NULL DEFAULT (datetime('now')),
+                total_reviews INTEGER NOT NULL DEFAULT 0,
+                correct_reviews INTEGER NOT NULL DEFAULT 0,
+                learning_step INTEGER NOT NULL DEFAULT 0,
+                fsrs_stability REAL,
+                fsrs_difficulty REAL,
+                fsrs_state TEXT DEFAULT 'New'
+            );
+
+            -- Legacy cards table (kept for compatibility)
             CREATE TABLE IF NOT EXISTS cards (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 front TEXT NOT NULL,
@@ -920,6 +1096,7 @@ def init_learning_db(db_path: Path) -> None:
                 config TEXT
             );
 
+            CREATE INDEX IF NOT EXISTS idx_card_progress_next_review ON card_progress(next_review);
             CREATE INDEX IF NOT EXISTS idx_cards_next_review ON cards(next_review);
             CREATE INDEX IF NOT EXISTS idx_cards_tier ON cards(tier);
             CREATE INDEX IF NOT EXISTS idx_review_logs_card_id ON review_logs(card_id);
@@ -944,3 +1121,414 @@ def init_learning_db(db_path: Path) -> None:
         conn.commit()
     finally:
         conn.close()
+
+
+# ==================== Test Environment Commands ====================
+
+def get_test_env_dir(name: str) -> Path:
+    """Get the path to a test environment directory."""
+    return DATA_DIR / "test" / name
+
+
+@cli.command("init-test-env")
+@click.argument("name")
+@click.option(
+    "--data-dir",
+    "-d",
+    type=click.Path(),
+    default=None,
+    help="Override data directory path (default: data/test/<name>).",
+)
+@click.option(
+    "--skip-build",
+    is_flag=True,
+    help="Skip cargo build (assumes binary is already built).",
+)
+def init_test_env(name: str, data_dir: str | None, skip_build: bool) -> None:
+    """Initialize a fresh test environment with full schema.
+
+    Creates an isolated data directory with:
+    - app.db with full v0→v9 schema (using Rust --init-db)
+    - users/ directory for per-user databases
+    - 80 baseline Hangul cards seeded
+
+    Uses the Rust server's --init-db flag to ensure schema matches
+    exactly what the server expects. This avoids schema duplication.
+
+    Use this before running E2E tests to ensure a clean slate.
+
+    Examples:
+        db-manager init-test-env auth-tests
+        db-manager init-test-env study-tests --data-dir /tmp/test_data
+        db-manager init-test-env quick-test --skip-build
+    """
+    import subprocess
+
+    # Determine environment directory (resolve to absolute path for cargo)
+    if data_dir:
+        env_dir = Path(data_dir).resolve()
+    else:
+        env_dir = get_test_env_dir(name).resolve()
+
+    # Check if environment already exists
+    if env_dir.exists():
+        if not click.confirm(f"Environment '{name}' exists at {env_dir}. Overwrite?"):
+            click.echo("Aborted.")
+            return
+        shutil.rmtree(env_dir)
+
+    # Create environment directory structure
+    env_dir.mkdir(parents=True, exist_ok=True)
+    users_dir = env_dir / "users"
+    users_dir.mkdir(exist_ok=True)
+
+    click.echo(f"Creating test environment: {env_dir}")
+
+    # Build the Rust binary if needed
+    if not skip_build:
+        click.echo("  - Building Rust server...")
+        result = subprocess.run(
+            ["cargo", "build", "--quiet"],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            click.echo(click.style(f"Build failed: {result.stderr}", fg="red"))
+            raise click.ClickException("Failed to build Rust server")
+
+    # Initialize database using Rust --init-db flag
+    click.echo("  - Initializing app.db with v0→v9 schema...")
+    env = os.environ.copy()
+    env["DATA_DIR"] = str(env_dir)
+
+    result = subprocess.run(
+        ["cargo", "run", "--quiet", "--", "--init-db"],
+        cwd=ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+
+    if result.returncode != 0:
+        click.echo(click.style(f"Init failed: {result.stderr}", fg="red"))
+        raise click.ClickException("Failed to initialize database")
+
+    # Parse output for schema version
+    for line in result.stderr.split("\n"):
+        if "Schema version:" in line:
+            click.echo(f"  - {line.split(']')[-1].strip()}")
+        if "Seeded" in line and "baseline cards" in line:
+            click.echo(f"  - {line.split(']')[-1].strip()}")
+
+    click.echo(f"  - Users directory: {users_dir}")
+
+    click.echo(click.style(f"\nTest environment '{name}' ready!", fg="green"))
+    click.echo(f"\nTo use with server:")
+    click.echo(f"  DATA_DIR={env_dir} cargo run")
+
+
+@cli.command("cleanup-test-env")
+@click.argument("name")
+@click.option(
+    "--data-dir",
+    "-d",
+    type=click.Path(),
+    default=None,
+    help="Override data directory path.",
+)
+@click.option(
+    "--yes",
+    "-y",
+    is_flag=True,
+    help="Skip confirmation prompt.",
+)
+def cleanup_test_env(name: str, data_dir: str | None, yes: bool) -> None:
+    """Remove a test environment completely.
+
+    Deletes the entire test environment directory including:
+    - app.db
+    - All user databases
+    - All generated content
+
+    Examples:
+        db-manager cleanup-test-env auth-tests
+        db-manager cleanup-test-env auth-tests --yes
+    """
+    # Determine environment directory
+    if data_dir:
+        env_dir = Path(data_dir)
+    else:
+        env_dir = get_test_env_dir(name)
+
+    if not env_dir.exists():
+        click.echo(f"Environment '{name}' not found at {env_dir}")
+        return
+
+    if not yes:
+        click.echo(f"This will delete the entire test environment at:")
+        click.echo(f"  {env_dir}")
+        if not click.confirm("Continue?"):
+            click.echo("Aborted.")
+            return
+
+    shutil.rmtree(env_dir)
+    click.echo(click.style(f"Test environment '{name}' removed.", fg="green"))
+
+
+@cli.command("cleanup-test-users")
+@click.option(
+    "--prefix",
+    "-p",
+    type=str,
+    default="_test_",
+    help="User prefix to match (default: _test_).",
+)
+@click.option(
+    "--data-dir",
+    "-d",
+    type=click.Path(),
+    default=None,
+    help="Specific data directory to clean (default: all).",
+)
+@click.option(
+    "--yes",
+    "-y",
+    is_flag=True,
+    help="Skip confirmation prompt.",
+)
+def cleanup_test_users(prefix: str, data_dir: str | None, yes: bool) -> None:
+    """Remove all test users matching a prefix.
+
+    Useful for cleaning up after E2E test crashes that leave orphaned users.
+
+    Examples:
+        db-manager cleanup-test-users                    # Remove all _test_* users
+        db-manager cleanup-test-users --prefix _e2e_    # Remove _e2e_* users
+        db-manager cleanup-test-users --data-dir data/test/auth  # Specific env
+    """
+    # Determine which app.db to check
+    if data_dir:
+        app_db = Path(data_dir) / "app.db"
+        users_base = Path(data_dir) / "users"
+    else:
+        app_db = AUTH_DB
+        users_base = USERS_DIR
+
+    if not app_db.exists():
+        click.echo(f"Database not found: {app_db}")
+        return
+
+    # Find matching users
+    conn = sqlite3.connect(app_db)
+    try:
+        users = conn.execute(
+            "SELECT username FROM users WHERE username LIKE ?",
+            (f"{prefix}%",)
+        ).fetchall()
+    finally:
+        conn.close()
+
+    if not users:
+        click.echo(f"No users found matching prefix '{prefix}'")
+        return
+
+    usernames = [u[0] for u in users]
+    click.echo(f"Found {len(usernames)} users matching '{prefix}*':")
+    for u in usernames[:10]:
+        click.echo(f"  - {u}")
+    if len(usernames) > 10:
+        click.echo(f"  ... and {len(usernames) - 10} more")
+
+    if not yes:
+        if not click.confirm(f"Delete all {len(usernames)} users?"):
+            click.echo("Aborted.")
+            return
+
+    # Delete users
+    conn = sqlite3.connect(app_db)
+    try:
+        conn.execute(
+            "DELETE FROM users WHERE username LIKE ?",
+            (f"{prefix}%",)
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    # Delete user directories
+    deleted_dirs = 0
+    for username in usernames:
+        user_dir = users_base / username
+        if user_dir.exists():
+            shutil.rmtree(user_dir)
+            deleted_dirs += 1
+
+    click.echo(click.style(
+        f"Deleted {len(usernames)} users and {deleted_dirs} directories.",
+        fg="green"
+    ))
+
+
+@cli.command("create-test-user")
+@click.argument("username")
+@click.option(
+    "--password",
+    "-p",
+    type=str,
+    default="test123",
+    help="Password (default: test123).",
+)
+@click.option(
+    "--scenario",
+    "-s",
+    type=str,
+    default=None,
+    help="Apply scenario preset after creation.",
+)
+@click.option(
+    "--data-dir",
+    "-d",
+    type=click.Path(),
+    default=None,
+    help="Data directory for the test environment.",
+)
+def create_test_user(username: str, password: str, scenario: str | None, data_dir: str | None) -> None:
+    """Create a test user with optional scenario in one command.
+
+    Combines create-user, create-scenario, and use into a single operation.
+    Designed for E2E test fixtures that need quick user setup.
+
+    Examples:
+        db-manager create-test-user _test_alice
+        db-manager create-test-user _test_bob --scenario tier3_fresh
+        db-manager create-test-user _test_carol --data-dir data/test/auth
+    """
+    # Override paths if data-dir specified (resolve to absolute)
+    if data_dir:
+        env_dir = Path(data_dir).resolve()
+        app_db = env_dir / "app.db"
+        users_base = env_dir / "users"
+    else:
+        app_db = AUTH_DB
+        users_base = USERS_DIR
+
+    if not app_db.exists():
+        raise click.ClickException(f"Database not found: {app_db}. Run init-test-env first.")
+
+    # Check if user exists
+    conn = sqlite3.connect(app_db)
+    try:
+        exists = conn.execute(
+            "SELECT COUNT(*) FROM users WHERE username = ?",
+            (username,)
+        ).fetchone()[0]
+        if exists:
+            click.echo(f"User '{username}' already exists, skipping creation")
+        else:
+            # Create user in auth database
+            password_hash = hash_password_for_storage(password, username)
+            now = datetime.now().isoformat()
+            conn.execute(
+                """INSERT INTO users (username, password_hash, created_at, is_guest, last_activity_at)
+                   VALUES (?, ?, ?, 0, ?)""",
+                (username, password_hash, now, now),
+            )
+            conn.commit()
+            click.echo(f"Created user: {username}")
+    finally:
+        conn.close()
+
+    # Create user directory and learning database
+    user_dir = users_base / username
+    user_dir.mkdir(parents=True, exist_ok=True)
+    user_db_path = user_dir / "learning.db"
+
+    if not user_db_path.exists():
+        init_learning_db(user_db_path)
+        click.echo(f"Created learning database: {user_db_path}")
+
+    # Apply scenario if specified
+    if scenario:
+        if scenario not in SCENARIO_PRESETS:
+            raise click.ClickException(
+                f"Unknown scenario: {scenario}\n"
+                f"Available: {', '.join(SCENARIO_PRESETS.keys())}"
+            )
+
+        desc, apply_fn = SCENARIO_PRESETS[scenario]
+        conn = sqlite3.connect(user_db_path)
+        try:
+            apply_fn(conn, click.echo)
+            click.echo(f"Applied scenario: {scenario}")
+        finally:
+            conn.close()
+
+    click.echo(click.style(f"Test user '{username}' ready!", fg="green"))
+
+
+def get_schema_info(db_path: Path) -> dict:
+    """Get schema version and table counts from a database."""
+    if not db_path.exists():
+        return {"error": "Database not found"}
+
+    conn = sqlite3.connect(db_path)
+    try:
+        result = {"version": 0, "tables": {}}
+
+        # Get schema version
+        try:
+            row = conn.execute("SELECT MAX(version) FROM db_version").fetchone()
+            result["version"] = row[0] if row and row[0] else 0
+        except sqlite3.OperationalError:
+            pass
+
+        # Count card_definitions if it exists
+        try:
+            count = conn.execute("SELECT COUNT(*) FROM card_definitions").fetchone()[0]
+            result["tables"]["card_definitions"] = count
+        except sqlite3.OperationalError:
+            result["tables"]["card_definitions"] = "MISSING"
+
+        return result
+    finally:
+        conn.close()
+
+
+@cli.command("list-test-envs")
+def list_test_envs() -> None:
+    """List all test environments.
+
+    Shows test environments in data/test/ with their status.
+    """
+    test_dir = DATA_DIR / "test"
+    if not test_dir.exists():
+        click.echo("No test environments found.")
+        click.echo(f"\nCreate one with: db-manager init-test-env <name>")
+        return
+
+    click.echo(click.style("=== Test Environments ===", bold=True))
+    click.echo()
+
+    for env_dir in sorted(test_dir.iterdir()):
+        if not env_dir.is_dir():
+            continue
+
+        name = env_dir.name
+        app_db = env_dir / "app.db"
+        users_dir = env_dir / "users"
+
+        if app_db.exists():
+            result = get_schema_info(app_db)
+            version = result.get("version", "?")
+            cards = result.get("tables", {}).get("card_definitions", 0)
+            status = click.style("OK", fg="green")
+        else:
+            version = "-"
+            cards = 0
+            status = click.style("NO DB", fg="red")
+
+        # Count users
+        user_count = len(list(users_dir.glob("*"))) if users_dir.exists() else 0
+
+        click.echo(f"  {name:20} v{version}  {cards:3} cards  {user_count:3} users  [{status}]")

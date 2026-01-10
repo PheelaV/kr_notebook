@@ -7,38 +7,45 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use kr_notebook::{auth, config, handlers, paths, profiling, state::AppState};
 
-/// Path to the shared auth database
-const AUTH_DB_PATH: &str = "data/app.db";
-
-/// Path to the users data directory
-const USERS_DATA_DIR: &str = "data/users";
-
-/// Path to the old single-user database (for migration)
-const OLD_DB_PATH: &str = "data/hangul.db";
+/// Check if --init-db flag is present (initialize database and exit)
+fn is_init_db_only() -> bool {
+    std::env::args().any(|arg| arg == "--init-db" || arg == "--init-db-only")
+}
 
 #[tokio::main]
 async fn main() {
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "kr_notebook=debug,tower_http=debug".into()),
+                .unwrap_or_else(|_| "kr_notebook=info,tower_http=info".into()),
         )
         .with(tracing_subscriber::fmt::layer())
         .init();
 
+    // Check for --init-db flag
+    let init_db_only = is_init_db_only();
+    if init_db_only {
+        tracing::info!("Running in --init-db mode (database initialization only)");
+    }
+
     // Initialize profiling (no-op if feature disabled)
     profiling::init();
 
+    // Log data directory (useful for debugging E2E test isolation)
+    tracing::info!("Using data directory: {}", paths::data_dir());
+
     // Ensure data directories exist
-    std::fs::create_dir_all("data").expect("Failed to create data directory");
-    std::fs::create_dir_all(USERS_DATA_DIR).expect("Failed to create users directory");
+    std::fs::create_dir_all(paths::data_dir()).expect("Failed to create data directory");
+    std::fs::create_dir_all(paths::users_dir()).expect("Failed to create users directory");
 
     // Initialize auth database
-    let auth_db_path = Path::new(AUTH_DB_PATH);
+    let auth_db_path_str = paths::auth_db_path();
+    let auth_db_path = Path::new(&auth_db_path_str);
 
-    // Backup auth database before migrations if it exists
-    if auth_db_path.exists() {
-        let backup_path = Path::new("data/app.db.backup");
+    // Backup auth database before migrations if it exists (skip for init-db mode)
+    if auth_db_path.exists() && !init_db_only {
+        let backup_path_str = format!("{}/app.db.backup", paths::data_dir());
+        let backup_path = Path::new(&backup_path_str);
         if let Err(e) = std::fs::copy(auth_db_path, backup_path) {
             tracing::warn!("Could not create auth database backup: {}", e);
         } else {
@@ -48,10 +55,19 @@ async fn main() {
 
     let auth_conn = Connection::open(auth_db_path).expect("Failed to open auth database");
     auth::db::init_auth_schema(&auth_conn).expect("Failed to initialize auth schema");
+
+    // If --init-db flag, exit after initializing database
+    if init_db_only {
+        tracing::info!("Database initialized successfully at: {}", auth_db_path_str);
+        tracing::info!("Schema version: {}", auth::db::get_schema_version(&auth_conn).unwrap_or(0));
+        return;
+    }
+
     let auth_db = Arc::new(Mutex::new(auth_conn));
 
     // Check for migration: old single-user database exists, no users yet
-    if Path::new(OLD_DB_PATH).exists() {
+    let old_db_path_str = paths::db_path();
+    if Path::new(&old_db_path_str).exists() {
         let should_migrate = {
             let conn = match auth_db.lock() {
                 Ok(conn) => conn,
@@ -69,7 +85,7 @@ async fn main() {
     }
 
     // Create app state
-    let state = AppState::new(auth_db, PathBuf::from(USERS_DATA_DIR));
+    let state = AppState::new(auth_db, PathBuf::from(paths::users_dir()));
 
     // Public routes (no auth required)
     let public_routes = Router::new()
@@ -175,7 +191,7 @@ async fn main() {
     let app = Router::new()
         .merge(public_routes)
         .merge(protected_routes)
-        .nest_service("/audio/scraped", ServeDir::new(paths::SCRAPED_DIR))
+        .nest_service("/audio/scraped", ServeDir::new(paths::scraped_dir()))
         .nest_service("/static", ServeDir::new("static"))
         .with_state(state);
 
@@ -184,7 +200,7 @@ async fn main() {
         .await
         .unwrap_or_else(|_| panic!("Failed to bind to {}", bind_addr));
 
-    tracing::info!("Server running on http://localhost:{}", config::SERVER_PORT);
+    tracing::info!("Server running on http://localhost:{}", config::server_port());
 
     axum::serve(listener, app)
         .await
@@ -233,15 +249,18 @@ fn migrate_existing_database(auth_db: &Arc<Mutex<Connection>>) {
     }
 
     // Create admin's data directory
-    let admin_dir = Path::new(USERS_DATA_DIR).join("admin");
+    let users_dir = paths::users_dir();
+    let admin_dir = Path::new(&users_dir).join("admin");
     std::fs::create_dir_all(&admin_dir).expect("Failed to create admin directory");
 
     // Move old database to admin's folder
     let new_db_path = admin_dir.join("learning.db");
-    std::fs::rename(OLD_DB_PATH, &new_db_path).expect("Failed to move database");
+    let old_db_path = paths::db_path();
+    std::fs::rename(&old_db_path, &new_db_path).expect("Failed to move database");
 
     // Also move backup if it exists
-    let old_backup = Path::new("data/hangul.db.backup");
+    let old_backup_path = format!("{}.backup", old_db_path);
+    let old_backup = Path::new(&old_backup_path);
     if old_backup.exists() {
         let new_backup = admin_dir.join("learning.db.backup");
         let _ = std::fs::rename(old_backup, new_backup);

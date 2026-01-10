@@ -5,7 +5,7 @@
 //! instead of directly calling discovery and auth functions.
 
 use rusqlite::Connection;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use crate::auth::db as auth_db;
 use crate::content::{
@@ -60,9 +60,10 @@ pub fn get_external_paths(auth_db: &Connection) -> Vec<PathBuf> {
 
 /// Get the shared packs directory path.
 ///
-/// Consolidates `Path::new(paths::SHARED_PACKS_DIR)` that was repeated in 8+ places.
-pub fn shared_packs_dir() -> &'static Path {
-    Path::new(paths::SHARED_PACKS_DIR)
+/// Consolidates pack directory access that was repeated in 8+ places.
+/// Returns PathBuf since path is now dynamically constructed from DATA_DIR.
+pub fn shared_packs_dir() -> PathBuf {
+    PathBuf::from(paths::shared_packs_dir())
 }
 
 /// Discover all packs from all sources (shared + external).
@@ -70,7 +71,7 @@ pub fn shared_packs_dir() -> &'static Path {
 /// Does NOT filter by user permissions - returns all discoverable packs.
 pub fn discover_all_packs(auth_db: &Connection) -> Vec<PackLocation> {
     let external_paths = get_external_paths(auth_db);
-    discover_packs_with_external(shared_packs_dir(), None, None, &external_paths)
+    discover_packs_with_external(&shared_packs_dir(), None, None, &external_paths)
 }
 
 /// Get packs accessible to a specific user.
@@ -91,7 +92,7 @@ pub fn get_accessible_packs(
     // If filtering by provides, use the optimized function
     if let Some(ref content_type) = filter.provides {
         let packs =
-            find_packs_providing_with_external(shared_packs_dir(), &external_paths, content_type);
+            find_packs_providing_with_external(&shared_packs_dir(), &external_paths, content_type);
 
         return packs
             .into_iter()
@@ -109,7 +110,7 @@ pub fn get_accessible_packs(
     }
 
     // Otherwise discover all and filter
-    let all_packs = discover_packs_with_external(shared_packs_dir(), None, None, &external_paths);
+    let all_packs = discover_packs_with_external(&shared_packs_dir(), None, None, &external_paths);
 
     all_packs
         .into_iter()

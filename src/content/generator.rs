@@ -77,7 +77,7 @@ pub fn execute_generator(
 
     // Determine output directory based on scope
     let output_base = match scope {
-        OutputScope::Shared => PathBuf::from(paths::SHARED_GENERATED_DIR).join("htsk"),
+        OutputScope::Shared => PathBuf::from(paths::shared_generated_dir()).join("htsk"),
         OutputScope::User => {
             let user = username.ok_or("Username required for user-scoped output")?;
             PathBuf::from(paths::user_generated_dir(user)).join("htsk")
@@ -150,9 +150,9 @@ pub fn list_generators() -> Vec<GeneratorPackInfo> {
     let mut generators = Vec::new();
 
     // Check shared packs directory
-    let shared_packs = Path::new(paths::SHARED_PACKS_DIR);
+    let shared_packs = PathBuf::from(paths::shared_packs_dir());
     if shared_packs.exists() {
-        if let Ok(entries) = std::fs::read_dir(shared_packs) {
+        if let Ok(entries) = std::fs::read_dir(&shared_packs) {
             for entry in entries.filter_map(|e| e.ok()) {
                 let pack_path = entry.path();
                 if let Some(info) = load_generator_pack_info(&pack_path) {

@@ -9,7 +9,7 @@ use chrono::Utc;
 use rusqlite::{params, Connection};
 use serde::Deserialize;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::domain::CardType;
 
@@ -59,7 +59,7 @@ pub fn load_cards_from_pack(pack_dir: &Path, cards_file: &str) -> Result<Vec<Car
 /// Looks for the baseline pack at `data/content/packs/baseline/cards.json`.
 /// Returns None if the pack doesn't exist (fallback to hardcoded data).
 pub fn load_baseline_cards() -> Option<Vec<CardDefinition>> {
-    let baseline_dir = Path::new(crate::paths::SHARED_PACKS_DIR).join("baseline");
+    let baseline_dir = PathBuf::from(crate::paths::shared_packs_dir()).join("baseline");
 
     match load_cards_from_pack(&baseline_dir, "cards.json") {
         Ok(cards) => {

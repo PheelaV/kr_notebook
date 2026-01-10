@@ -1,4 +1,4 @@
-<div id="card-container" class="text-center">
+<div id="card-container" data-testid="card-container" class="text-center">
   <div class="mb-2 flex items-center justify-center gap-2">
     <span class="text-sm text-gray-500 dark:text-gray-400">Tier {{ tier }}</span>
     <form hx-post="/diagnostic" hx-target="body" hx-swap="beforeend" class="inline">
@@ -13,7 +13,7 @@
 
   <div class="card-flip mb-4 sm:mb-6">
     <div id="card-inner" class="card-inner relative w-full h-56 sm:h-72" onclick="this.classList.toggle('flipped')">
-      <div class="card-front absolute inset-0 bg-white dark:bg-gray-800 shadow-lg rounded-xl flex flex-col items-center justify-center cursor-pointer touch-manipulation p-6 sm:p-10">
+      <div class="card-front absolute inset-0 bg-white dark:bg-gray-800 shadow-lg rounded-xl flex flex-col items-center justify-center cursor-pointer touch-manipulation p-6 sm:p-10" data-testid="card-front">
         {% if is_reverse %}
         <div class="text-sm text-gray-500 dark:text-gray-400 mb-2">
           {% if is_vocabulary %}Which matches{% else %}Which letter sounds like{% endif %}
@@ -27,7 +27,7 @@
         </div>
         {% endif %}
       </div>
-      <div class="card-back absolute inset-0 bg-white dark:bg-gray-800 shadow-lg rounded-xl flex flex-col items-center justify-center cursor-pointer p-6 sm:p-10 touch-manipulation">
+      <div class="card-back absolute inset-0 bg-white dark:bg-gray-800 shadow-lg rounded-xl flex flex-col items-center justify-center cursor-pointer p-6 sm:p-10 touch-manipulation" data-testid="card-back">
         <div class="text-3xl sm:text-4xl font-bold text-indigo-600 dark:text-indigo-400 mb-2 sm:mb-3">
           {{ main_answer }}
         </div>
