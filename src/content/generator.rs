@@ -228,7 +228,8 @@ mod tests {
     fn test_list_generators() {
         // Should not panic
         let generators = list_generators();
-        assert!(generators.len() >= 0);
+        // Result is valid (may be empty depending on environment)
+        drop(generators);
     }
 
     #[test]

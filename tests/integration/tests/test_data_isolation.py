@@ -18,6 +18,7 @@ class TestUserDataIsolation:
 
     def test_users_have_separate_progress(
         self,
+        server_url: str,
         db_manager: DbManager,
     ):
         """Two users have completely separate progress."""
@@ -25,8 +26,8 @@ class TestUserDataIsolation:
         user2 = f"_test_{uuid.uuid4().hex[:8]}"
         password = "test123"
 
-        client1 = TestClient()
-        client2 = TestClient()
+        client1 = TestClient(server_url)
+        client2 = TestClient(server_url)
 
         try:
             # Create two users with different scenarios
@@ -62,6 +63,7 @@ class TestUserDataIsolation:
 
     def test_session_cookie_is_user_specific(
         self,
+        server_url: str,
         db_manager: DbManager,
     ):
         """Session cookie only works for the user it was issued to."""
@@ -69,8 +71,8 @@ class TestUserDataIsolation:
         user2 = f"_test_{uuid.uuid4().hex[:8]}"
         password = "test123"
 
-        client1 = TestClient()
-        client2 = TestClient()
+        client1 = TestClient(server_url)
+        client2 = TestClient(server_url)
 
         try:
             hash1 = db_manager.create_user(user1, password)

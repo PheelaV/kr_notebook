@@ -121,6 +121,115 @@ export function setupScenario(username: string, scenario: string, dataDir?: stri
   }
 }
 
+// Create an expired guest user for cleanup testing (environment-aware)
+export function createExpiredGuest(dataDir?: string): string {
+  const guestId = `_guest_expired_${Date.now()}`;
+  const dataDirArg = dataDir ? ` --data-dir "${dataDir}"` : '';
+  const cmd = `uv run db-manager create-expired-guest ${guestId}${dataDirArg}`;
+
+  try {
+    execSync(cmd, {
+      cwd: PY_SCRIPTS_DIR,
+      stdio: 'pipe',
+    });
+  } catch (e) {
+    const error = e as { stderr?: Buffer };
+    const stderr = error.stderr?.toString() || '';
+    throw new Error(`Failed to create expired guest: ${stderr}`);
+  }
+  return guestId;
+}
+
+// Get the number of guest users in the database (environment-aware)
+export function getGuestCount(dataDir?: string): number {
+  const dataDirArg = dataDir ? ` --data-dir "${dataDir}"` : '';
+  const cmd = `uv run db-manager get-guest-count${dataDirArg}`;
+
+  try {
+    const result = execSync(cmd, {
+      cwd: PY_SCRIPTS_DIR,
+      stdio: 'pipe',
+      encoding: 'utf-8',
+    });
+    return parseInt(result.trim(), 10);
+  } catch (e) {
+    const error = e as { stderr?: Buffer };
+    const stderr = error.stderr?.toString() || '';
+    throw new Error(`Failed to get guest count: ${stderr}`);
+  }
+}
+
+// Check if a specific guest user exists (environment-aware)
+export function guestExists(guestId: string, dataDir?: string): boolean {
+  const dataDirArg = dataDir ? ` --data-dir "${dataDir}"` : '';
+  const cmd = `uv run db-manager guest-exists ${guestId}${dataDirArg}`;
+
+  try {
+    const result = execSync(cmd, {
+      cwd: PY_SCRIPTS_DIR,
+      stdio: 'pipe',
+      encoding: 'utf-8',
+    });
+    return result.trim() === 'true';
+  } catch (e) {
+    const error = e as { stderr?: Buffer };
+    const stderr = error.stderr?.toString() || '';
+    throw new Error(`Failed to check guest existence: ${stderr}`);
+  }
+}
+
+// Get the number of groups in the database (environment-aware)
+export function getGroupCount(dataDir?: string): number {
+  const dataDirArg = dataDir ? ` --data-dir "${dataDir}"` : '';
+  const cmd = `uv run db-manager get-group-count${dataDirArg}`;
+
+  try {
+    const result = execSync(cmd, {
+      cwd: PY_SCRIPTS_DIR,
+      stdio: 'pipe',
+      encoding: 'utf-8',
+    });
+    return parseInt(result.trim(), 10);
+  } catch (e) {
+    const error = e as { stderr?: Buffer };
+    const stderr = error.stderr?.toString() || '';
+    throw new Error(`Failed to get group count: ${stderr}`);
+  }
+}
+
+// Create a group via db-manager CLI (environment-aware)
+export function createGroup(groupId: string, name: string, dataDir?: string): void {
+  const dataDirArg = dataDir ? ` --data-dir "${dataDir}"` : '';
+  const cmd = `uv run db-manager create-group ${groupId} "${name}"${dataDirArg}`;
+
+  try {
+    execSync(cmd, {
+      cwd: PY_SCRIPTS_DIR,
+      stdio: 'pipe',
+    });
+  } catch (e) {
+    const error = e as { stderr?: Buffer };
+    const stderr = error.stderr?.toString() || '';
+    throw new Error(`Failed to create group ${groupId}: ${stderr}`);
+  }
+}
+
+// Delete a group via db-manager CLI (environment-aware)
+export function deleteGroup(groupId: string, dataDir?: string): void {
+  const dataDirArg = dataDir ? ` --data-dir "${dataDir}"` : '';
+  try {
+    execSync(
+      `uv run db-manager delete-group ${groupId} --yes${dataDirArg}`,
+      {
+        cwd: PY_SCRIPTS_DIR,
+        stdio: 'pipe',
+      }
+    );
+  } catch (e) {
+    // Ignore errors (group might not exist)
+  }
+}
+
 // Login helper function
 export async function login(page: Page, user: TestUser): Promise<void> {
   await page.goto('/login', { waitUntil: 'networkidle' });

@@ -5,6 +5,9 @@ Tests cover:
 - Pack enable/disable
 - Pack permission management (admin)
 - Group-based access control
+
+Note: Comprehensive security tests (unauthorized/unauthenticated access) are in
+test_admin_security.py. These tests focus on functionality when authorized.
 """
 
 import uuid
@@ -27,21 +30,27 @@ class TestPackDiscovery:
 
 
 class TestPackEnableDisable:
-    """Pack enable/disable tests."""
+    """Pack enable/disable tests (admin only for global packs)."""
 
-    def test_enable_pack_endpoint_exists(self, authenticated_client: TestClient):
-        """POST /settings/pack/{pack_id}/enable endpoint responds."""
-        # Try to enable a non-existent pack
+    def test_enable_pack_requires_admin(self, authenticated_client: TestClient):
+        """POST /settings/pack/{pack_id}/enable requires admin for global packs."""
         response = authenticated_client.post("/settings/pack/test-pack/enable", data={})
 
-        # Should return some response (may be error for non-existent pack)
-        assert response.status_code in (200, 302, 303, 400, 404)
+        # Regular users should get 403 or redirect to /settings
+        # 200 is NOT acceptable - it could mean the action succeeded
+        assert response.status_code in (303, 403), (
+            f"Expected 403 or redirect (303), got {response.status_code}"
+        )
 
-    def test_disable_pack_endpoint_exists(self, authenticated_client: TestClient):
-        """POST /settings/pack/{pack_id}/disable endpoint responds."""
+    def test_disable_pack_requires_admin(self, authenticated_client: TestClient):
+        """POST /settings/pack/{pack_id}/disable requires admin for global packs."""
         response = authenticated_client.post("/settings/pack/test-pack/disable", data={})
 
-        assert response.status_code in (200, 302, 303, 400, 404)
+        # Regular users should get 403 or redirect to /settings
+        # 200 is NOT acceptable
+        assert response.status_code in (303, 403), (
+            f"Expected 403 or redirect (303), got {response.status_code}"
+        )
 
 
 class TestPackPermissions:
@@ -54,8 +63,11 @@ class TestPackPermissions:
             data={"pack_id": "test-pack", "group_id": "test-group"},
         )
 
-        # Regular users should not have access
-        assert response.status_code in (200, 302, 303, 403)
+        # Regular users should get 403 or redirect to /settings
+        # 200 is NOT acceptable - it could mean the action succeeded
+        assert response.status_code in (303, 403), (
+            f"Expected 403 or redirect (303), got {response.status_code}"
+        )
 
     def test_remove_pack_permission_requires_admin(self, authenticated_client: TestClient):
         """POST /settings/pack/permission/remove requires admin."""
@@ -64,7 +76,11 @@ class TestPackPermissions:
             data={"pack_id": "test-pack", "group_id": "test-group"},
         )
 
-        assert response.status_code in (200, 302, 303, 403)
+        # Regular users should get 403 or redirect to /settings
+        # 200 is NOT acceptable
+        assert response.status_code in (303, 403), (
+            f"Expected 403 or redirect (303), got {response.status_code}"
+        )
 
     def test_make_pack_public_requires_admin(self, authenticated_client: TestClient):
         """POST /settings/pack/{pack_id}/make-public requires admin."""
@@ -73,7 +89,11 @@ class TestPackPermissions:
             data={},
         )
 
-        assert response.status_code in (200, 302, 303, 403)
+        # Regular users should get 403 or redirect to /settings
+        # 200 is NOT acceptable
+        assert response.status_code in (303, 403), (
+            f"Expected 403 or redirect (303), got {response.status_code}"
+        )
 
 
 class TestUserPackPermissions:
@@ -83,19 +103,27 @@ class TestUserPackPermissions:
         """POST /settings/pack/user-permission/add requires admin."""
         response = authenticated_client.post(
             "/settings/pack/user-permission/add",
-            data={"pack_id": "test-pack", "username": "testuser"},
+            data={"pack_id": "test-pack", "user_id": "testuser"},
         )
 
-        assert response.status_code in (200, 302, 303, 403)
+        # Regular users should get 403 or redirect to /settings
+        # 200 is NOT acceptable
+        assert response.status_code in (303, 403), (
+            f"Expected 403 or redirect (303), got {response.status_code}"
+        )
 
     def test_remove_user_permission_requires_admin(self, authenticated_client: TestClient):
         """POST /settings/pack/user-permission/remove requires admin."""
         response = authenticated_client.post(
             "/settings/pack/user-permission/remove",
-            data={"pack_id": "test-pack", "username": "testuser"},
+            data={"pack_id": "test-pack", "user_id": "testuser"},
         )
 
-        assert response.status_code in (200, 302, 303, 403)
+        # Regular users should get 403 or redirect to /settings
+        # 200 is NOT acceptable
+        assert response.status_code in (303, 403), (
+            f"Expected 403 or redirect (303), got {response.status_code}"
+        )
 
 
 class TestPackAccessControl:

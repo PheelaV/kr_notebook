@@ -139,8 +139,12 @@ test.describe('Study Tools', () => {
   test('ready for review button is visible', async ({ authenticatedPage }) => {
     await authenticatedPage.goto('/settings');
 
-    // Look for the "Ready for Review" button in study tools section
+    // Look for the study tools section
     const studyTools = authenticatedPage.locator('#study-tools');
     await expect(studyTools).toBeVisible();
+
+    // VERIFY: The actual "Ready for Review" button exists within the section
+    const readyButton = studyTools.locator('button:has-text("Ready"), a:has-text("Ready")');
+    await expect(readyButton.first()).toBeVisible();
   });
 });

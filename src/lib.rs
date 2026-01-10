@@ -13,3 +13,6 @@ pub mod session;
 pub mod srs;
 pub mod state;
 pub mod validation;
+
+#[cfg(test)]
+pub mod testing;

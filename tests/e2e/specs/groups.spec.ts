@@ -1,4 +1,4 @@
-import { test, expect } from '../fixtures/auth';
+import { test, expect, createGroup, deleteGroup } from '../fixtures/auth';
 
 test.describe('Group Management', () => {
   test('admin sees group creation form', async ({ adminPage }) => {
@@ -34,40 +34,34 @@ test.describe('Group Management', () => {
     await expect(groupsList.locator(`text=${groupId}`)).toBeVisible({ timeout: 5000 });
   });
 
-  test('admin can delete a group', async ({ adminPage }) => {
+  test('admin can delete a group', async ({ adminPage, dataDir }) => {
+    // SETUP: Create group via db-manager
+    const groupId = `delete-test-${Date.now()}`;
+    createGroup(groupId, 'To Delete', dataDir);
+
     await adminPage.goto('/settings');
 
     const groupSection = adminPage.locator('[data-testid="group-management"]');
-    const groupId = `delete-test-${Date.now()}`;
 
-    // First create a group
-    await groupSection.locator('input[name="id"]').fill(groupId);
-    await groupSection.locator('input[name="name"]').fill('To Delete');
-    await groupSection.locator('button:has-text("Create Group")').click();
-    await adminPage.waitForTimeout(1000);
-
-    // Find the group card and its delete button
+    // Verify group exists in UI
     const groupCard = groupSection.locator(`[id="group-${groupId}"]`);
     await expect(groupCard).toBeVisible({ timeout: 5000 });
 
-    // If group card has delete functionality, test it
+    // Find delete button - no fallback, it must exist
     const deleteBtn = groupCard.locator('button:has-text("Delete")');
-    if (await deleteBtn.isVisible()) {
-      // Set up dialog handler for the hx-confirm dialog
-      adminPage.on('dialog', async (dialog) => {
-        await dialog.accept();
-      });
+    await expect(deleteBtn).toBeVisible({ timeout: 5000 });
 
-      await deleteBtn.click();
-      // Wait for HTMX to process the delete
-      await adminPage.waitForTimeout(1500);
+    // Set up dialog handler for the hx-confirm dialog
+    adminPage.on('dialog', async (dialog) => {
+      await dialog.accept();
+    });
 
-      // Group should be removed - use { timeout: 5000 } for slower operations
-      await expect(groupCard).not.toBeVisible({ timeout: 5000 });
-    } else {
-      // If no delete button, just verify the group was created
-      await expect(groupCard).toBeVisible();
-    }
+    await deleteBtn.click();
+    // Wait for HTMX to process the delete
+    await adminPage.waitForTimeout(1500);
+
+    // VERIFY EFFECT: Group is gone from UI
+    await expect(groupCard).not.toBeVisible({ timeout: 5000 });
   });
 
   test('regular user cannot access group management', async ({ authenticatedPage }) => {
@@ -78,34 +72,31 @@ test.describe('Group Management', () => {
   });
 
   test('regular user cannot POST to group endpoints', async ({ authenticatedPage }) => {
-    // Try to POST to create group endpoint
+    // Try to POST to create group endpoint as non-admin
     const response = await authenticatedPage.request.post('/settings/group/create', {
       form: {
-        id: 'hacked-group',
+        id: `hacked-group-${Date.now()}`,
         name: 'Hacked Group',
       },
     });
 
-    // Non-admin should either get redirected (303) or denied
-    // Accept 200 (with error in body), 303 redirect, or 403 forbidden
-    expect([200, 303, 403]).toContain(response.status());
+    // VERIFY: Request was denied with 403 Forbidden
+    // Side-effect verification (group not created) should be in integration tests
+    expect(response.status()).toBe(403);
   });
 });
 
 test.describe('Group Membership', () => {
-  test('admin sees add member form in group card', async ({ adminPage }) => {
+  test('admin sees add member form in group card', async ({ adminPage, dataDir }) => {
+    // SETUP: Create group via db-manager
+    const groupId = `member-test-${Date.now()}`;
+    createGroup(groupId, 'Member Test', dataDir);
+
     await adminPage.goto('/settings');
 
     const groupSection = adminPage.locator('[data-testid="group-management"]');
 
-    // Create a group first
-    const groupId = `member-test-${Date.now()}`;
-    await groupSection.locator('input[name="id"]').fill(groupId);
-    await groupSection.locator('input[name="name"]').fill('Member Test');
-    await groupSection.locator('button:has-text("Create Group")').click();
-    await adminPage.waitForTimeout(1000);
-
-    // The group card should be visible after creation
+    // The group card should be visible
     const groupCard = groupSection.locator(`[id="group-${groupId}"]`);
     await expect(groupCard).toBeVisible({ timeout: 5000 });
 
@@ -116,7 +107,10 @@ test.describe('Group Membership', () => {
     const hasAddMemberBtn = await groupCard.locator('button:has-text("Add")').count();
 
     // At least one form of member management should exist
-    // Or the card just shows the group was created
-    expect(hasUserInput + hasUserSelect + hasAddMemberBtn >= 0).toBeTruthy();
+    // FIX: Changed from >= 0 (always true) to > 0 (at least one element exists)
+    expect(hasUserInput + hasUserSelect + hasAddMemberBtn).toBeGreaterThan(0);
+
+    // CLEANUP
+    deleteGroup(groupId, dataDir);
   });
 });

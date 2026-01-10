@@ -186,7 +186,9 @@ pub struct ValidateAnswerForm {
 
 #[derive(Deserialize)]
 pub struct NextCardForm {
-  pub card_id: i64,
+  /// Previous card ID (not currently used, kept for API compatibility)
+  #[serde(default)]
+  pub card_id: Option<i64>,
   #[serde(default)]
   pub session_id: String,
 }
@@ -204,7 +206,9 @@ fn default_track_progress() -> Option<bool> {
 
 #[derive(Deserialize)]
 pub struct PracticeForm {
-  pub card_id: i64,
+  /// Previous card ID (used to avoid showing same card twice)
+  #[serde(default)]
+  pub card_id: Option<i64>,
   #[serde(default)]
   pub track_progress: bool,
 }

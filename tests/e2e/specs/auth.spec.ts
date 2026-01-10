@@ -25,7 +25,11 @@ test.describe('Authentication', () => {
 
       // Should stay on login page with error
       await expect(page).toHaveURL(/\/login/);
-      await expect(page.locator('[data-testid="error-message"]')).toBeVisible();
+
+      // VERIFY: Error message is visible with meaningful content
+      const errorMessage = page.locator('[data-testid="error-message"]');
+      await expect(errorMessage).toBeVisible();
+      await expect(errorMessage).toContainText(/invalid|incorrect|wrong|failed/i);
     });
 
     test('should redirect to home after successful login', async ({ page, testUser }) => {
@@ -61,23 +65,21 @@ test.describe('Authentication', () => {
       // Start from home page
       await authenticatedPage.goto('/');
 
-      // Find and click logout button if visible
-      const logoutButton = authenticatedPage.locator('[data-testid="logout-button"]');
-      if (await logoutButton.isVisible()) {
-        await logoutButton.click();
-      } else {
-        // POST to /logout endpoint directly using page.evaluate
-        await authenticatedPage.evaluate(() => {
-          const form = document.createElement('form');
-          form.method = 'POST';
-          form.action = '/logout';
-          document.body.appendChild(form);
-          form.submit();
-        });
-        await authenticatedPage.waitForURL(/\/login/);
-      }
+      // Find logout button - check multiple possible locations/testids
+      const logoutButton = authenticatedPage.locator(
+        '[data-testid="logout-button"], [data-testid="logout-btn"], button:has-text("Logout"), a:has-text("Logout")'
+      ).first();
 
-      // Should be logged out - accessing protected route redirects to login
+      // VERIFY: Logout button exists and is accessible
+      await expect(logoutButton).toBeVisible({ timeout: 5000 });
+
+      // Click logout
+      await Promise.all([
+        authenticatedPage.waitForURL(/\/login/),
+        logoutButton.click(),
+      ]);
+
+      // VERIFY: Session is cleared - accessing protected route redirects to login
       await authenticatedPage.goto('/study');
       await expect(authenticatedPage).toHaveURL(/\/login/);
     });

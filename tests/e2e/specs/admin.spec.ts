@@ -1,4 +1,8 @@
-import { test, expect, setUserRole, login } from '../fixtures/auth';
+import { test, expect, setUserRole, login, createExpiredGuest, getGuestCount, guestExists } from '../fixtures/auth';
+
+// Tests in this file manipulate shared state (guests, roles) and must run serially
+// to avoid race conditions where one test's cleanup affects another test's assertions
+test.describe.configure({ mode: 'serial' });
 
 test.describe('Admin Access Control', () => {
   test('admin user sees admin sections in settings', async ({ adminPage }) => {
@@ -17,21 +21,20 @@ test.describe('Admin Access Control', () => {
     await expect(authenticatedPage.locator('[data-testid="guest-management"]')).not.toBeVisible();
   });
 
-  test('regular user cannot access admin endpoints directly', async ({ authenticatedPage }) => {
-    // Try to POST to an admin endpoint
+  test('regular user cannot access admin endpoints directly', async ({ authenticatedPage, dataDir }) => {
+    // SETUP: Create a specific expired guest that would be cleaned up if the action succeeded
+    const myGuestId = createExpiredGuest(dataDir);
+
+    // Try to POST to an admin endpoint as non-admin
     const response = await authenticatedPage.request.post('/settings/cleanup-guests');
 
-    // Non-admin should either get redirected (303) or get a forbidden/error response
-    // The actual behavior depends on the endpoint implementation
-    // Accept 200 with redirect in body, 303 redirect, or 403 forbidden
+    // Accept various denial responses:
+    // 200 (with error page), 303 (redirect), or 403 (forbidden)
     expect([200, 303, 403]).toContain(response.status());
 
-    // If 200, the page should indicate an error or redirect via JS/meta
-    if (response.status() === 200) {
-      const text = await response.text();
-      // Verify either no action was taken or there's an error indication
-      expect(text).toBeTruthy();
-    }
+    // VERIFY EFFECT: Our specific guest was NOT deleted (this is the critical assertion)
+    // We check the specific guest, not total count, to avoid race conditions with parallel tests
+    expect(guestExists(myGuestId, dataDir)).toBe(true);
   });
 });
 
@@ -112,7 +115,12 @@ test.describe('Guest Management', () => {
     await expect(guestSection.locator('button:has-text("Delete All Guests")')).toBeVisible();
   });
 
-  test('cleanup guests button is functional', async ({ adminPage }) => {
+  test('cleanup guests button is functional', async ({ adminPage, dataDir }) => {
+    // SETUP: Create an expired guest that should be cleaned up
+    createExpiredGuest(dataDir);
+    const guestCountBefore = getGuestCount(dataDir);
+    expect(guestCountBefore).toBeGreaterThan(0); // Ensure we have at least one guest
+
     await adminPage.goto('/settings');
 
     const guestSection = adminPage.locator('[data-testid="guest-management"]');
@@ -123,5 +131,9 @@ test.describe('Guest Management', () => {
 
     // Should redirect back to settings (form action redirects)
     await adminPage.waitForURL(/\/settings/);
+
+    // VERIFY EFFECT: Guest count decreased (expired guest was cleaned up)
+    const guestCountAfter = getGuestCount(dataDir);
+    expect(guestCountAfter).toBeLessThan(guestCountBefore);
   });
 });

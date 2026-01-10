@@ -1,7 +1,8 @@
 """Pytest configuration and fixtures for integration tests.
 
 This module provides fixtures for:
-- Server management (starting/stopping the test server)
+- Ephemeral test environment (isolated data directory)
+- Server management (automatic spawning/teardown)
 - User creation and cleanup via db-manager CLI
 - HTTP client with session handling
 - Database inspection utilities
@@ -9,6 +10,8 @@ This module provides fixtures for:
 
 import hashlib
 import os
+import shutil
+import signal
 import subprocess
 import time
 from pathlib import Path
@@ -20,7 +23,10 @@ import pytest
 # Find project root (contains Cargo.toml)
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 PY_SCRIPTS_DIR = PROJECT_ROOT / "py_scripts"
-DATA_DIR = PROJECT_ROOT / "data"
+
+# Isolated test data directory (ephemeral - created fresh for each test session)
+TEST_DATA_DIR = PROJECT_ROOT / "data" / "test" / "integration"
+TEST_PORT = 3100
 
 
 def compute_password_hash(password: str, username: str) -> str:
@@ -35,13 +41,16 @@ def compute_password_hash(password: str, username: str) -> str:
 class DbManager:
     """Wrapper for db-manager CLI commands."""
 
-    def __init__(self, project_root: Path):
+    __test__ = False  # Prevent pytest from collecting this as a test class
+
+    def __init__(self, project_root: Path, data_dir: Path):
         self.project_root = project_root
         self.py_scripts_dir = project_root / "py_scripts"
+        self.data_dir = data_dir
 
     def _run(self, *args: str, check: bool = True) -> subprocess.CompletedProcess:
         """Run db-manager with given arguments."""
-        cmd = ["uv", "run", "db-manager", *args]
+        cmd = ["uv", "run", "db-manager", *args, "--data-dir", str(self.data_dir)]
         return subprocess.run(
             cmd,
             cwd=self.py_scripts_dir,
@@ -50,14 +59,10 @@ class DbManager:
             check=check,
         )
 
-    def create_user(
-        self, username: str, password: str = "test123", guest: bool = False
-    ) -> str:
+    def create_user(self, username: str, password: str = "test123") -> str:
         """Create a test user and return the password hash for login."""
-        args = ["create-user", username, "--password", password]
-        if guest:
-            args.append("--guest")
-        self._run(*args)
+        # Use create-test-user which supports --data-dir
+        self._run("create-test-user", username, "--password", password)
         return compute_password_hash(password, username)
 
     def delete_user(self, username: str) -> None:
@@ -77,9 +82,32 @@ class DbManager:
         """Switch user to a scenario."""
         self._run("use", scenario, "--user", username)
 
+    def get_group_count(self) -> int:
+        """Get the total number of groups."""
+        result = self._run("get-group-count", check=False)
+        try:
+            return int(result.stdout.strip())
+        except ValueError:
+            return 0
+
+    def get_guest_count(self) -> int:
+        """Get the total number of guest users."""
+        result = self._run("get-guest-count", check=False)
+        try:
+            return int(result.stdout.strip())
+        except ValueError:
+            return 0
+
+    def group_exists(self, group_id: str) -> bool:
+        """Check if a group exists."""
+        result = self._run("list-groups", check=False)
+        return group_id in result.stdout
+
 
 class TestClient:
     """HTTP client wrapper with session/cookie management."""
+
+    __test__ = False  # Prevent pytest from collecting this as a test class
 
     def __init__(self, base_url: str = "http://localhost:3000"):
         self.base_url = base_url
@@ -96,33 +124,51 @@ class TestClient:
         self.client.close()
 
     def _update_cookies(self, response: httpx.Response) -> None:
-        """Extract and store cookies from response."""
+        """Extract and store cookies from response, updating client cookies."""
         for cookie in response.cookies.jar:
             if cookie.name == "kr_session":
                 self.session_cookie = cookie.value
+                self.client.cookies.set("kr_session", cookie.value)
             elif cookie.name == "kr_username":
                 self.username_cookie = cookie.value
+                self.client.cookies.set("kr_username", cookie.value)
 
-    def _get_cookies(self) -> dict[str, str]:
-        """Get cookies dict for requests."""
-        cookies = {}
+    def _sync_cookies(self) -> None:
+        """Ensure client cookies are in sync with our tracked cookies."""
         if self.session_cookie:
-            cookies["kr_session"] = self.session_cookie
+            self.client.cookies.set("kr_session", self.session_cookie)
+        else:
+            self.client.cookies.delete("kr_session")
         if self.username_cookie:
-            cookies["kr_username"] = self.username_cookie
-        return cookies
+            self.client.cookies.set("kr_username", self.username_cookie)
+        else:
+            self.client.cookies.delete("kr_username")
 
     def get(self, path: str, **kwargs) -> httpx.Response:
         """Make a GET request."""
-        kwargs.setdefault("cookies", self._get_cookies())
+        self._sync_cookies()
         response = self.client.get(path, **kwargs)
         self._update_cookies(response)
         return response
 
     def post(self, path: str, **kwargs) -> httpx.Response:
         """Make a POST request."""
-        kwargs.setdefault("cookies", self._get_cookies())
+        self._sync_cookies()
         response = self.client.post(path, **kwargs)
+        self._update_cookies(response)
+        return response
+
+    def delete(self, path: str, **kwargs) -> httpx.Response:
+        """Make a DELETE request."""
+        self._sync_cookies()
+        response = self.client.delete(path, **kwargs)
+        self._update_cookies(response)
+        return response
+
+    def request(self, method: str, path: str, **kwargs) -> httpx.Response:
+        """Make a request with arbitrary HTTP method."""
+        self._sync_cookies()
+        response = self.client.request(method, path, **kwargs)
         self._update_cookies(response)
         return response
 
@@ -138,6 +184,7 @@ class TestClient:
         response = self.post("/logout")
         self.session_cookie = None
         self.username_cookie = None
+        self.client.cookies.clear()
         return response
 
     def is_authenticated(self) -> bool:
@@ -152,6 +199,20 @@ class TestClient:
         return response
 
 
+def wait_for_server(url: str, timeout: float = 60.0) -> bool:
+    """Wait for server to become available."""
+    start = time.time()
+    while time.time() - start < timeout:
+        try:
+            response = httpx.get(f"{url}/login", timeout=2.0)
+            if response.status_code in (200, 302):
+                return True
+        except httpx.RequestError:
+            pass
+        time.sleep(0.5)
+    return False
+
+
 @pytest.fixture(scope="session")
 def project_root() -> Path:
     """Return the project root path."""
@@ -159,18 +220,86 @@ def project_root() -> Path:
 
 
 @pytest.fixture(scope="session")
-def db_manager(project_root: Path) -> DbManager:
-    """Return a db-manager wrapper instance."""
-    return DbManager(project_root)
+def test_data_dir() -> Path:
+    """Return the isolated test data directory."""
+    return TEST_DATA_DIR
 
 
 @pytest.fixture(scope="session")
-def server_url() -> str:
-    """Return the server URL.
+def test_server(project_root: Path, test_data_dir: Path) -> Generator[str, None, None]:
+    """Spawn an isolated test server with ephemeral data directory.
 
-    By default uses localhost:3000. Set KR_TEST_URL env var to override.
+    This fixture:
+    1. Creates a fresh test data directory
+    2. Initializes the test environment via db-manager
+    3. Spawns a server with the isolated DATA_DIR
+    4. Yields the server URL
+    5. Terminates the server and cleans up (unless PRESERVE_TEST_ENV is set)
     """
-    return os.environ.get("KR_TEST_URL", "http://localhost:3000")
+    # Clean up any existing test directory
+    if test_data_dir.exists():
+        shutil.rmtree(test_data_dir)
+
+    # Initialize test environment via db-manager
+    init_result = subprocess.run(
+        ["uv", "run", "db-manager", "init-test-env", "integration",
+         "--data-dir", str(test_data_dir)],
+        cwd=project_root / "py_scripts",
+        capture_output=True,
+        text=True,
+    )
+    if init_result.returncode != 0:
+        pytest.fail(f"Failed to initialize test environment: {init_result.stderr}")
+
+    # Spawn server with isolated data directory
+    env = os.environ.copy()
+    env["DATA_DIR"] = str(test_data_dir)
+    env["PORT"] = str(TEST_PORT)
+
+    process = subprocess.Popen(
+        ["cargo", "run", "--quiet"],
+        cwd=project_root,
+        env=env,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        preexec_fn=os.setsid,  # Create new process group for clean termination
+    )
+
+    url = f"http://localhost:{TEST_PORT}"
+
+    # Wait for server to be ready
+    if not wait_for_server(url, timeout=60.0):
+        process.terminate()
+        process.wait(timeout=5)
+        pytest.fail(f"Test server failed to start at {url}")
+
+    yield url
+
+    # Terminate server
+    try:
+        os.killpg(os.getpgid(process.pid), signal.SIGTERM)
+        process.wait(timeout=5)
+    except (ProcessLookupError, OSError):
+        pass  # Process already terminated
+
+    # Cleanup test data directory unless PRESERVE_TEST_ENV is set
+    if not os.environ.get("PRESERVE_TEST_ENV"):
+        shutil.rmtree(test_data_dir, ignore_errors=True)
+
+
+@pytest.fixture(scope="session")
+def server_url(test_server: str) -> str:
+    """Return the test server URL."""
+    return test_server
+
+
+@pytest.fixture(scope="session")
+def db_manager(project_root: Path, test_data_dir: Path, test_server: str) -> DbManager:
+    """Return a db-manager wrapper for the isolated test environment.
+
+    Depends on test_server to ensure environment is initialized.
+    """
+    return DbManager(project_root, data_dir=test_data_dir)
 
 
 @pytest.fixture
@@ -237,31 +366,3 @@ def admin_user(db_manager: DbManager) -> Generator[tuple[str, str], None, None]:
     yield (username, password_hash)
 
     # Don't delete admin user - it may be needed by other tests
-
-
-def wait_for_server(url: str, timeout: float = 30.0) -> bool:
-    """Wait for server to become available."""
-    start = time.time()
-    while time.time() - start < timeout:
-        try:
-            response = httpx.get(f"{url}/login", timeout=2.0)
-            if response.status_code in (200, 302):
-                return True
-        except httpx.RequestError:
-            pass
-        time.sleep(0.5)
-    return False
-
-
-@pytest.fixture(scope="session", autouse=True)
-def ensure_server_running(server_url: str) -> None:
-    """Ensure the server is running before tests.
-
-    This fixture doesn't start the server - it expects it to be running.
-    Tests will fail fast if server is not available.
-    """
-    if not wait_for_server(server_url, timeout=5.0):
-        pytest.skip(
-            f"Server not running at {server_url}. "
-            "Start it with 'cargo run' before running integration tests."
-        )

@@ -26,8 +26,11 @@ test.describe('Registration', () => {
     await page.fill('[data-testid="register-confirm"]', 'newpassword123');
     await page.click('[data-testid="register-submit"]');
 
-    // Should show error message
-    await expect(page.locator('[data-testid="register-error"]')).toBeVisible();
+    // Should show error message with meaningful text about duplicate/exists
+    const errorMessage = page.locator('[data-testid="register-error"]');
+    await expect(errorMessage).toBeVisible();
+    await expect(errorMessage).toContainText(/already exists|taken|in use|duplicate/i);
+
     // Should stay on register page
     await expect(page).toHaveURL(/\/register/);
   });
@@ -61,6 +64,13 @@ test.describe('Registration', () => {
     // Browser validation should prevent submission (pattern requires 3-32 chars)
     // The form won't submit so we should still be on register page
     await expect(page).toHaveURL(/\/register/);
+
+    // VERIFY: Browser validation message is shown (for pattern mismatch)
+    const usernameInput = page.locator('[data-testid="register-username"]');
+    const validationMessage = await usernameInput.evaluate(
+      (el: HTMLInputElement) => el.validationMessage
+    );
+    expect(validationMessage).toBeTruthy();
   });
 
   test('should require password confirmation to match', async ({ page }) => {
@@ -71,7 +81,11 @@ test.describe('Registration', () => {
     await page.fill('[data-testid="register-confirm"]', 'differentpassword');
     await page.click('[data-testid="register-submit"]');
 
-    // Should show error or stay on page (password mismatch is client-side validated)
+    // VERIFY: Form doesn't submit (stays on register page)
     await expect(page).toHaveURL(/\/register/);
+
+    // NOTE: Currently no user feedback is shown for password mismatch.
+    // This is a UX gap - users don't know why the form won't submit.
+    // Future improvement: Add client-side validation message for password mismatch.
   });
 });

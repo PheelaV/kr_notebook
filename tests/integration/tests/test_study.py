@@ -51,9 +51,9 @@ class TestInteractiveStudy:
                 data={
                     "card_id": card_id,
                     "answer": "test_answer",
-                    "hints_used": "0",
+                    "hints_used": 0,
                     "session_id": "",
-                    "input_method": "text",
+                    "input_method": "text_input",  # Valid variants: text_input, multiple_choice
                 },
             )
 
@@ -106,7 +106,11 @@ class TestPracticeMode:
 
     def test_practice_next_returns_card(self, authenticated_client: TestClient):
         """POST /practice-next returns a practice card."""
-        response = authenticated_client.post("/practice-next", data={})
+        # Need to send at least one field for Content-Type to be set properly
+        response = authenticated_client.post(
+            "/practice-next",
+            data={"track_progress": "true"},
+        )
 
         # Should return card or redirect
         assert response.status_code in (200, 302, 303)

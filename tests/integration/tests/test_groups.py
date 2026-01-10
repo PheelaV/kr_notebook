@@ -4,6 +4,9 @@ Tests cover:
 - Group creation (admin)
 - Group membership management
 - Group-based pack access
+
+Note: Comprehensive security tests (unauthorized/unauthenticated access) are in
+test_admin_security.py. These tests focus on functionality when authorized.
 """
 
 import uuid
@@ -16,25 +19,43 @@ from conftest import DbManager, TestClient
 class TestGroupManagement:
     """Group CRUD operations (admin only)."""
 
-    def test_create_group_requires_admin(self, authenticated_client: TestClient):
-        """POST /settings/group/create requires admin."""
+    def test_create_group_requires_admin(
+        self, authenticated_client: TestClient, db_manager: DbManager
+    ):
+        """POST /settings/group/create requires admin - with side-effect check."""
+        group_id = f"test-group-{uuid.uuid4().hex[:8]}"
+        count_before = db_manager.get_group_count()
+
         response = authenticated_client.post(
             "/settings/group/create",
-            data={"name": "test-group", "description": "Test group"},
+            data={"id": group_id, "name": "Test Group"},
         )
 
-        # Regular users should not have access
-        assert response.status_code in (200, 302, 303, 403)
+        # Regular users should get 403 or redirect to /settings
+        # 200 is NOT acceptable - it could mean the action succeeded
+        assert response.status_code in (303, 403), (
+            f"Expected 403 or redirect (303), got {response.status_code}"
+        )
+
+        # Side effect: group was NOT created
+        count_after = db_manager.get_group_count()
+        assert count_after == count_before, (
+            f"Group count changed from {count_before} to {count_after}"
+        )
+        assert not db_manager.group_exists(group_id), (
+            f"Group '{group_id}' was created despite non-admin user"
+        )
 
     def test_delete_group_requires_admin(self, authenticated_client: TestClient):
         """DELETE /settings/group/{group_id} requires admin."""
-        # Use POST with method override or direct DELETE
-        response = authenticated_client.post(
-            "/settings/group/test-group-id",
-            data={"_method": "DELETE"},
-        )
+        response = authenticated_client.delete("/settings/group/nonexistent-group")
 
-        assert response.status_code in (200, 302, 303, 403, 404, 405)
+        # Regular users should get 403 or redirect to /settings
+        # 404 is also acceptable since group doesn't exist
+        # 200 is NOT acceptable
+        assert response.status_code in (303, 403, 404), (
+            f"Expected 403, 404, or redirect (303), got {response.status_code}"
+        )
 
 
 class TestGroupMembership:
@@ -44,19 +65,27 @@ class TestGroupMembership:
         """POST /settings/group/add-member requires admin."""
         response = authenticated_client.post(
             "/settings/group/add-member",
-            data={"group_id": "test-group", "username": "testuser"},
+            data={"group_id": "test-group", "user_id": "testuser"},
         )
 
-        assert response.status_code in (200, 302, 303, 403)
+        # Regular users should get 403 or redirect to /settings
+        # 200 is NOT acceptable
+        assert response.status_code in (303, 403), (
+            f"Expected 403 or redirect (303), got {response.status_code}"
+        )
 
     def test_remove_member_requires_admin(self, authenticated_client: TestClient):
         """POST /settings/group/remove-member requires admin."""
         response = authenticated_client.post(
             "/settings/group/remove-member",
-            data={"group_id": "test-group", "username": "testuser"},
+            data={"group_id": "test-group", "user_id": "testuser"},
         )
 
-        assert response.status_code in (200, 302, 303, 403)
+        # Regular users should get 403 or redirect to /settings
+        # 200 is NOT acceptable
+        assert response.status_code in (303, 403), (
+            f"Expected 403 or redirect (303), got {response.status_code}"
+        )
 
 
 class TestGroupAccessControl:

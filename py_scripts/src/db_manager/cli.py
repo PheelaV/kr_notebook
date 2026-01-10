@@ -9,7 +9,7 @@ import os
 import secrets
 import shutil
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import click
@@ -81,11 +81,12 @@ def user_exists(username: str) -> bool:
     return user_exists_in_env(username, None)
 
 
-def list_all_users() -> list[tuple[str, bool, str | None]]:
+def list_all_users(data_dir: Path | None = None) -> list[tuple[str, bool, str | None]]:
     """List all users: (username, is_guest, last_login_at)."""
-    if not AUTH_DB.exists():
+    app_db = get_app_db_path(data_dir)
+    if not app_db.exists():
         return []
-    conn = sqlite3.connect(AUTH_DB)
+    conn = sqlite3.connect(app_db)
     try:
         rows = conn.execute(
             "SELECT username, COALESCE(is_guest, 0), last_login_at FROM users ORDER BY username"
@@ -310,18 +311,26 @@ def delete_user(username: str, yes: bool, data_dir: str | None) -> None:
 
 
 @cli.command("list-users")
-def list_users_cmd() -> None:
+@click.option(
+    "--data-dir",
+    "-d",
+    type=click.Path(),
+    default=None,
+    help="Data directory (for test environments).",
+)
+def list_users_cmd(data_dir: str | None) -> None:
     """List all users in the auth database.
 
     Shows username, type (regular/guest), and last login time.
     """
-    ensure_dirs()
+    env_dir = Path(data_dir) if data_dir else None
+    app_db = get_app_db_path(env_dir)
 
-    if not AUTH_DB.exists():
+    if not app_db.exists():
         click.echo("No auth database found. No users exist yet.")
         return
 
-    users = list_all_users()
+    users = list_all_users(env_dir)
     if not users:
         click.echo("No users found.")
         return
@@ -332,7 +341,7 @@ def list_users_cmd() -> None:
     for username, is_guest, last_login in users:
         user_type = click.style("guest", fg="yellow") if is_guest else "user"
         login_str = last_login[:19] if last_login else "never"
-        user_db = get_user_db_path(username)
+        user_db = get_user_db_path(username, env_dir)
         db_exists = click.style("OK", fg="green") if user_db.exists() else click.style("MISSING", fg="red")
 
         click.echo(f"  {username:15} [{user_type:5}] last_login: {login_str}  db: {db_exists}")
@@ -1525,14 +1534,15 @@ def create_group(group_id: str, name: str, description: str | None, data_dir: st
     try:
         # Check if group already exists
         existing = conn.execute(
-            "SELECT id FROM groups WHERE id = ?", (group_id,)
+            "SELECT id FROM user_groups WHERE id = ?", (group_id,)
         ).fetchone()
         if existing:
             raise click.ClickException(f"Group already exists: {group_id}")
 
+        now = datetime.now().isoformat()
         conn.execute(
-            "INSERT INTO groups (id, name, description) VALUES (?, ?, ?)",
-            (group_id, name, description),
+            "INSERT INTO user_groups (id, name, description, created_at) VALUES (?, ?, ?, ?)",
+            (group_id, name, description, now),
         )
         conn.commit()
         click.echo(f"Created group: {group_id} ({name})")
@@ -1571,7 +1581,7 @@ def delete_group(group_id: str, yes: bool, data_dir: str | None) -> None:
     try:
         # Check if group exists
         existing = conn.execute(
-            "SELECT name FROM groups WHERE id = ?", (group_id,)
+            "SELECT name FROM user_groups WHERE id = ?", (group_id,)
         ).fetchone()
         if not existing:
             raise click.ClickException(f"Group not found: {group_id}")
@@ -1580,7 +1590,7 @@ def delete_group(group_id: str, yes: bool, data_dir: str | None) -> None:
 
         # Count members
         member_count = conn.execute(
-            "SELECT COUNT(*) FROM group_members WHERE group_id = ?", (group_id,)
+            "SELECT COUNT(*) FROM user_group_members WHERE group_id = ?", (group_id,)
         ).fetchone()[0]
 
         if not yes:
@@ -1590,11 +1600,11 @@ def delete_group(group_id: str, yes: bool, data_dir: str | None) -> None:
             )
 
         # Delete memberships first
-        conn.execute("DELETE FROM group_members WHERE group_id = ?", (group_id,))
+        conn.execute("DELETE FROM user_group_members WHERE group_id = ?", (group_id,))
         # Delete pack permissions for this group
-        conn.execute("DELETE FROM pack_group_permissions WHERE group_id = ?", (group_id,))
+        conn.execute("DELETE FROM pack_permissions WHERE group_id = ?", (group_id,))
         # Delete the group
-        conn.execute("DELETE FROM groups WHERE id = ?", (group_id,))
+        conn.execute("DELETE FROM user_groups WHERE id = ?", (group_id,))
         conn.commit()
 
         click.echo(f"Deleted group: {group_id}")
@@ -1635,14 +1645,14 @@ def add_to_group(username: str, group_id: str, data_dir: str | None) -> None:
 
         # Check group exists
         group = conn.execute(
-            "SELECT name FROM groups WHERE id = ?", (group_id,)
+            "SELECT name FROM user_groups WHERE id = ?", (group_id,)
         ).fetchone()
         if not group:
             raise click.ClickException(f"Group not found: {group_id}")
 
         # Check if already a member
         existing = conn.execute(
-            "SELECT 1 FROM group_members WHERE group_id = ? AND user_id = ?",
+            "SELECT 1 FROM user_group_members WHERE group_id = ? AND user_id = ?",
             (group_id, user_id),
         ).fetchone()
         if existing:
@@ -1650,7 +1660,7 @@ def add_to_group(username: str, group_id: str, data_dir: str | None) -> None:
             return
 
         conn.execute(
-            "INSERT INTO group_members (group_id, user_id) VALUES (?, ?)",
+            "INSERT INTO user_group_members (group_id, user_id) VALUES (?, ?)",
             (group_id, user_id),
         )
         conn.commit()
@@ -1692,7 +1702,7 @@ def remove_from_group(username: str, group_id: str, data_dir: str | None) -> Non
 
         # Check if member
         existing = conn.execute(
-            "SELECT 1 FROM group_members WHERE group_id = ? AND user_id = ?",
+            "SELECT 1 FROM user_group_members WHERE group_id = ? AND user_id = ?",
             (group_id, user_id),
         ).fetchone()
         if not existing:
@@ -1700,13 +1710,184 @@ def remove_from_group(username: str, group_id: str, data_dir: str | None) -> Non
             return
 
         conn.execute(
-            "DELETE FROM group_members WHERE group_id = ? AND user_id = ?",
+            "DELETE FROM user_group_members WHERE group_id = ? AND user_id = ?",
             (group_id, user_id),
         )
         conn.commit()
         click.echo(f"Removed {username} from group {group_id}")
     finally:
         conn.close()
+
+
+@cli.command("get-group-count")
+@click.option(
+    "--data-dir",
+    "-d",
+    type=click.Path(),
+    default=None,
+    help="Data directory (for test environments).",
+)
+def get_group_count(data_dir: str | None) -> None:
+    """Get the number of groups in the database.
+
+    Outputs just the count number (useful for E2E test assertions).
+
+    Example:
+        db-manager get-group-count
+        db-manager get-group-count --data-dir data/test/e2e
+    """
+    app_db = get_app_db_path(Path(data_dir) if data_dir else None)
+
+    if not app_db.exists():
+        click.echo("0")
+        return
+
+    conn = sqlite3.connect(app_db)
+    try:
+        count = conn.execute("SELECT COUNT(*) FROM user_groups").fetchone()[0]
+        click.echo(str(count))
+    finally:
+        conn.close()
+
+
+@cli.command("get-guest-count")
+@click.option(
+    "--data-dir",
+    "-d",
+    type=click.Path(),
+    default=None,
+    help="Data directory (for test environments).",
+)
+def get_guest_count(data_dir: str | None) -> None:
+    """Get the number of guest users in the database.
+
+    Outputs just the count number (useful for E2E test assertions).
+
+    Example:
+        db-manager get-guest-count
+        db-manager get-guest-count --data-dir data/test/e2e
+    """
+    app_db = get_app_db_path(Path(data_dir) if data_dir else None)
+
+    if not app_db.exists():
+        click.echo("0")
+        return
+
+    conn = sqlite3.connect(app_db)
+    try:
+        count = conn.execute("SELECT COUNT(*) FROM users WHERE is_guest = 1").fetchone()[0]
+        click.echo(str(count))
+    finally:
+        conn.close()
+
+
+@cli.command("guest-exists")
+@click.argument("guest_id")
+@click.option(
+    "--data-dir",
+    "-d",
+    type=click.Path(),
+    default=None,
+    help="Data directory (for test environments).",
+)
+def guest_exists_cmd(guest_id: str, data_dir: str | None) -> None:
+    """Check if a specific guest user exists.
+
+    Outputs 'true' or 'false' (useful for E2E test assertions).
+
+    Example:
+        db-manager guest-exists _guest_abc123
+        db-manager guest-exists _guest_test --data-dir data/test/e2e
+    """
+    # Ensure username starts with _guest_ prefix
+    username = guest_id if guest_id.startswith("_guest_") else f"_guest_{guest_id}"
+
+    exists = user_exists_in_env(username, Path(data_dir) if data_dir else None)
+    click.echo("true" if exists else "false")
+
+
+@cli.command("create-expired-guest")
+@click.argument("guest_id")
+@click.option(
+    "--data-dir",
+    "-d",
+    type=click.Path(),
+    default=None,
+    help="Data directory (for test environments).",
+)
+def create_expired_guest(guest_id: str, data_dir: str | None) -> None:
+    """Create a guest user with an already-expired session.
+
+    Used by E2E tests to verify guest cleanup functionality.
+    The guest will have last_activity_at set 48 hours in the past.
+
+    Example:
+        db-manager create-expired-guest _guest_old
+        db-manager create-expired-guest _guest_test --data-dir data/test/e2e
+    """
+    # Ensure username starts with _guest_ prefix
+    username = guest_id if guest_id.startswith("_guest_") else f"_guest_{guest_id}"
+
+    # Determine paths
+    if data_dir:
+        env_dir = Path(data_dir).resolve()
+        app_db = env_dir / "app.db"
+        users_base = env_dir / "users"
+    else:
+        app_db = AUTH_DB
+        users_base = USERS_DIR
+
+    if not app_db.exists():
+        raise click.ClickException(f"Database not found: {app_db}. Run init-test-env first.")
+
+    # Check if user already exists
+    conn = sqlite3.connect(app_db)
+    try:
+        exists = conn.execute(
+            "SELECT COUNT(*) FROM users WHERE username = ?",
+            (username,)
+        ).fetchone()[0]
+        if exists:
+            raise click.ClickException(f"Guest already exists: {username}")
+
+        # Create guest user with expired timestamp (48 hours ago)
+        password_hash = hash_password_for_storage("guest", username)
+        now = datetime.now()
+        expired_at = (now - timedelta(hours=48)).isoformat()
+
+        conn.execute(
+            """INSERT INTO users (username, password_hash, created_at, is_guest, last_activity_at)
+               VALUES (?, ?, ?, 1, ?)""",
+            (username, password_hash, expired_at, expired_at),
+        )
+        conn.commit()
+        click.echo(f"Created expired guest: {username}")
+    finally:
+        conn.close()
+
+    # Create user directory and learning database using Rust CLI
+    user_dir = users_base / username
+    user_db_path = user_dir / "learning.db"
+
+    if not user_db_path.exists():
+        import subprocess
+
+        env = os.environ.copy()
+        if data_dir:
+            env["DATA_DIR"] = str(env_dir)
+
+        result = subprocess.run(
+            ["cargo", "run", "--release", "--", "--init-user-db", username],
+            cwd=ROOT,
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            # Non-fatal - guest can exist without learning.db for cleanup tests
+            click.echo(f"Warning: Could not create learning.db: {result.stderr}")
+
+    click.echo(click.style(f"Expired guest '{username}' ready for cleanup testing!", fg="green"))
 
 
 @cli.command("list-groups")
@@ -1731,7 +1912,7 @@ def list_groups(data_dir: str | None) -> None:
     conn = sqlite3.connect(app_db)
     try:
         groups = conn.execute(
-            "SELECT id, name, description FROM groups ORDER BY id"
+            "SELECT id, name, description FROM user_groups ORDER BY id"
         ).fetchall()
 
         if not groups:
@@ -1742,7 +1923,7 @@ def list_groups(data_dir: str | None) -> None:
         for group_id, name, desc in groups:
             # Get members
             members = conn.execute(
-                """SELECT u.username FROM group_members gm
+                """SELECT u.username FROM user_group_members gm
                    JOIN users u ON gm.user_id = u.id
                    WHERE gm.group_id = ?
                    ORDER BY u.username""",

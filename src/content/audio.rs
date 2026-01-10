@@ -291,8 +291,8 @@ mod tests {
     fn test_list_available_lessons() {
         // Should return list without panicking
         let lessons = list_available_lessons();
-        // May be empty or have lessons depending on environment
-        assert!(lessons.len() >= 0);
+        // Result is valid (may be empty depending on environment)
+        drop(lessons);
     }
 
     #[test]
