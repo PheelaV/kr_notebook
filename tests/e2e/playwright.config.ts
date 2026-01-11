@@ -150,6 +150,21 @@ export default defineConfig({
       },
     },
 
+    // ==================== Navbar Dropdown Tests ====================
+    // Tests for navbar dropdown consistency across pages
+    {
+      name: 'navbar-dropdown-tests',
+      testMatch: 'navbar-dropdown.spec.ts',
+      use: {
+        ...devices['Desktop Chrome'],
+        baseURL: 'http://localhost:3009',
+      },
+      metadata: {
+        dataDir: 'data/test/e2e-navbar',
+        port: 3009,
+      },
+    },
+
     // ==================== Cross-Browser (Optional) ====================
     // Run the same tests on different browsers (shares server with auth-tests)
     // Uncomment to enable cross-browser testing

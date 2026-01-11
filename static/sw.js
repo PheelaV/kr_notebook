@@ -1,0 +1,395 @@
+/**
+ * Service Worker for Korean Hangul Learning App
+ *
+ * Caching strategy:
+ * - Network-only: Auth routes, POST endpoints, mutations
+ * - Cache-first when offline: Reference and Library pages (instant response)
+ * - Cache-first: Static assets (CSS, JS, images)
+ * - Precache on demand: Reference pages cached when user visits home
+ */
+
+'use strict';
+
+// Bump version to trigger update
+const CACHE_VERSION = '6';
+const CACHE_NAMES = {
+  static: `kr-static-${CACHE_VERSION}`,
+  pages: `kr-pages-${CACHE_VERSION}`,
+  cdn: `kr-cdn-${CACHE_VERSION}`
+};
+
+// Static assets to precache on install
+const PRECACHE_STATIC = [
+  '/static/css/styles.css',
+  '/static/js/card-interactions.js',
+  '/static/js/auth.js',
+  '/static/js/sw-register.js',
+  '/static/favicon.svg',
+  '/static/favicon.ico',
+  '/static/favicon-16x16.png',
+  '/static/favicon-32x32.png',
+  '/static/apple-touch-icon.png',
+  '/static/android-chrome-192x192.png',
+  '/static/android-chrome-512x512.png',
+  '/static/site.webmanifest',
+  '/offline'
+];
+
+// CDN resources to precache
+const PRECACHE_CDN = [
+  'https://unpkg.com/htmx.org@2.0.4',
+  'https://code.iconify.design/iconify-icon/2.1.0/iconify-icon.min.js'
+];
+
+// Pages to precache when user visits home (background fetch)
+const PRECACHE_PAGES = [
+  '/reference',
+  '/reference/basics',
+  '/reference/tier1',
+  '/reference/tier2',
+  '/reference/tier3',
+  '/reference/tier4',
+  '/library',
+  '/library/characters',
+  '/library/vocabulary',
+  '/guide'
+];
+
+// Routes that should never be cached (network-only)
+const NETWORK_ONLY_PATTERNS = [
+  /^\/login/,
+  /^\/register/,
+  /^\/logout/,
+  /^\/guest/,
+  /^\/api\//,
+  /^\/review/,
+  /^\/validate-answer/,
+  /^\/next-card/,
+  /^\/unlock-tier/,
+  /^\/diagnostic/,
+  /^\/settings\//,
+  /^\/study\/filter/,
+  /^\/practice-next/,
+  /^\/practice-validate/,
+  /^\/listen\/answer/,
+  /^\/listen\/skip/
+];
+
+// Routes to cache with offline-first strategy
+const OFFLINE_FIRST_PATTERNS = [
+  /^\/reference/,
+  /^\/library/,
+  /^\/guide$/
+];
+
+// Routes to cache with cache-first strategy
+const CACHE_FIRST_PATTERNS = [
+  /^\/static\//,
+  /^\/audio\/scraped\//
+];
+
+/**
+ * Install event - precache static assets and CDN resources
+ */
+self.addEventListener('install', function(event) {
+  console.log('[SW] Installing version', CACHE_VERSION);
+  event.waitUntil(
+    Promise.all([
+      // Precache static assets
+      caches.open(CACHE_NAMES.static).then(function(cache) {
+        return cache.addAll(PRECACHE_STATIC).catch(function(error) {
+          console.warn('[SW] Failed to precache some static assets:', error);
+        });
+      }),
+      // Precache CDN resources (may fail if offline during install)
+      caches.open(CACHE_NAMES.cdn).then(function(cache) {
+        return Promise.all(
+          PRECACHE_CDN.map(function(url) {
+            return cache.add(url).catch(function(error) {
+              console.warn('[SW] Failed to precache CDN resource:', url, error);
+            });
+          })
+        );
+      })
+    ]).then(function() {
+      console.log('[SW] Precaching complete, skipping waiting');
+      return self.skipWaiting();
+    })
+  );
+});
+
+/**
+ * Activate event - clean up old caches
+ */
+self.addEventListener('activate', function(event) {
+  console.log('[SW] Activating version', CACHE_VERSION);
+  event.waitUntil(
+    caches.keys().then(function(cacheNames) {
+      return Promise.all(
+        cacheNames
+          .filter(function(name) {
+            // Delete caches that start with our prefix but aren't current version
+            return name.startsWith('kr-') &&
+                   !Object.values(CACHE_NAMES).includes(name);
+          })
+          .map(function(name) {
+            console.log('[SW] Deleting old cache:', name);
+            return caches.delete(name);
+          })
+      );
+    }).then(function() {
+      console.log('[SW] Taking control of clients');
+      return self.clients.claim();
+    })
+  );
+});
+
+/**
+ * Cache-first strategy (for static assets)
+ * Returns cached response if available, otherwise fetches and caches
+ */
+function cacheFirst(request, cacheName) {
+  return caches.match(request).then(function(cachedResponse) {
+    if (cachedResponse) {
+      return cachedResponse;
+    }
+
+    return fetch(request).then(function(networkResponse) {
+      if (networkResponse.ok) {
+        var responseToCache = networkResponse.clone();
+        caches.open(cacheName).then(function(cache) {
+          cache.put(request, responseToCache);
+        });
+      }
+      return networkResponse;
+    });
+  });
+}
+
+/**
+ * Stale-while-revalidate strategy (for online mode)
+ * Returns cached response immediately, fetches update in background
+ */
+function staleWhileRevalidate(request, cacheName) {
+  return caches.open(cacheName).then(function(cache) {
+    return cache.match(request).then(function(cachedResponse) {
+      // Start network fetch in background
+      var fetchPromise = fetch(request).then(function(networkResponse) {
+        if (networkResponse.ok) {
+          cache.put(request, networkResponse.clone());
+        }
+        return networkResponse;
+      }).catch(function(error) {
+        console.warn('[SW] Background fetch failed:', error);
+        return null;
+      });
+
+      // Return cached response immediately if available
+      if (cachedResponse) {
+        return cachedResponse;
+      }
+
+      // No cache - wait for network
+      return fetchPromise.then(function(networkResponse) {
+        if (networkResponse) {
+          return networkResponse;
+        }
+        // Network failed - serve offline page as fallback
+        // (navigator.onLine is unreliable, especially with DevTools offline)
+        return caches.match('/offline');
+      });
+    });
+  });
+}
+
+/**
+ * Cache-first when offline (for reference/library pages)
+ * When offline: immediately return cache or offline page (no network wait)
+ * When online: use stale-while-revalidate
+ */
+function cacheFirstOffline(request, cacheName) {
+  // If offline, go straight to cache - no network wait
+  if (!navigator.onLine) {
+    return caches.match(request).then(function(cachedResponse) {
+      if (cachedResponse) {
+        return cachedResponse;
+      }
+      return caches.match('/offline');
+    });
+  }
+
+  // Online: use stale-while-revalidate for fresh content
+  return staleWhileRevalidate(request, cacheName);
+}
+
+/**
+ * Handle home page requests
+ * When offline: serve offline page immediately
+ * When online: network-first with cache fallback
+ */
+function handleHomePage(request) {
+  // If offline, immediately serve offline page
+  if (!navigator.onLine) {
+    return caches.match('/offline');
+  }
+
+  // Online: try network first
+  return fetch(request).then(function(networkResponse) {
+    // Cache the home page for faster future loads
+    if (networkResponse.ok) {
+      var responseToCache = networkResponse.clone();
+      caches.open(CACHE_NAMES.pages).then(function(cache) {
+        cache.put(request, responseToCache);
+      });
+    }
+    return networkResponse;
+  }).catch(function(error) {
+    console.warn('[SW] Home page fetch failed:', error);
+    // Try cache, then offline page
+    return caches.match(request).then(function(cached) {
+      return cached || caches.match('/offline');
+    });
+  });
+}
+
+/**
+ * Network-first with offline fallback (for other navigation requests)
+ */
+function networkFirstWithFallback(request) {
+  // If offline, immediately check cache
+  if (!navigator.onLine) {
+    return caches.match(request).then(function(cached) {
+      return cached || caches.match('/offline');
+    });
+  }
+
+  return fetch(request).then(function(networkResponse) {
+    return networkResponse;
+  }).catch(function(error) {
+    console.warn('[SW] Network request failed:', error);
+    // Network failed - try cache, then offline page
+    // (navigator.onLine is unreliable, especially with DevTools offline)
+    return caches.match(request).then(function(cachedResponse) {
+      return cachedResponse || caches.match('/offline');
+    });
+  });
+}
+
+/**
+ * Check if URL matches any pattern in the list
+ */
+function matchesPattern(pathname, patterns) {
+  return patterns.some(function(pattern) {
+    return pattern.test(pathname);
+  });
+}
+
+/**
+ * Fetch event - route requests to appropriate caching strategy
+ */
+self.addEventListener('fetch', function(event) {
+  var url = new URL(event.request.url);
+
+  // Skip non-GET requests (POST, DELETE, etc.)
+  if (event.request.method !== 'GET') {
+    return;
+  }
+
+  // Network-only for auth and mutation endpoints
+  if (matchesPattern(url.pathname, NETWORK_ONLY_PATTERNS)) {
+    return;
+  }
+
+  // Cache-first for static assets (same origin)
+  if (matchesPattern(url.pathname, CACHE_FIRST_PATTERNS)) {
+    event.respondWith(cacheFirst(event.request, CACHE_NAMES.static));
+    return;
+  }
+
+  // Cache-first for CDN resources (different origin)
+  if (url.origin !== location.origin) {
+    event.respondWith(cacheFirst(event.request, CACHE_NAMES.cdn));
+    return;
+  }
+
+  // Home page gets special handling
+  if (url.pathname === '/') {
+    event.respondWith(handleHomePage(event.request));
+    return;
+  }
+
+  // Cache-first when offline for reference/library pages
+  if (matchesPattern(url.pathname, OFFLINE_FIRST_PATTERNS)) {
+    event.respondWith(cacheFirstOffline(event.request, CACHE_NAMES.pages));
+    return;
+  }
+
+  // Network-first with offline fallback for other navigation requests
+  if (event.request.mode === 'navigate') {
+    event.respondWith(networkFirstWithFallback(event.request));
+    return;
+  }
+
+  // Default: let browser handle the request normally
+});
+
+/**
+ * Message event - handle messages from clients
+ */
+self.addEventListener('message', function(event) {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
+
+  // Precache reference pages (triggered from home page)
+  if (event.data && event.data.type === 'PRECACHE_PAGES') {
+    console.log('[SW] Precaching reference pages...');
+    event.waitUntil(
+      caches.open(CACHE_NAMES.pages).then(function(cache) {
+        return Promise.all(
+          PRECACHE_PAGES.map(function(url) {
+            return fetch(url).then(function(response) {
+              if (response.ok) {
+                console.log('[SW] Cached:', url);
+                return cache.put(url, response);
+              }
+            }).catch(function(error) {
+              console.warn('[SW] Failed to precache:', url, error);
+            });
+          })
+        );
+      }).then(function() {
+        console.log('[SW] Reference pages precached');
+      })
+    );
+  }
+
+  // Clear all caches
+  if (event.data && event.data.type === 'CLEAR_CACHES') {
+    event.waitUntil(
+      caches.keys().then(function(names) {
+        return Promise.all(
+          names.filter(function(name) {
+            return name.startsWith('kr-');
+          }).map(function(name) {
+            return caches.delete(name);
+          })
+        );
+      }).then(function() {
+        event.ports[0].postMessage({ success: true });
+      })
+    );
+  }
+
+  // Get list of cached pages (for menu awareness)
+  if (event.data && event.data.type === 'GET_CACHED_PAGES') {
+    caches.open(CACHE_NAMES.pages).then(function(cache) {
+      return cache.keys();
+    }).then(function(keys) {
+      var paths = keys.map(function(request) {
+        return new URL(request.url).pathname;
+      });
+      event.ports[0].postMessage({ cachedPages: paths });
+    });
+  }
+});

@@ -27,6 +27,7 @@
           integrity="sha384-GPb5RlngihS9H0z1D137JsvzmeZ7tCpWEF4t5YDoTZyMsPP8S7h7vFDh4XhheU83"
           crossorigin="anonymous"></script>
   <script src="{{ "/static/js/card-interactions.js"|asset_url }}"></script>
+  <script src="{{ "/static/js/sw-register.js"|asset_url }}"></script>
   <script>
     // Dark mode toggle function
     function toggleDarkMode() {
@@ -472,6 +473,116 @@
   </script>
 
   {% block testing_scripts %}{% endblock %}
+
+  <script>
+    // Offline-aware navigation
+    // Dims menu items that aren't cached when offline
+    (function() {
+      var cachedPages = [];
+      var isOffline = !navigator.onLine;
+
+      // Pages that are always available offline (precached in SW install)
+      var alwaysOffline = ['/offline'];
+
+      // Pages that get precached when visiting home
+      var precachedPaths = [
+        '/reference', '/reference/basics', '/reference/tier1',
+        '/reference/tier2', '/reference/tier3', '/reference/tier4',
+        '/library', '/library/characters', '/library/vocabulary',
+        '/guide'
+      ];
+
+      function updateCachedPages() {
+        if (window.ServiceWorkerAPI && typeof window.ServiceWorkerAPI.getCachedPages === 'function') {
+          window.ServiceWorkerAPI.getCachedPages().then(function(pages) {
+            cachedPages = pages || [];
+            updateMenuState();
+          }).catch(function() {
+            cachedPages = [];
+            updateMenuState();
+          });
+        } else {
+          updateMenuState();
+        }
+      }
+
+      function isPathCached(path) {
+        // Always-offline pages
+        if (alwaysOffline.includes(path)) return true;
+
+        // Exact match in cached pages
+        if (cachedPages.includes(path)) return true;
+
+        // Check if any cached page starts with this path (for nested routes)
+        return cachedPages.some(function(cached) {
+          return cached.startsWith(path + '/') || path.startsWith(cached + '/');
+        });
+      }
+
+      function updateMenuState() {
+        isOffline = !navigator.onLine;
+        var navLinks = document.querySelectorAll('nav a[href]');
+
+        navLinks.forEach(function(link) {
+          try {
+            var url = new URL(link.href);
+            var path = url.pathname;
+
+            // Only process same-origin links
+            if (url.origin !== window.location.origin) return;
+
+            if (isOffline && !isPathCached(path)) {
+              // Offline and not cached - disable the link
+              link.classList.add('opacity-50', 'pointer-events-none', 'cursor-not-allowed');
+              link.setAttribute('data-offline-disabled', 'true');
+              link.setAttribute('aria-disabled', 'true');
+            } else {
+              // Online or cached - restore the link
+              link.classList.remove('opacity-50', 'pointer-events-none', 'cursor-not-allowed');
+              link.removeAttribute('data-offline-disabled');
+              link.removeAttribute('aria-disabled');
+            }
+          } catch (e) {
+            // Invalid URL, skip
+          }
+        });
+      }
+
+      // Listen for online/offline events
+      window.addEventListener('online', function() {
+        console.log('[Offline Nav] Back online');
+        updateMenuState();
+      });
+
+      window.addEventListener('offline', function() {
+        console.log('[Offline Nav] Gone offline');
+        updateCachedPages();
+      });
+
+      // Backup click handler to prevent navigation on disabled links
+      document.addEventListener('click', function(e) {
+        var link = e.target.closest('a[data-offline-disabled]');
+        if (link) {
+          e.preventDefault();
+          console.log('[Offline Nav] Blocked navigation to offline-disabled link:', link.href);
+        }
+      });
+
+      // Update menu state after HTMX navigation
+      document.body.addEventListener('htmx:afterSettle', function() {
+        updateMenuState();
+      });
+
+      // Initial check after page load
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', function() {
+          setTimeout(updateCachedPages, 500);
+        });
+      } else {
+        setTimeout(updateCachedPages, 500);
+      }
+    })();
+  </script>
 
   <script>
     // Testing mode: Global handler for ")" keystroke to show mock tier unlock

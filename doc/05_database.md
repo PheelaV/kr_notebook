@@ -12,8 +12,8 @@ kr_notebook uses a **dual-database architecture**:
 | **learning.db** | `data/users/<username>/learning.db` | Per-user: SRS progress, reviews, statistics, preferences |
 
 - **Database**: SQLite 3
-- **app.db schema**: `src/auth/db.rs` (version 5)
-- **learning.db schema**: `src/db/schema.rs` (version 3)
+- **app.db schema**: `src/auth/db.rs` (version 9)
+- **learning.db schema**: `src/db/schema.rs` (version 5)
 - **Cross-database queries**: Uses `ATTACH DATABASE` to join card definitions with user progress
 
 ## Entity Relationship Diagrams
@@ -70,6 +70,15 @@ kr_notebook uses a **dual-database architecture**:
 │  pack_id, group_id (PK) │   │  pack_id, user_id (PK)  │
 │  allowed                │   │  allowed                │
 └─────────────────────────┘   └─────────────────────────┘
+
+┌─────────────────────────┐   ┌─────────────────────────┐
+│  registered_pack_paths  │   │    pack_ui_metadata     │
+│                         │   │                         │
+│  id (PK), path          │   │  pack_id (PK)           │
+│  name, registered_by    │   │  display_name, unit_name│
+│  registered_at          │   │  unlock_threshold       │
+│  is_active              │   │  total_lessons          │
+└─────────────────────────┘   └─────────────────────────┘
 ```
 
 ### learning.db (Per-User)
@@ -118,21 +127,24 @@ kr_notebook uses a **dual-database architecture**:
 │  learning_step              │   └─────────────────────────────┘
 │  fsrs_stability, difficulty │
 │  fsrs_state                 │   ┌─────────────────────────────┐
-└─────────────────────────────┘   │  tier_graduation_backups    │
+└─────────────────────────────┘   │   pack_lesson_progress      │
                                   │                             │
-┌─────────────────────┐           │  tier (PK)                  │
-│  character_stats    │           │  backup_data (JSON)         │
-│                     │           │  created_at                 │
-│  character (PK)     │           └─────────────────────────────┘
-│  character_type     │
-│  total_attempts     │           ┌─────────────────────┐
-│  total_correct      │           │     db_version      │
-│  attempts_7d        │           │  (schema tracking)  │
-│  correct_7d         │           └─────────────────────┘
-│  attempts_1d        │
-│  correct_1d         │
+┌─────────────────────┐           │  pack_id, lesson (PK)       │
+│  character_stats    │           │  unlocked, unlocked_at      │
+│                     │           └─────────────────────────────┘
+│  character (PK)     │
+│  character_type     │           ┌─────────────────────────────┐
+│  total_attempts     │           │  tier_graduation_backups    │
+│  total_correct      │           │                             │
+│  attempts_7d        │           │  tier (PK)                  │
+│  correct_7d         │           │  backup_data (JSON)         │
+│  attempts_1d        │           │  created_at                 │
+│  correct_1d         │           └─────────────────────────────┘
 │  last_attempt_at    │
-└─────────────────────┘
+└─────────────────────┘           ┌─────────────────────┐
+                                  │     db_version      │
+                                  │  (schema tracking)  │
+                                  └─────────────────────┘
 
 Cross-database relationship:
   card_progress.card_id ──► app.db.card_definitions.id
@@ -209,6 +221,7 @@ Registry of installed card packs.
 | `installed_at` | TEXT | NOT NULL | RFC3339 installation timestamp |
 | `installed_by` | TEXT | | Username of installer (NULL for shared) |
 | `metadata` | TEXT | | JSON: type-specific configuration |
+| `is_enabled` | INTEGER | DEFAULT 1 | 1 = enabled, 0 = disabled globally |
 
 ### `card_definitions`
 
@@ -225,6 +238,7 @@ Shared card content (Korean language learning cards).
 | `audio_hint` | TEXT | | Path to audio file |
 | `is_reverse` | INTEGER | NOT NULL DEFAULT 0 | 1 for reverse cards (answer→question) |
 | `pack_id` | TEXT | FK → content_packs(id) | NULL for baseline cards |
+| `lesson` | INTEGER | | Lesson number within pack (for lesson-based packs) |
 
 ### `user_groups`
 
@@ -272,6 +286,35 @@ User-level direct pack access control.
 | `allowed` | INTEGER | NOT NULL DEFAULT 1 | 1 = allow, 0 = deny |
 
 **Primary key:** `(pack_id, user_id)`
+
+### `registered_pack_paths`
+
+External pack directory registration for admin-managed content.
+
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| `id` | INTEGER | PRIMARY KEY AUTOINCREMENT | Entry ID |
+| `path` | TEXT | NOT NULL, UNIQUE | Filesystem path to pack directory |
+| `name` | TEXT | | Display name for the path |
+| `registered_by` | TEXT | NOT NULL | Username who registered the path |
+| `registered_at` | TEXT | NOT NULL | RFC3339 timestamp |
+| `is_active` | INTEGER | DEFAULT 1 | 1 = active, 0 = inactive |
+
+### `pack_ui_metadata`
+
+UI configuration for lesson-based pack progression.
+
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| `pack_id` | TEXT | PRIMARY KEY, FK → content_packs(id) | Pack reference |
+| `display_name` | TEXT | NOT NULL | Name shown in UI |
+| `unit_name` | TEXT | DEFAULT 'Lessons' | Label for lesson groups (e.g., "Units", "Lessons") |
+| `section_prefix` | TEXT | DEFAULT 'Lesson' | Prefix for individual lessons (e.g., "Lesson 1") |
+| `lesson_labels` | TEXT | | JSON array of custom lesson labels |
+| `unlock_threshold` | INTEGER | DEFAULT 80 | Percentage required to unlock next lesson |
+| `total_lessons` | INTEGER | | Total number of lessons in pack |
+| `progress_section_title` | TEXT | | Title for progress section |
+| `study_filter_label` | TEXT | | Label for study filter dropdown |
 
 ## learning.db Tables
 
@@ -361,6 +404,10 @@ User-specific learning preferences.
 | `use_fsrs` | `true` | Use FSRS algorithm (vs SM-2) |
 | `use_interleaving` | `true` | Mix card types during study |
 | `focus_tier` | *(none)* | Single tier focus mode (1-4 or absent) |
+| `accelerated_packs` | *(empty)* | Comma-separated pack IDs in accelerated mode |
+| `study_filter_mode` | `all` | Study filter: `all`, `pack`, `lesson` |
+| `study_filter_pack` | *(empty)* | Pack ID for filtered study |
+| `study_filter_lessons` | *(empty)* | Comma-separated lesson numbers for filtered study |
 
 ### `confusions`
 
@@ -426,6 +473,19 @@ Tracks which content packs are enabled for this user.
 | `cards_created` | INTEGER | DEFAULT 0 | 1 if cards were created from this pack |
 | `config` | TEXT | | JSON: user-specific pack settings |
 
+### `pack_lesson_progress`
+
+Tracks lesson unlock progress for lesson-based packs.
+
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| `pack_id` | TEXT | NOT NULL | FK → app.db.content_packs(id) |
+| `lesson` | INTEGER | NOT NULL | Lesson number |
+| `unlocked` | INTEGER | NOT NULL DEFAULT 0 | 1 if unlocked |
+| `unlocked_at` | TEXT | | RFC3339 timestamp when unlocked |
+
+**Primary key:** `(pack_id, lesson)`
+
 ## Indexes
 
 ### app.db Indexes
@@ -442,6 +502,7 @@ Tracks which content packs are enabled for this user.
 | `idx_user_group_members_user` | user_group_members | user_id | User's groups |
 | `idx_pack_permissions_group` | pack_permissions | group_id | Group permissions |
 | `idx_pack_user_permissions_user` | pack_user_permissions | user_id | User permissions |
+| `idx_card_definitions_pack_lesson` | card_definitions | pack_id, lesson | Cards by pack and lesson |
 
 ### learning.db Indexes
 
@@ -464,7 +525,7 @@ Migrations run automatically on database connection via versioned migration func
 - `add_column_if_missing()` for new columns
 - `db_version` table to track applied migrations
 
-### app.db Migrations (AUTH_DB_VERSION = 5)
+### app.db Migrations (AUTH_DB_VERSION = 9)
 
 | Version | Description |
 |---------|-------------|
@@ -473,14 +534,20 @@ Migrations run automatically on database connection via versioned migration func
 | 3 | Add content packs system (content_packs, card_definitions) |
 | 4 | Add user roles and groups (role column, user_groups, pack_permissions) |
 | 5 | Add user-level pack permissions (pack_user_permissions) |
+| 6 | Add external pack path registration (registered_pack_paths) |
+| 7 | Add lesson-based pack progression (pack_ui_metadata, card_definitions.lesson) |
+| 8 | Add global pack enable/disable (content_packs.is_enabled) |
+| 9 | Register baseline pack and add public permissions |
 
-### learning.db Migrations (LEARNING_DB_VERSION = 3)
+### learning.db Migrations (LEARNING_DB_VERSION = 5)
 
 | Version | Description |
 |---------|-------------|
 | 1 | Initial schema (cards, review_logs, settings, confusions, character_stats, tier_graduation_backups) |
 | 2 | Add FSRS columns, enhanced review logging, is_reverse, pack_id |
 | 3 | Add card_progress and enabled_packs tables |
+| 4 | Add content pack support (cards.pack_id, enabled_packs table) |
+| 5 | Add pack lesson progression (pack_lesson_progress, study filter settings) |
 
 ### Legacy Migration: cards → card_progress
 

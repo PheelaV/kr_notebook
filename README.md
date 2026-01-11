@@ -1,5 +1,9 @@
 # Korean Hangul Learning App
 
+<p align="center">
+  <img src="doc/static/logo.png" alt="Korean Hangul Learning App" width="128">
+</p>
+
 A self-hosted Rust web application for learning Korean Hangul using spaced repetition with the modern FSRS algorithm. Multi-user support with per-user databases.
 
 ## Features
@@ -147,6 +151,19 @@ Deployment scripts are available in `scripts/`:
 - `rpi-deploy.sh` - Deploy binary and static assets
 - `sync-audio.sh` - Sync pronunciation audio
 
+## Usage
+
+Start at the home page (`/`) to see due cards and begin studying. Key pages:
+
+| Route | Description |
+|-------|-------------|
+| `/study` | Interactive study with typed/selected answers |
+| `/practice` | Untracked practice mode |
+| `/progress` | View learning progress and statistics |
+| `/settings` | Configure tiers, algorithm, and preferences |
+
+See [`doc/07_endpoints.md`](doc/07_endpoints.md) for complete API documentation (67 endpoints).
+
 ## Configuration
 
 Configuration via `config.toml` (copy from `config.toml.example`):
@@ -181,19 +198,6 @@ The app uses a simple username/password authentication system:
 
 All routes except `/login` and `/register` require authentication.
 
-## Usage
-
-Start at the home page (`/`) to see due cards and begin studying. Key pages:
-
-| Route | Description |
-|-------|-------------|
-| `/study` | Interactive study with typed/selected answers |
-| `/practice` | Untracked practice mode |
-| `/progress` | View learning progress and statistics |
-| `/settings` | Configure tiers, algorithm, and preferences |
-
-See [`doc/07_endpoints.md`](doc/07_endpoints.md) for complete API documentation (67 endpoints).
-
 ## Project Structure
 
 ```
@@ -213,19 +217,29 @@ kr_notebook/
 │   ├── session.rs          # Session ID generation
 │   ├── filters.rs          # Template filters
 │   ├── validation.rs       # Answer validation
+│   ├── testing.rs          # Test utilities
+│   ├── input.css           # Tailwind input CSS
 │   ├── auth/               # Authentication system
 │   │   ├── mod.rs          # Module exports
 │   │   ├── db.rs           # Auth database (users, sessions)
 │   │   ├── handlers.rs     # Login, register, logout
 │   │   ├── middleware.rs   # Auth middleware, AuthContext
 │   │   └── password.rs     # Argon2 hashing
+│   ├── content/            # Content pack system
+│   │   ├── mod.rs          # Module exports
+│   │   ├── cards.rs        # Card loading from packs
+│   │   ├── audio.rs        # Audio file resolution
+│   │   ├── packs.rs        # Pack definitions
+│   │   ├── discovery.rs    # Pack discovery
+│   │   └── generator.rs    # Content generators
 │   ├── db/                 # User database layer
 │   │   ├── mod.rs          # Pool management, seed data
 │   │   ├── schema.rs       # Table definitions
 │   │   ├── cards.rs        # Card queries
 │   │   ├── reviews.rs      # Review operations
 │   │   ├── stats.rs        # Statistics
-│   │   └── tiers.rs        # Tier progress
+│   │   ├── tiers.rs        # Tier progress
+│   │   └── lesson_progress.rs  # Lesson progress
 │   ├── domain/             # Data models
 │   ├── handlers/           # HTTP handlers
 │   │   ├── mod.rs          # Index, exports
@@ -245,8 +259,12 @@ kr_notebook/
 │   │   ├── pronunciation.rs # Audio matrix
 │   │   ├── library.rs      # Character browser
 │   │   ├── reference.rs    # Reference pages
-│   │   └── guide.rs        # Usage guide
+│   │   ├── guide.rs        # Usage guide
+│   │   ├── diagnostic.rs   # Diagnostic endpoints
+│   │   └── vocabulary.rs   # Vocabulary browser
 │   ├── profiling/          # Optional (--features profiling)
+│   ├── services/           # Business logic
+│   │   └── pack_manager.rs # Pack management
 │   └── srs/                # Spaced repetition (FSRS + SM-2)
 ├── py_scripts/             # Python tools
 │   ├── Dockerfile          # Python + ffmpeg image
@@ -258,6 +276,8 @@ kr_notebook/
 ├── doc/                    # Documentation
 └── data/                   # Runtime data (gitignored)
     ├── app.db              # Shared auth database
+    ├── content/
+    │   └── packs/          # Content pack definitions
     ├── users/<username>/   # Per-user data
     │   └── learning.db     # User's learning database
     └── scraped/htsk/       # Scraped audio + manifests
@@ -282,6 +302,20 @@ View and manage content packs in **Settings → Content Packs**:
 Pack definitions are stored in `data/content/packs/` with a `pack.json` manifest describing the pack type, content, and metadata.
 
 ## Algorithms
+
+### Hybrid Learning System
+
+New cards use a **learning phase** with short intervals before graduating to long-term FSRS scheduling:
+
+| Step | Normal Mode | Focus Mode |
+|------|-------------|------------|
+| 0 | 1 min | 1 min |
+| 1 | 10 min | 5 min |
+| 2 | 1 hour | 15 min |
+| 3 | 4 hours | 30 min |
+| 4+ | FSRS (~1+ day) | FSRS |
+
+Cards must be answered correctly through all 4 learning steps to graduate. Incorrect answers reset to step 0.
 
 ### FSRS (Primary)
 
@@ -382,10 +416,12 @@ Outputs:
 
 ## Documentation
 
-- [`doc/01_learning_fsa.md`](doc/01_learning_fsa.md) - Learning mode state machine (normal vs accelerated)
-- [`doc/02_responsiveness_guidance.md`](doc/02_responsiveness_guidance.md) - Mobile responsiveness patterns
-- [`doc/04_database.md`](doc/04_database.md) - Database schema (app.db + learning.db)
-- [`doc/07_endpoints.md`](doc/07_endpoints.md) - Complete API endpoint reference
+- [`doc/01_learning_fsa.md`](doc/01_learning_fsa.md) - Learning mode state machine
+- [`doc/02_card_selection.md`](doc/02_card_selection.md) - Card selection algorithm
+- [`doc/04_authentication.md`](doc/04_authentication.md) - Authentication system
+- [`doc/05_database.md`](doc/05_database.md) - Database schema (app.db + learning.db)
+- [`doc/07_endpoints.md`](doc/07_endpoints.md) - API endpoint reference
+- [`doc/08_testing.md`](doc/08_testing.md) - Testing guide
 
 ## Attribution
 
@@ -393,6 +429,7 @@ Pronunciation audio is sourced from [How to Study Korean](https://www.howtostudy
 
 - [Unit 0 Lesson 1](https://www.howtostudykorean.com/unit0/unit0lesson1/) - Basic consonants (ㅂㅈㄷㄱㅅㅁㄴㅎㄹ) and vowels (ㅣㅏㅓㅡㅜㅗ)
 - [Unit 0 Lesson 2](https://www.howtostudykorean.com/unit0/unit-0-lesson-2/) - Tense (ㄲㅃㅉㄸㅆ) and aspirated (ㅋㅍㅊㅌ) consonants
+- [Unit 0 Lesson 3](https://www.howtostudykorean.com/unit0/unit-0-lesson-3/) - Compound vowels (ㅐㅔㅒㅖㅚㅟㅢㅘㅙㅝㅞ)
 
 Audio files are not redistributed with this project. Users must run the scraper to download audio for personal educational use.
 

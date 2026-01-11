@@ -101,32 +101,36 @@ The app has two main learning modes:
 
 ### Key Functions
 
-#### `get_next_study_card()` in `src/handlers/study.rs`
+#### Card Selection in `src/handlers/study/interactive.rs`
 ```rust
-fn get_next_study_card(conn, exclude_sibling_of) -> Option<Card> {
-    // Step 1: Try due cards (both modes)
-    if let Some(card) = get_due_cards(...) {
+// Step 1: Check reinforcement queue (failed cards)
+if let Some(reinforce_id) = session.pop_reinforcement() {
+    return Some(reinforce_id);
+}
+
+// Step 2: Try due cards (both modes)
+if let Some(card) = get_due_cards(...) {
+    return Some(card);
+}
+
+// Step 3: In accelerated mode, try unreviewed today
+if accelerated {
+    if let Some(card) = get_unreviewed_today(...) {
         return Some(card);
     }
-
-    // Step 2: In accelerated mode, try unreviewed today
-    if accelerated {
-        if let Some(card) = get_unreviewed_today(...) {
-            return Some(card);
-        }
-    }
-
-    // Step 3: No cards - show practice mode
-    None
 }
+
+// Step 4: No cards - show practice mode
+None
 ```
 
-#### `get_unreviewed_today()` in `src/db/repository.rs`
+#### `get_unreviewed_today()` in `src/db/cards.rs`
 Returns cards from enabled tiers that haven't been reviewed today:
 ```sql
-SELECT * FROM cards c
-WHERE c.tier IN (enabled_tiers)
-  AND c.id NOT IN (
+SELECT * FROM card_definitions cd
+LEFT JOIN card_progress cp ON cd.id = cp.card_id
+WHERE cd.tier IN (enabled_tiers)
+  AND cd.id NOT IN (
     SELECT DISTINCT card_id FROM review_logs
     WHERE date(reviewed_at) = date('now')
   )
@@ -156,3 +160,89 @@ Settings in `settings` table:
 - `all_tiers_unlocked`: `true` = accelerated mode, `false` = normal mode
 - `enabled_tiers`: Comma-separated list (e.g., "1,2,3,4")
 - `use_interleaving`: Whether to mix card types within a session
+- `focus_tier`: If set, restricts study to single tier
+
+---
+
+## Learning Steps (Hybrid System)
+
+Cards use a hybrid system: Anki-style learning steps (0-3) before graduating to FSRS (step 4+).
+
+### Step Progression
+
+```
+┌─────────┐    Correct   ┌─────────┐    Correct   ┌─────────┐    Correct   ┌─────────┐    Correct   ┌────────────┐
+│ Step 0  │────────────►│ Step 1  │────────────►│ Step 2  │────────────►│ Step 3  │────────────►│ Graduated  │
+│ (1 min) │             │ (10 min)│             │ (1 hr)  │             │ (4 hr)  │             │ (FSRS)     │
+└─────────┘             └─────────┘             └─────────┘             └─────────┘             └────────────┘
+     ▲                       │                       │                       │                       │
+     │                       │                       │                       │                       │
+     └───────────────────────┴───────────────────────┴───────────────────────┴───────────────────────┘
+                                              Wrong = Reset to Step 0
+```
+
+### Normal Mode Intervals
+
+| Step | Interval |
+|------|----------|
+| 0 | 1 minute |
+| 1 | 10 minutes |
+| 2 | 1 hour |
+| 3 | 4 hours |
+| 4+ | FSRS calculates (~1+ day) |
+
+### Focus Mode Intervals
+
+Focus mode uses faster learning steps for intensive practice:
+
+| Step | Interval |
+|------|----------|
+| 0 | 1 minute |
+| 1 | 5 minutes |
+| 2 | 15 minutes |
+| 3 | 30 minutes |
+| 4+ | FSRS calculates |
+
+**Total time to graduate:**
+- Normal mode: ~5 hours
+- Focus mode: ~50 minutes
+
+---
+
+## Relearning Phase
+
+When a graduated card (step 4+) is answered incorrectly, it returns to the learning phase.
+
+```
+┌────────────────────────────────────────────────────────────────────────────┐
+│                                                                             │
+│   ┌────────────┐    Wrong    ┌─────────┐                                  │
+│   │ Graduated  │────────────►│ Step 0  │ (Restart learning steps)         │
+│   │ (FSRS)     │             │ (1 min) │                                  │
+│   └────────────┘             └─────────┘                                  │
+│         ▲                         │                                        │
+│         │                         │ Correct × 4                            │
+│         └─────────────────────────┘                                        │
+│              Re-graduate to FSRS                                           │
+│                                                                             │
+└────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Key Behavior
+
+- **Failure resets to step 0** - even for graduated cards
+- **Must complete all 4 learning steps again**
+- **Re-graduation**: After step 3 is correct, card returns to FSRS
+- **FSRS state preserved**: Stability/difficulty values carry forward
+
+---
+
+## Source Files
+
+| File | Purpose |
+|------|---------|
+| `src/handlers/study/interactive.rs` | Study session state machine |
+| `src/handlers/study/mod.rs` | Card selection coordination |
+| `src/db/cards.rs` | Card queries (due, unreviewed, practice) |
+| `src/srs/fsrs_scheduler.rs` | Learning steps, FSRS graduation |
+| `src/srs/card_selector.rs` | Weighted selection, reinforcement queue |

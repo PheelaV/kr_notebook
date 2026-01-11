@@ -1387,7 +1387,7 @@ pub async fn browse_directories(
         .filter(|e| e.path().is_dir())
         .filter(|e| {
           // Skip hidden directories (starting with .)
-          e.file_name().to_string_lossy().chars().next() != Some('.')
+          !e.file_name().to_string_lossy().starts_with('.')
         })
         .map(|e| {
           let entry_path = e.path();
@@ -1611,13 +1611,12 @@ pub async fn register_pack_path(
   }
 
   // Return HTMX partial or redirect
-  if is_htmx_request(&headers) {
-    if let Some(paths_html) = render_registered_paths(&auth_db) {
+  if is_htmx_request(&headers)
+    && let Some(paths_html) = render_registered_paths(&auth_db) {
       // Also include OOB swap for packs section since new packs may be available
       let packs_oob = render_packs_section_oob(&auth_db, auth.is_admin).unwrap_or_default();
       return Html(format!("{}{}", paths_html, packs_oob)).into_response();
     }
-  }
   Redirect::to("/settings").into_response()
 }
 
@@ -1651,13 +1650,12 @@ pub async fn unregister_pack_path(
   }
 
   // Return HTMX partial or redirect
-  if is_htmx_request(&headers) {
-    if let Some(paths_html) = render_registered_paths(&auth_db) {
+  if is_htmx_request(&headers)
+    && let Some(paths_html) = render_registered_paths(&auth_db) {
       // Also include OOB swap for packs section since packs may have changed
       let packs_oob = render_packs_section_oob(&auth_db, auth.is_admin).unwrap_or_default();
       return Html(format!("{}{}", paths_html, packs_oob)).into_response();
     }
-  }
   Redirect::to("/settings").into_response()
 }
 
@@ -1691,12 +1689,11 @@ pub async fn toggle_pack_path(
   }
 
   // Return HTMX partial or redirect
-  if is_htmx_request(&headers) {
-    if let Some(paths_html) = render_registered_paths(&auth_db) {
+  if is_htmx_request(&headers)
+    && let Some(paths_html) = render_registered_paths(&auth_db) {
       // Also include OOB swap for packs section since toggling active affects available packs
       let packs_oob = render_packs_section_oob(&auth_db, auth.is_admin).unwrap_or_default();
       return Html(format!("{}{}", paths_html, packs_oob)).into_response();
     }
-  }
   Redirect::to("/settings").into_response()
 }

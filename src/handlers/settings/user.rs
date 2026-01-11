@@ -205,21 +205,18 @@ pub async fn settings_page(auth: AuthContext, State(state): State<AppState>) -> 
 
   // Get audio preview data
   let mut lesson_audio = Vec::new();
-  if has_l1 {
-    if let Some(audio) = get_lesson_audio("lesson1", "Lesson 1: Basic Consonants & Vowels") {
+  if has_l1
+    && let Some(audio) = get_lesson_audio("lesson1", "Lesson 1: Basic Consonants & Vowels") {
       lesson_audio.push(audio);
     }
-  }
-  if has_l2 {
-    if let Some(audio) = get_lesson_audio("lesson2", "Lesson 2: Additional Consonants") {
+  if has_l2
+    && let Some(audio) = get_lesson_audio("lesson2", "Lesson 2: Additional Consonants") {
       lesson_audio.push(audio);
     }
-  }
-  if has_l3 {
-    if let Some(audio) = get_lesson_audio("lesson3", "Lesson 3: Diphthongs & Combined Vowels") {
+  if has_l3
+    && let Some(audio) = get_lesson_audio("lesson3", "Lesson 3: Diphthongs & Combined Vowels") {
       lesson_audio.push(audio);
     }
-  }
 
   // Get tier graduation status
   let tier_graduation: Vec<TierGraduationStatus> = (1..=4u8)
@@ -236,7 +233,7 @@ pub async fn settings_page(auth: AuthContext, State(state): State<AppState>) -> 
   // Discover content packs (including external registered paths)
   let enabled_packs = content::list_enabled_packs(&conn);
   let discovered = auth_conn.as_deref()
-    .map(|db| pack_manager::discover_all_packs(db))
+    .map(pack_manager::discover_all_packs)
     .unwrap_or_default();
 
   // Filter to card packs only, and for non-admin users, only show packs they can access
@@ -549,12 +546,11 @@ pub async fn import_data(
   let backup_path = db_path.with_extension("db.old");
 
   // Backup current database
-  if db_path.exists() {
-    if let Err(e) = std::fs::rename(&db_path, &backup_path) {
+  if db_path.exists()
+    && let Err(e) = std::fs::rename(&db_path, &backup_path) {
       tracing::error!("Failed to backup current database: {}", e);
       return import_error_redirect("Failed to backup current data");
     }
-  }
 
   // Write new database file
   if let Err(e) = std::fs::write(&db_path, &file_bytes) {
@@ -758,15 +754,14 @@ pub async fn enable_pack(
   }
 
   // Check if user has permission to access this pack (non-admins only)
-  if !auth.is_admin {
-    if !pack_manager::can_access(&app_conn, auth.user_id, &pack_id) {
+  if !auth.is_admin
+    && !pack_manager::can_access(&app_conn, auth.user_id, &pack_id) {
       tracing::warn!("User {} tried to enable pack {} without permission", auth.username, pack_id);
       if is_htmx_request(&headers) {
         return Html(error_notification("You don't have permission to enable this pack")).into_response();
       }
       return Redirect::to("/settings?pack=noaccess").into_response();
     }
-  }
 
   let cards_config = match &pack_loc.manifest.cards {
     Some(cfg) => cfg,
@@ -870,9 +865,10 @@ pub async fn enable_pack(
       Redirect::to(&format!("/settings?pack=enabled&id={}", pack_id)).into_response()
     }
     Err(e) => {
+      // Log full error details for debugging, but show sanitized message to user
       tracing::error!("Failed to enable pack {}: {}", pack_id, e);
       if is_htmx_request(&headers) {
-        return Html(error_notification(&format!("Failed to enable pack: {}", e))).into_response();
+        return Html(error_notification(&format!("Failed to enable pack: {}", e.user_message()))).into_response();
       }
       Redirect::to("/settings?pack=error").into_response()
     }

@@ -71,12 +71,26 @@
 
   <!-- Main Content -->
   <div class="flex-1 max-w-4xl">
-    <h1 class="text-3xl font-bold text-gray-900 dark:text-white mb-2">
-      Vocabulary Library
-    </h1>
-    <p class="text-gray-600 dark:text-gray-400 mb-6">
-      {{ total_count }} vocabulary words across {{ packs.len() }} pack{% if packs.len() != 1 %}s{% endif %}. Click any entry to see examples and usage.
-    </p>
+    <div class="flex flex-wrap items-start justify-between gap-4 mb-6">
+      <div>
+        <h1 class="text-3xl font-bold text-gray-900 dark:text-white mb-2">
+          Vocabulary Library
+        </h1>
+        <p class="text-gray-600 dark:text-gray-400">
+          {{ total_count }} vocabulary words across {{ packs.len() }} pack{% if packs.len() != 1 %}s{% endif %}. Click any entry to see examples and usage.
+        </p>
+      </div>
+
+      <!-- Hide Romanization Toggle -->
+      <label class="flex items-center gap-2 cursor-pointer select-none shrink-0">
+        <span class="text-sm text-gray-600 dark:text-gray-400">Hide romanization</span>
+        <div class="relative">
+          <input type="checkbox" id="hide-romanization-toggle" class="sr-only peer">
+          <div class="w-10 h-6 bg-gray-200 dark:bg-gray-700 rounded-full peer peer-checked:bg-indigo-600 transition-colors"></div>
+          <div class="absolute left-1 top-1 w-4 h-4 bg-white rounded-full shadow peer-checked:translate-x-4 transition-transform"></div>
+        </div>
+      </label>
+    </div>
 
     {% for pack in packs %}
     <!-- Pack Section -->
@@ -109,7 +123,7 @@
           <summary class="p-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 group-open:bg-indigo-50 dark:group-open:bg-indigo-950 rounded-t-lg group-open:rounded-b-none rounded-b-lg list-none transition-colors">
             <div class="flex flex-wrap items-center gap-x-4 gap-y-1">
               <span class="text-2xl font-bold text-gray-900 dark:text-white">{{ entry.term }}</span>
-              <span class="text-gray-500 dark:text-gray-400 text-sm">({{ entry.romanization }})</span>
+              <span class="vocab-romanization text-gray-500 dark:text-gray-400 text-sm">({{ entry.romanization }})</span>
               <span class="text-indigo-600 dark:text-indigo-400">{{ entry.translation }}</span>
               {% match entry.word_type.as_str() %}
                 {% when "noun" %}
@@ -132,6 +146,12 @@
             </div>
           </summary>
           <div class="px-4 pb-4 border-t border-gray-100 dark:border-gray-700">
+            <!-- Romanization (shown when hidden from summary) -->
+            <div class="vocab-romanization-detail hidden mt-3">
+              <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Romanization:</span>
+              <span class="text-sm text-indigo-600 dark:text-indigo-400 ml-2">{{ entry.romanization }}</span>
+            </div>
+
             <!-- Notes -->
             {% if let Some(notes) = entry.notes %}
             <div class="mt-3">
@@ -210,4 +230,48 @@
   {% endif %}
 </div>
 {% include "partials/toc_script.html" %}
+
+<script>
+(function() {
+  var toggle = document.getElementById('hide-romanization-toggle');
+  if (!toggle) return; // Not on the enabled pack view
+
+  var STORAGE_KEY = 'library-hide-romanization';
+
+  // Load saved preference
+  var savedPref = localStorage.getItem(STORAGE_KEY);
+  if (savedPref === 'true') {
+    toggle.checked = true;
+    applyHiddenState(true);
+  }
+
+  // Toggle handler
+  toggle.addEventListener('change', function() {
+    var isHidden = toggle.checked;
+    localStorage.setItem(STORAGE_KEY, isHidden);
+    applyHiddenState(isHidden);
+  });
+
+  // Apply hidden/shown state to all vocab entries
+  function applyHiddenState(isHidden) {
+    // Hide/show romanization in summaries
+    document.querySelectorAll('.vocab-romanization').forEach(function(el) {
+      if (isHidden) {
+        el.classList.add('hidden');
+      } else {
+        el.classList.remove('hidden');
+      }
+    });
+
+    // Show/hide romanization in detail sections
+    document.querySelectorAll('.vocab-romanization-detail').forEach(function(el) {
+      if (isHidden) {
+        el.classList.remove('hidden');
+      } else {
+        el.classList.add('hidden');
+      }
+    });
+  }
+})();
+</script>
 {% endblock %}

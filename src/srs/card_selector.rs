@@ -96,7 +96,7 @@ pub fn calculate_card_weight(
   weight *= 2.0 - success_rate;
 
   // Factor 2: Recency of last failure (recent failure = much higher weight)
-  if let Some(last_fail) = recent_reviews.iter().filter(|r| !r.is_correct).last() {
+  if let Some(last_fail) = recent_reviews.iter().filter(|r| !r.is_correct).next_back() {
     let minutes_since_fail = (Utc::now() - last_fail.reviewed_at).num_minutes();
     if minutes_since_fail < 5 {
       weight *= 10.0; // Failed in last 5 min → 10x weight
@@ -181,7 +181,7 @@ pub fn weighted_random_select(weights: &[CardWeight], exclude_id: Option<i64>) -
   // Filter out excluded card
   let available: Vec<_> = weights
     .iter()
-    .filter(|w| exclude_id.map_or(true, |id| w.card_id != id))
+    .filter(|w| exclude_id != Some(w.card_id))
     .collect();
 
   if available.is_empty() {

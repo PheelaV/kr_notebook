@@ -49,6 +49,7 @@ backups/
 # Static assets - generated CSS is built from src/input.css
 static/*
 !static/js/
+!static/sw.js
 
 # Logs
 *.log

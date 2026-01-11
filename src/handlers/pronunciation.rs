@@ -120,7 +120,7 @@ fn build_table_from_manifest(
         let consonants: Vec<ConsonantRow> = manifest
             .consonants_order
             .iter()
-            .filter_map(|c| {
+            .map(|c| {
                 let syllable_infos = get_row_syllables(&manifest, c);
 
                 let syllables: Vec<Syllable> = syllable_infos
@@ -135,12 +135,12 @@ fn build_table_from_manifest(
                     })
                     .collect();
 
-                Some(ConsonantRow {
+                ConsonantRow {
                     character: c.clone(),
                     romanization: get_row_romanization(&manifest, c),
                     syllables,
                     has_row_audio: row_has_audio(&manifest, c),
-                })
+                }
             })
             .collect();
 
@@ -158,7 +158,7 @@ fn build_table_from_manifest(
         let vowel_rows: Vec<VowelRow> = manifest
             .vowels_order
             .iter()
-            .filter_map(|v| {
+            .map(|v| {
                 // For lesson3, rows are keyed by vowels
                 let syllable_infos = get_row_syllables(&manifest, v);
                 let syllable_count = syllable_infos.len();
@@ -178,7 +178,7 @@ fn build_table_from_manifest(
                 let available_count = syllables.iter().filter(|s| s.has_audio).count();
                 let is_complete = syllable_count > 0 && available_count == syllable_count;
 
-                Some(VowelRow {
+                VowelRow {
                     character: v.clone(),
                     romanization: vowel_romanization(v).to_string(),
                     syllables,
@@ -186,7 +186,7 @@ fn build_table_from_manifest(
                     syllable_count,
                     available_count,
                     is_complete,
-                })
+                }
             })
             .collect();
 

@@ -91,6 +91,17 @@ impl std::fmt::Display for CardLoadError {
     }
 }
 
+impl CardLoadError {
+    /// Returns a user-facing error message without exposing filesystem paths.
+    pub fn user_message(&self) -> &'static str {
+        match self {
+            CardLoadError::FileNotFound(_) => "Card file not found",
+            CardLoadError::IoError(_, _) => "Failed to read card file",
+            CardLoadError::ParseError(_, _) => "Failed to parse card file",
+        }
+    }
+}
+
 impl std::error::Error for CardLoadError {}
 
 // ==================== Pack Enable/Disable Operations ====================

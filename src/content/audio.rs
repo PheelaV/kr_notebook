@@ -53,8 +53,8 @@ pub fn find_audio_packs_for_lesson(lesson_id: &str) -> Vec<AudioSource> {
 
     // Check shared packs directory
     let shared_packs = PathBuf::from(paths::shared_packs_dir());
-    if shared_packs.exists() {
-        if let Ok(entries) = fs::read_dir(&shared_packs) {
+    if shared_packs.exists()
+        && let Ok(entries) = fs::read_dir(&shared_packs) {
             for entry in entries.filter_map(|e| e.ok()) {
                 let pack_path = entry.path();
                 if let Some(source) = check_audio_pack(&pack_path, lesson_id) {
@@ -62,7 +62,6 @@ pub fn find_audio_packs_for_lesson(lesson_id: &str) -> Vec<AudioSource> {
                 }
             }
         }
-    }
 
     // Check for generated content (from scrapers)
     let generated_path = PathBuf::from(paths::shared_generated_dir()).join("htsk").join(lesson_id);
@@ -230,53 +229,45 @@ pub fn list_available_lessons() -> Vec<String> {
 
     // Check shared generated content
     let generated_path = PathBuf::from(paths::shared_generated_dir()).join("htsk");
-    if generated_path.exists() {
-        if let Ok(entries) = fs::read_dir(&generated_path) {
+    if generated_path.exists()
+        && let Ok(entries) = fs::read_dir(&generated_path) {
             for entry in entries.filter_map(|e| e.ok()) {
-                if entry.path().is_dir() {
-                    if let Some(name) = entry.file_name().to_str() {
+                if entry.path().is_dir()
+                    && let Some(name) = entry.file_name().to_str() {
                         lessons.insert(name.to_string());
                     }
-                }
             }
         }
-    }
 
     // Check packs
     let shared_packs = PathBuf::from(paths::shared_packs_dir());
-    if shared_packs.exists() {
-        if let Ok(entries) = fs::read_dir(&shared_packs) {
+    if shared_packs.exists()
+        && let Ok(entries) = fs::read_dir(&shared_packs) {
             for entry in entries.filter_map(|e| e.ok()) {
                 let pack_path = entry.path();
                 let manifest_path = pack_path.join("pack.json");
-                if manifest_path.exists() {
-                    if let Ok(content) = fs::read_to_string(&manifest_path) {
-                        if let Ok(manifest) = serde_json::from_str::<AudioPackManifest>(&content) {
-                            if manifest.pack_type == "audio" {
+                if manifest_path.exists()
+                    && let Ok(content) = fs::read_to_string(&manifest_path)
+                        && let Ok(manifest) = serde_json::from_str::<AudioPackManifest>(&content)
+                            && manifest.pack_type == "audio" {
                                 for lesson in manifest.audio.enhances {
                                     lessons.insert(lesson);
                                 }
                             }
-                        }
-                    }
-                }
             }
         }
-    }
 
     // Check legacy location
     let legacy_path = PathBuf::from(paths::htsk_dir());
-    if legacy_path.exists() {
-        if let Ok(entries) = fs::read_dir(legacy_path) {
+    if legacy_path.exists()
+        && let Ok(entries) = fs::read_dir(legacy_path) {
             for entry in entries.filter_map(|e| e.ok()) {
-                if entry.path().is_dir() {
-                    if let Some(name) = entry.file_name().to_str() {
+                if entry.path().is_dir()
+                    && let Some(name) = entry.file_name().to_str() {
                         lessons.insert(name.to_string());
                     }
-                }
             }
         }
-    }
 
     let mut sorted: Vec<_> = lessons.into_iter().collect();
     sorted.sort();

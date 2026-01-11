@@ -197,8 +197,8 @@ pub async fn progress(
 
   for pack_id in accessible_packs {
     // Only include packs that have UI metadata (lesson-based progression)
-    if let Ok(Some(ui_metadata)) = get_pack_ui_metadata(&app_conn, &pack_id) {
-      if ui_metadata.total_lessons.unwrap_or(0) > 0 {
+    if let Ok(Some(ui_metadata)) = get_pack_ui_metadata(&app_conn, &pack_id)
+      && ui_metadata.total_lessons.unwrap_or(0) > 0 {
         match get_pack_progress(&conn, &app_conn, &pack_id, &ui_metadata) {
           Ok(pack_progress) => {
             units.push(ProgressUnit::VocabularyPack(pack_progress));
@@ -208,7 +208,6 @@ pub async fn progress(
           }
         }
       }
-    }
   }
 
   let template = ProgressTemplate {

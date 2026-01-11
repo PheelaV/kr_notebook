@@ -135,7 +135,10 @@ async fn main() {
         .route("/reference/tier2", get(handlers::reference_tier2))
         .route("/reference/tier3", get(handlers::reference_tier3))
         .route("/reference/tier4", get(handlers::reference_tier4))
-        .route("/pronunciation", get(handlers::pronunciation_page));
+        .route("/pronunciation", get(handlers::pronunciation_page))
+        // Offline / Service Worker routes
+        .route("/offline", get(handlers::offline_page))
+        .route("/sw.js", get(handlers::service_worker));
 
     // Protected routes (auth required - AuthContext extractor handles this)
     let protected_routes = Router::new()
@@ -297,12 +300,14 @@ fn migrate_existing_database(auth_db: &Arc<Mutex<Connection>>) {
         let _ = std::fs::rename(old_backup, new_backup);
     }
 
+    // Don't log password - security risk if logs are captured
+    let _ = password; // Password is set but not displayed
     tracing::info!("=======================================================");
     tracing::info!("MIGRATION COMPLETE");
     tracing::info!("=======================================================");
     tracing::info!("Your existing data has been migrated to user 'admin'");
-    tracing::info!("Generated password: {}", password);
-    tracing::info!("IMPORTANT: Save this password! It will not be shown again.");
-    tracing::info!("You can change it by editing the database directly.");
+    tracing::info!("Admin user created with a random password.");
+    tracing::info!("To set the admin password, run:");
+    tracing::info!("  uv run scripts/reset_pwd.py admin <new_password>");
     tracing::info!("=======================================================");
 }

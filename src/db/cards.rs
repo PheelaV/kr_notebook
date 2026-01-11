@@ -102,8 +102,8 @@ pub fn get_due_cards(
         .collect::<Vec<_>>()
         .join(",");
 
-    if let Some(last_id) = exclude_sibling_of {
-        if let Ok(Some(last_card)) = get_card_by_id(conn, last_id) {
+    if let Some(last_id) = exclude_sibling_of
+        && let Ok(Some(last_card)) = get_card_by_id(conn, last_id) {
             let query = format!(
                 r#"SELECT {} {}
                 WHERE COALESCE(cp.next_review, datetime('now')) <= ?1 AND cd.tier IN ({})
@@ -119,12 +119,11 @@ pub fn get_due_cards(
             let cards = stmt
                 .query_map(
                     params![now, last_id, last_card.front, last_card.main_answer, limit as i64],
-                    |row| row_to_card(row),
+                    row_to_card,
                 )?
                 .collect::<Result<Vec<_>>>()?;
             return Ok(cards);
         }
-    }
 
     let query = format!(
         r#"SELECT {} {}
@@ -136,7 +135,7 @@ pub fn get_due_cards(
     let mut stmt = conn.prepare(&query)?;
 
     let cards = stmt
-        .query_map(params![now, limit as i64], |row| row_to_card(row))?
+        .query_map(params![now, limit as i64], row_to_card)?
         .collect::<Result<Vec<_>>>()?;
     Ok(cards)
 }
@@ -281,7 +280,7 @@ pub fn get_due_cards_interleaved(
     let mut stmt = conn.prepare(&query)?;
 
     let cards = stmt
-        .query_map(params![now, limit as i64], |row| row_to_card(row))?
+        .query_map(params![now, limit as i64], row_to_card)?
         .collect::<Result<Vec<_>>>()?;
     Ok(cards)
 }
@@ -309,8 +308,8 @@ pub fn get_practice_cards(
         .collect::<Vec<_>>()
         .join(",");
 
-    if let Some(last_id) = exclude_id {
-        if let Ok(Some(last_card)) = get_card_by_id(conn, last_id) {
+    if let Some(last_id) = exclude_id
+        && let Ok(Some(last_card)) = get_card_by_id(conn, last_id) {
             let query = format!(
                 r#"SELECT {} {}
                 WHERE cd.tier IN ({})
@@ -326,12 +325,11 @@ pub fn get_practice_cards(
             let cards = stmt
                 .query_map(
                     params![last_id, last_card.front, last_card.main_answer, limit as i64],
-                    |row| row_to_card(row),
+                    row_to_card,
                 )?
                 .collect::<Result<Vec<_>>>()?;
             return Ok(cards);
         }
-    }
 
     let query = format!(
         r#"SELECT {} {}
@@ -343,7 +341,7 @@ pub fn get_practice_cards(
     let mut stmt = conn.prepare(&query)?;
 
     let cards = stmt
-        .query_map(params![limit as i64], |row| row_to_card(row))?
+        .query_map(params![limit as i64], row_to_card)?
         .collect::<Result<Vec<_>>>()?;
     Ok(cards)
 }
@@ -376,7 +374,7 @@ pub fn get_unlocked_cards(conn: &Connection) -> Result<Vec<Card>> {
     let mut stmt = conn.prepare(&query)?;
 
     let cards = stmt
-        .query_map([], |row| row_to_card(row))?
+        .query_map([], row_to_card)?
         .collect::<Result<Vec<_>>>()?;
     Ok(cards)
 }
@@ -416,7 +414,7 @@ pub fn get_all_unlocked_cards(conn: &Connection) -> Result<Vec<Card>> {
     let mut stmt = conn.prepare(&query)?;
 
     let cards = stmt
-        .query_map([], |row| row_to_card(row))?
+        .query_map([], row_to_card)?
         .collect::<Result<Vec<_>>>()?;
     Ok(cards)
 }
@@ -442,7 +440,7 @@ pub fn get_cards_from_same_lesson(
     let mut stmt = conn.prepare(&query)?;
 
     let cards = stmt
-        .query_map(params![pack_id, lesson], |row| row_to_card(row))?
+        .query_map(params![pack_id, lesson], row_to_card)?
         .collect::<Result<Vec<_>>>()?;
     Ok(cards)
 }
@@ -507,7 +505,7 @@ pub fn get_unreviewed_today(
     let mut stmt = conn.prepare(&query)?;
 
     let cards = stmt
-        .query_map(params![today_start, limit as i64], |row| row_to_card(row))?
+        .query_map(params![today_start, limit as i64], row_to_card)?
         .collect::<Result<Vec<_>>>()?;
     Ok(cards)
 }
@@ -560,7 +558,7 @@ pub fn get_cards_by_tier(conn: &Connection, tier: u8) -> Result<Vec<Card>> {
     let mut stmt = conn.prepare(&query)?;
 
     let cards = stmt
-        .query_map(params![tier], |row| row_to_card(row))?
+        .query_map(params![tier], row_to_card)?
         .collect::<Result<Vec<_>>>()?;
     Ok(cards)
 }
@@ -735,8 +733,8 @@ pub fn get_due_cards_filtered(
         format!("AND cd.tier IN ({})", tier_list)
     };
 
-    if let Some(last_id) = exclude_sibling_of {
-        if let Ok(Some(last_card)) = get_card_by_id(conn, last_id) {
+    if let Some(last_id) = exclude_sibling_of
+        && let Ok(Some(last_card)) = get_card_by_id(conn, last_id) {
             let query = format!(
                 r#"SELECT {} {}
                 WHERE COALESCE(cp.next_review, datetime('now')) <= ?1
@@ -754,12 +752,11 @@ pub fn get_due_cards_filtered(
             let cards = stmt
                 .query_map(
                     params![now, last_id, last_card.front, last_card.main_answer, limit as i64],
-                    |row| row_to_card(row),
+                    row_to_card,
                 )?
                 .collect::<Result<Vec<_>>>()?;
             return Ok(cards);
         }
-    }
 
     let query = format!(
         r#"SELECT {} {}
@@ -772,7 +769,7 @@ pub fn get_due_cards_filtered(
     let mut stmt = conn.prepare(&query)?;
 
     let cards = stmt
-        .query_map(params![now, limit as i64], |row| row_to_card(row))?
+        .query_map(params![now, limit as i64], row_to_card)?
         .collect::<Result<Vec<_>>>()?;
     Ok(cards)
 }
@@ -876,7 +873,7 @@ pub fn get_due_cards_interleaved_filtered(
     let mut stmt = conn.prepare(&query)?;
 
     let cards = stmt
-        .query_map(params![now, limit as i64], |row| row_to_card(row))?
+        .query_map(params![now, limit as i64], row_to_card)?
         .collect::<Result<Vec<_>>>()?;
     Ok(cards)
 }
@@ -951,7 +948,7 @@ pub fn get_unreviewed_today_filtered(
     let mut stmt = conn.prepare(&query)?;
 
     let cards = stmt
-        .query_map(params![today_start, limit as i64], |row| row_to_card(row))?
+        .query_map(params![today_start, limit as i64], row_to_card)?
         .collect::<Result<Vec<_>>>()?;
     Ok(cards)
 }
@@ -1040,8 +1037,8 @@ pub fn get_practice_cards_filtered(
         format!("AND cd.tier IN ({})", tier_list)
     };
 
-    if let Some(last_id) = exclude_id {
-        if let Ok(Some(last_card)) = get_card_by_id(conn, last_id) {
+    if let Some(last_id) = exclude_id
+        && let Ok(Some(last_card)) = get_card_by_id(conn, last_id) {
             let query = format!(
                 r#"SELECT {} {}
                 WHERE cd.id != ?1
@@ -1057,12 +1054,11 @@ pub fn get_practice_cards_filtered(
             let cards = stmt
                 .query_map(
                     params![last_id, last_card.front, last_card.main_answer, limit as i64],
-                    |row| row_to_card(row),
+                    row_to_card,
                 )?
                 .collect::<Result<Vec<_>>>()?;
             return Ok(cards);
         }
-    }
 
     let query = format!(
         r#"SELECT {} {}
@@ -1074,7 +1070,7 @@ pub fn get_practice_cards_filtered(
     let mut stmt = conn.prepare(&query)?;
 
     let cards = stmt
-        .query_map(params![limit as i64], |row| row_to_card(row))?
+        .query_map(params![limit as i64], row_to_card)?
         .collect::<Result<Vec<_>>>()?;
     Ok(cards)
 }
