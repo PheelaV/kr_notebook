@@ -15,6 +15,9 @@ Utility scripts in `./scripts/`. All scripts use `.rpi-deploy.conf` for remote d
 | `rpi-setup.sh` | Configure cross-compilation |
 | `rpi-deploy.sh` | Build and deploy to RPi |
 | `rpi-discover.sh` | Detect RPi system info |
+| `test.sh` | Run all test levels |
+| `reset_pwd.py` | Reset user password |
+| `generate_favicon.py` | Generate favicon bundle |
 
 ---
 
@@ -29,6 +32,27 @@ Docker container management:
 ./scripts/start.sh --build   # rebuild image first
 ./scripts/stop.sh            # stop container
 ```
+
+---
+
+## Testing
+
+### test.sh
+
+Master test runner with multiple levels:
+
+```bash
+./scripts/test.sh              # Run all tests (default)
+./scripts/test.sh unit         # Rust + Python unit tests (fast)
+./scripts/test.sh integration  # Unit + integration tests
+./scripts/test.sh e2e          # E2E only (Playwright)
+```
+
+Environment variables:
+- `PRESERVE_TEST_ENV=1` - Keep test data after run
+- `VERBOSE=1` - Show verbose output
+
+See `doc/08_testing.md` for comprehensive testing guide.
 
 ---
 
@@ -107,6 +131,19 @@ cargo install cross --git https://github.com/cross-rs/cross
 ./scripts/rpi-deploy.sh --debug      # debug build
 ```
 
+### Rollback
+
+If a deployment causes issues, rollback to the previous version:
+
+```bash
+./scripts/rpi-deploy.sh --rollback
+```
+
+Restores:
+- Previous binary (`kr_notebook.old`)
+- Previous static assets (`static.old/`)
+- Database backup (from `backups/latest`)
+
 ### Discover (run on RPi)
 
 ```bash
@@ -162,3 +199,33 @@ sudo systemctl daemon-reload
 sudo systemctl enable kr_notebook
 sudo systemctl start kr_notebook
 ```
+
+---
+
+## Utilities
+
+### reset_pwd.py
+
+Reset a user's password using the same dual-layer hashing as the app:
+
+```bash
+uv run scripts/reset_pwd.py <username> <new_password>
+uv run scripts/reset_pwd.py admin mysecretpassword
+```
+
+Uses: Client SHA-256 → Server Argon2 (matches `src/auth/password.rs`)
+
+### generate_favicon.py
+
+Generate complete favicon bundle from code (no source image needed):
+
+```bash
+uv run scripts/generate_favicon.py
+```
+
+Creates in `static/`:
+- `favicon.ico` (16x16, 32x32, 48x48)
+- `favicon.svg`, `-16x16.png`, `-32x32.png`
+- `apple-touch-icon.png` (180x180)
+- `android-chrome-192x192.png`, `-512x512.png`
+- `site.webmanifest`

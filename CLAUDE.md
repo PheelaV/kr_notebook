@@ -15,7 +15,7 @@ cargo run
 # Hot reload development
 cargo watch -x run
 
-# Run tests
+# Run unit tests
 cargo test
 
 # Run single test
@@ -33,6 +33,27 @@ cargo run --features profiling
 # Cross-compile for Raspberry Pi
 cross build --release --target aarch64-unknown-linux-gnu
 ```
+
+### Integration Tests (Python)
+
+```bash
+cd tests/integration
+./run_tests.sh              # Runs server + tests + cleanup
+uv run pytest               # Manual (requires running server)
+uv run pytest -k auth       # Filter by name
+```
+
+### E2E Tests (Playwright)
+
+```bash
+cd tests/e2e
+npm install && npx playwright install  # First time setup
+npm test                               # Run all 8 test projects
+npm run test:headed                    # With visible browser
+npm run test:ui                        # Interactive UI
+```
+
+See `doc/08_testing.md` for full testing guide.
 
 ### Python Tools (py_scripts/)
 
@@ -100,10 +121,13 @@ Pack discovery scans directories on settings page load. Cards are deduplicated b
 
 ### Authentication Flow
 
-1. Client hashes password with SHA-256
-2. Server applies Argon2 to the SHA-256 hash
+1. Client hashes `password + username` with SHA-256 (never sends plaintext)
+2. Server applies Argon2 to the SHA-256 hash (defense-in-depth)
 3. Sessions stored in HTTP-only cookies (7-day expiry)
 4. All routes except `/login`, `/register` require auth
+5. Each request opens user's `learning.db` and attaches `app.db` for cross-DB queries
+
+See `doc/04_authentication.md` for full auth system documentation.
 
 ### SRS Algorithms
 
@@ -113,13 +137,27 @@ Pack discovery scans directories on settings page load. Cards are deduplicated b
 
 ## Database Schema Locations
 
-- app.db schema: `src/auth/db.rs` (version 5)
-- learning.db schema: `src/db/schema.rs` (version 3)
-- Full documentation: `doc/04_database.md`
+- app.db schema: `src/auth/db.rs` (version 9)
+- learning.db schema: `src/db/schema.rs` (version 5)
+- Full documentation: `doc/05_database.md`
 
 ## Documentation
 
-- `doc/01_learning_fsa.md` - Learning mode state machine
-- `doc/04_database.md` - Complete database schema
+**Core Learning:**
+- `doc/01_learning_fsa.md` - Learning mode state machine, learning steps
+- `doc/02_card_selection.md` - Card selection algorithm, weights, reinforcement
+- `doc/03_answer_validation.md` - Answer validation, typo tolerance
+
+**System:**
+- `doc/04_authentication.md` - Authentication, sessions, permissions
+- `doc/05_database.md` - Complete database schema
 - `doc/06_packs.md` - Content pack system
+
+**Reference:**
 - `doc/07_endpoints.md` - API endpoint reference (67 endpoints)
+- `doc/08_testing.md` - Testing guide (unit, integration, E2E)
+
+**Operations:**
+- `doc/09_profiling.md` - Performance profiling
+- `doc/10_scripts.md` - Deployment scripts
+- `doc/11_responsiveness_guidance.md` - Mobile UI patterns
