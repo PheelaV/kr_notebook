@@ -1062,13 +1062,6 @@ pub fn remove_pack_permission(conn: &Connection, pack_id: &str, group_id: &str) 
     Ok(())
 }
 
-/// Check if a user can access a pack
-/// Returns true if:
-/// - No permissions entries exist for the pack (available to all)
-/// - An entry with group_id='' and allowed=1 exists (available to all)
-/// - User is in an allowed group
-/// - User has direct access
-/// - User is an admin
 /// Check if a pack is globally enabled (admin has activated it)
 pub fn is_pack_globally_enabled(conn: &Connection, pack_id: &str) -> Result<bool> {
     let enabled: i64 = conn
@@ -1090,6 +1083,12 @@ pub fn set_pack_globally_enabled(conn: &Connection, pack_id: &str, enabled: bool
     Ok(())
 }
 
+/// Check if a user can access a pack.
+/// Returns true if any of the following conditions are met:
+/// - Pack is globally enabled AND user is an admin
+/// - Pack has public access (group_id='' and allowed=1)
+/// - User is in an allowed group
+/// - User has direct access permission
 pub fn can_user_access_pack(conn: &Connection, user_id: i64, pack_id: &str) -> Result<bool> {
     // First check if pack is globally enabled
     if !is_pack_globally_enabled(conn, pack_id)? {

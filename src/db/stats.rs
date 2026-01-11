@@ -120,7 +120,7 @@ pub fn get_character_stats_by_type(
     )?;
 
     let stats = stmt
-        .query_map(params![character_type], |row| row_to_character_stats(row))?
+        .query_map(params![character_type], row_to_character_stats)?
         .collect::<Result<Vec<_>>>()?;
 
     Ok(stats)
@@ -138,7 +138,7 @@ pub fn get_all_character_stats(conn: &Connection) -> Result<Vec<CharacterStats>>
     )?;
 
     let stats = stmt
-        .query_map([], |row| row_to_character_stats(row))?
+        .query_map([], row_to_character_stats)?
         .collect::<Result<Vec<_>>>()?;
 
     Ok(stats)
