@@ -182,3 +182,52 @@ pub use study::{
   validate_answer_handler,
 };
 pub use vocabulary::vocabulary_library;
+
+// ============================================================================
+// Offline / Service Worker Handlers
+// ============================================================================
+
+/// Template for the offline fallback page
+#[derive(Template)]
+#[template(path = "offline.html")]
+pub struct OfflineTemplate {
+    pub css_url: String,
+}
+
+/// Handler for the offline fallback page
+pub async fn offline_page() -> Html<String> {
+    let css_url = format!(
+        "/static/css/styles.css?v={}",
+        crate::filters::STYLES_CSS_HASH
+    );
+    let template = OfflineTemplate { css_url };
+    Html(template.render().unwrap_or_default())
+}
+
+/// Handler to serve the service worker from the root path
+/// Service workers must be served from the root to have full scope
+pub async fn service_worker() -> impl axum::response::IntoResponse {
+    use axum::http::{header, StatusCode};
+    use axum::response::Response;
+
+    // Read the service worker file
+    let sw_content = match std::fs::read_to_string("static/sw.js") {
+        Ok(content) => content,
+        Err(_) => {
+            return Response::builder()
+                .status(StatusCode::INTERNAL_SERVER_ERROR)
+                .body(axum::body::Body::from("Service worker not found"))
+                .unwrap();
+        }
+    };
+
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, "application/javascript; charset=utf-8")
+        // Allow SW to control the entire site
+        .header("Service-Worker-Allowed", "/")
+        // Prevent caching of SW itself (browser handles SW updates)
+        .header(header::CACHE_CONTROL, "no-cache, no-store, must-revalidate")
+        .body(axum::body::Body::from(sw_content))
+        .unwrap()
+}

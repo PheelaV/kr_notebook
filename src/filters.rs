@@ -19,6 +19,12 @@ pub fn asset_url(path: impl std::fmt::Display, _: &dyn askama::Values) -> askama
         "/static/css/styles.css" => {
             format!("{}?v={}", path_str, STYLES_CSS_HASH)
         }
+        "/static/js/sw-register.js" => {
+            format!("{}?v={}", path_str, SW_REGISTER_JS_HASH)
+        }
+        "/static/sw.js" => {
+            format!("{}?v={}", path_str, SW_JS_HASH)
+        }
         _ => path_str,
     })
 }

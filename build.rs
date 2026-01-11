@@ -50,6 +50,8 @@ fn build_tailwind() {
 fn main() {
     // Re-run build script if relevant files change
     println!("cargo:rerun-if-changed=static/js/card-interactions.js");
+    println!("cargo:rerun-if-changed=static/js/sw-register.js");
+    println!("cargo:rerun-if-changed=static/sw.js");
     println!("cargo:rerun-if-changed=src/input.css");
     println!("cargo:rerun-if-changed=tailwind.config.js");
     println!("cargo:rerun-if-changed=templates/");
@@ -60,6 +62,8 @@ fn main() {
     // Hash static assets for cache busting
     let js_hash = hash_file(Path::new("static/js/card-interactions.js"));
     let css_hash = hash_file(Path::new("static/css/styles.css"));
+    let sw_register_hash = hash_file(Path::new("static/js/sw-register.js"));
+    let sw_hash = hash_file(Path::new("static/sw.js"));
 
     // Write generated code to OUT_DIR
     let out_dir = std::env::var("OUT_DIR").unwrap();
@@ -69,8 +73,12 @@ fn main() {
             r#"/// Hash of card-interactions.js for cache busting
 pub const CARD_INTERACTIONS_JS_HASH: &str = "{}";
 /// Hash of styles.css for cache busting
-pub const STYLES_CSS_HASH: &str = "{}";"#,
-            js_hash, css_hash
+pub const STYLES_CSS_HASH: &str = "{}";
+/// Hash of sw-register.js for cache busting
+pub const SW_REGISTER_JS_HASH: &str = "{}";
+/// Hash of sw.js for cache busting
+pub const SW_JS_HASH: &str = "{}";"#,
+            js_hash, css_hash, sw_register_hash, sw_hash
         ),
     )
     .unwrap();
