@@ -16,7 +16,7 @@ This document describes the testing infrastructure for kr_notebook.
 ┌─────────────────────────────────────────────────────┐
 │ E2E (Playwright)                                    │
 │ Browser automation, user flows, UI interactions     │
-│ 8 test suites on ports 3001-3008                    │
+│ 9 test suites on ports 3001-3009                    │
 ├─────────────────────────────────────────────────────┤
 │ Integration (pytest + httpx)                        │
 │ HTTP API testing, session handling, database state  │
@@ -147,7 +147,7 @@ def test_authenticated_access(authenticated_client):
 
 ## E2E Tests
 
-**8 Playwright projects** with full browser automation.
+**9 Playwright projects** with full browser automation.
 
 ### Setup
 
@@ -172,18 +172,19 @@ npx playwright test --project=auth-tests  # Single project
 Each project runs in complete isolation:
 
 ```
-┌────────────────────────────────────────────────────────┐
-│ Project           │ Port  │ Data Directory             │
-├────────────────────────────────────────────────────────┤
-│ auth-tests        │ 3001  │ data/test/e2e-auth         │
-│ study-tests       │ 3002  │ data/test/e2e-study        │
-│ registration-tests│ 3003  │ data/test/e2e-registration │
-│ admin-tests       │ 3004  │ data/test/e2e-admin        │
-│ groups-tests      │ 3005  │ data/test/e2e-groups       │
-│ pack-permissions  │ 3006  │ data/test/e2e-packs        │
-│ settings-tests    │ 3007  │ data/test/e2e-settings     │
-│ menu-visibility   │ 3008  │ data/test/e2e-menu         │
-└────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────┐
+│ Project            │ Port  │ Data Directory             │
+├─────────────────────────────────────────────────────────┤
+│ auth-tests         │ 3001  │ data/test/e2e-auth         │
+│ study-tests        │ 3002  │ data/test/e2e-study        │
+│ registration-tests │ 3003  │ data/test/e2e-registration │
+│ admin-tests        │ 3004  │ data/test/e2e-admin        │
+│ groups-tests       │ 3005  │ data/test/e2e-groups       │
+│ pack-permissions   │ 3006  │ data/test/e2e-packs        │
+│ settings-tests     │ 3007  │ data/test/e2e-settings     │
+│ menu-visibility    │ 3008  │ data/test/e2e-menu         │
+│ navbar-dropdown    │ 3009  │ data/test/e2e-navbar       │
+└─────────────────────────────────────────────────────────┘
 ```
 
 ### Test Files
@@ -198,6 +199,7 @@ Each project runs in complete isolation:
 | `pack-permissions.spec.ts` | Pack visibility controls |
 | `settings.spec.ts` | User settings, data export/import |
 | `menu-visibility.spec.ts` | Conditional UI based on roles |
+| `navbar-dropdown.spec.ts` | Navbar dropdown consistency across pages |
 
 ### Adding E2E Tests
 
