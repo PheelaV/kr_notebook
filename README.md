@@ -432,7 +432,3 @@ Pronunciation audio is sourced from [How to Study Korean](https://www.howtostudy
 - [Unit 0 Lesson 3](https://www.howtostudykorean.com/unit0/unit-0-lesson-3/) - Compound vowels (ㅐㅔㅒㅖㅚㅟㅢㅘㅙㅝㅞ)
 
 Audio files are not redistributed with this project. Users must run the scraper to download audio for personal educational use.
-
-## License
-
-MIT
