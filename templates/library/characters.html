@@ -4,10 +4,24 @@
 
 {% block content %}
 <div class="max-w-4xl mx-auto">
-  <h1 class="text-3xl font-bold text-gray-900 dark:text-white mb-2">Character Library</h1>
-  <p class="text-gray-600 dark:text-gray-400 mb-6">
-    All unlocked Korean characters organized by tier.
-  </p>
+  <div class="flex flex-wrap items-center justify-between gap-4 mb-6">
+    <div>
+      <h1 class="text-3xl font-bold text-gray-900 dark:text-white mb-2">Character Library</h1>
+      <p class="text-gray-600 dark:text-gray-400">
+        All unlocked Korean characters organized by tier.
+      </p>
+    </div>
+
+    <!-- Hide Romanization Toggle -->
+    <label class="flex items-center gap-2 cursor-pointer select-none">
+      <span class="text-sm text-gray-600 dark:text-gray-400">Hide romanization</span>
+      <div class="relative">
+        <input type="checkbox" id="hide-romanization-toggle" class="sr-only peer">
+        <div class="w-10 h-6 bg-gray-200 dark:bg-gray-700 rounded-full peer peer-checked:bg-indigo-600 transition-colors"></div>
+        <div class="absolute left-1 top-1 w-4 h-4 bg-white rounded-full shadow peer-checked:translate-x-4 transition-transform"></div>
+      </div>
+    </label>
+  </div>
 
   {% for tier_group in tiers %}
   <div class="mb-8">
@@ -20,18 +34,25 @@
 
     <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
       {% for entry in tier_group.entries %}
-      <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 flex flex-col items-center">
+      <div class="char-card bg-white dark:bg-gray-800 rounded-lg shadow p-4 flex flex-col items-center cursor-pointer hover:shadow-md transition-shadow"
+           data-romanization="{{ entry.main_answer }}"
+           {% if let Some(desc) = entry.description %}data-description="{{ desc }}"{% endif %}>
         <div class="text-4xl font-bold text-gray-900 dark:text-white mb-2">
           {{ entry.front }}
         </div>
-        <div class="text-lg font-medium text-indigo-600 dark:text-indigo-400 mb-1">
+        <div class="char-romanization text-lg font-medium text-indigo-600 dark:text-indigo-400 mb-1">
           {{ entry.main_answer }}
         </div>
         {% if let Some(desc) = entry.description %}
-        <div class="text-xs text-gray-500 dark:text-gray-400 text-center line-clamp-2">
+        <div class="char-description text-xs text-gray-500 dark:text-gray-400 text-center line-clamp-2">
           {{ desc }}
         </div>
         {% endif %}
+        <!-- Tap hint (shown when romanization hidden) -->
+        <div class="char-tap-hint hidden text-xs text-gray-400 dark:text-gray-500 mt-1">
+          <iconify-icon icon="heroicons:hand-raised" width="14" height="14" class="inline"></iconify-icon>
+          tap to reveal
+        </div>
       </div>
       {% endfor %}
     </div>
@@ -61,4 +82,72 @@
     </a>
   </div>
 </div>
+
+<script>
+(function() {
+  var toggle = document.getElementById('hide-romanization-toggle');
+  var cards = document.querySelectorAll('.char-card');
+  var STORAGE_KEY = 'library-hide-romanization';
+
+  // Load saved preference
+  var savedPref = localStorage.getItem(STORAGE_KEY);
+  if (savedPref === 'true') {
+    toggle.checked = true;
+    applyHiddenState(true);
+  }
+
+  // Toggle handler
+  toggle.addEventListener('change', function() {
+    var isHidden = toggle.checked;
+    localStorage.setItem(STORAGE_KEY, isHidden);
+    applyHiddenState(isHidden);
+  });
+
+  // Apply hidden/shown state to all cards
+  function applyHiddenState(isHidden) {
+    cards.forEach(function(card) {
+      var romanization = card.querySelector('.char-romanization');
+      var description = card.querySelector('.char-description');
+      var tapHint = card.querySelector('.char-tap-hint');
+
+      if (isHidden) {
+        romanization.classList.add('invisible');
+        if (description) description.classList.add('hidden');
+        tapHint.classList.remove('hidden');
+        card.removeAttribute('data-revealed');
+      } else {
+        romanization.classList.remove('invisible');
+        if (description) description.classList.remove('hidden');
+        tapHint.classList.add('hidden');
+      }
+    });
+  }
+
+  // Card click handler - reveal on tap when hidden
+  cards.forEach(function(card) {
+    card.addEventListener('click', function() {
+      if (!toggle.checked) return; // Don't do anything if romanization is shown
+
+      var romanization = card.querySelector('.char-romanization');
+      var description = card.querySelector('.char-description');
+      var tapHint = card.querySelector('.char-tap-hint');
+      var isRevealed = card.hasAttribute('data-revealed');
+
+      if (isRevealed) {
+        // Hide again
+        romanization.classList.add('invisible');
+        if (description) description.classList.add('hidden');
+        tapHint.classList.remove('hidden');
+        card.removeAttribute('data-revealed');
+      } else {
+        // Reveal
+        romanization.classList.remove('invisible');
+        if (description) description.classList.remove('hidden');
+        tapHint.classList.add('hidden');
+        card.setAttribute('data-revealed', 'true');
+      }
+    });
+  });
+})();
+</script>
 {% endblock %}
