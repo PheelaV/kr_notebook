@@ -2,6 +2,9 @@
 name = "kr_notebook"
 version = "0.2.0"
 edition = "2024"
+license = "MIT"
+repository = "https://github.com/PheelaV/kr_notebook"
+description = "Korean Hangul learning app with FSRS spaced repetition"
 
 [features]
 default = []
