@@ -163,6 +163,11 @@ async fn main() {
         .route("/listen/answer", post(handlers::listen_answer))
         .route("/listen/answer-htmx", post(handlers::listen_answer_htmx))
         .route("/listen/skip", get(handlers::listen_skip))
+        // Reference pack routes (dynamic grammar content)
+        .route("/reference/pack/{pack_id}", get(handlers::reference_pack_overview))
+        .route("/reference/pack/{pack_id}/lesson/{lesson}", get(handlers::reference_lesson))
+        // API endpoint for service worker to get dynamic precache URLs
+        .route("/api/precache-urls", get(handlers::precache_urls))
         .route(
             "/settings",
             get(handlers::settings_page).post(handlers::update_settings),

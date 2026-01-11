@@ -23,6 +23,7 @@ pub mod cards;
 pub mod discovery;
 pub mod generator;
 pub mod packs;
+pub mod reference;
 
 pub use cards::{
     disable_pack, enable_card_pack, get_enabled_packs_info, is_pack_enabled, list_enabled_packs,
@@ -33,7 +34,12 @@ pub use discovery::{
     discover_packs_with_external, find_packs_providing, find_packs_providing_with_external,
     PackLocation,
 };
-pub use packs::{AudioConfig, CardConfig, GeneratorConfig, PackManifest, PackType};
+pub use packs::{AudioConfig, CardConfig, GeneratorConfig, PackManifest, PackType, ReferenceConfig};
+pub use reference::{
+    find_lesson, load_reference_from_pack, GrammarRule, PatternCard, ReferenceExample,
+    ReferenceLesson, ReferenceLoadError, ReferencePackData, ReferenceSection, SectionType,
+    WordBreakdown,
+};
 
 use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ToSql, ToSqlOutput, ValueRef};
 use serde::{Deserialize, Serialize};

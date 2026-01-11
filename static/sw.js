@@ -11,7 +11,7 @@
 'use strict';
 
 // Bump version to trigger update
-const CACHE_VERSION = '6';
+const CACHE_VERSION = '9';
 const CACHE_NAMES = {
   static: `kr-static-${CACHE_VERSION}`,
   pages: `kr-pages-${CACHE_VERSION}`,
@@ -41,8 +41,9 @@ const PRECACHE_CDN = [
   'https://code.iconify.design/iconify-icon/2.1.0/iconify-icon.min.js'
 ];
 
-// Pages to precache when user visits home (background fetch)
-const PRECACHE_PAGES = [
+// Fallback pages to precache if dynamic fetch fails (static pages only)
+// Dynamic pack/lesson URLs are fetched from /api/precache-urls
+const PRECACHE_PAGES_FALLBACK = [
   '/reference',
   '/reference/basics',
   '/reference/tier1',
@@ -342,25 +343,42 @@ self.addEventListener('message', function(event) {
   }
 
   // Precache reference pages (triggered from home page)
+  // Fetches dynamic URLs from server, falls back to static list
   if (event.data && event.data.type === 'PRECACHE_PAGES') {
-    console.log('[SW] Precaching reference pages...');
+    console.log('[SW] Precaching pages...');
     event.waitUntil(
-      caches.open(CACHE_NAMES.pages).then(function(cache) {
-        return Promise.all(
-          PRECACHE_PAGES.map(function(url) {
-            return fetch(url).then(function(response) {
-              if (response.ok) {
-                console.log('[SW] Cached:', url);
-                return cache.put(url, response);
-              }
-            }).catch(function(error) {
-              console.warn('[SW] Failed to precache:', url, error);
-            });
-          })
-        );
-      }).then(function() {
-        console.log('[SW] Reference pages precached');
-      })
+      // Try to get dynamic URLs from server first
+      fetch('/api/precache-urls')
+        .then(function(response) {
+          if (response.ok) {
+            return response.json();
+          }
+          throw new Error('Failed to fetch precache URLs');
+        })
+        .catch(function(error) {
+          console.warn('[SW] Using fallback URLs:', error);
+          return PRECACHE_PAGES_FALLBACK;
+        })
+        .then(function(urls) {
+          console.log('[SW] Precaching', urls.length, 'URLs');
+          return caches.open(CACHE_NAMES.pages).then(function(cache) {
+            return Promise.all(
+              urls.map(function(url) {
+                return fetch(url).then(function(response) {
+                  if (response.ok) {
+                    console.log('[SW] Cached:', url);
+                    return cache.put(url, response);
+                  }
+                }).catch(function(error) {
+                  console.warn('[SW] Failed to precache:', url, error);
+                });
+              })
+            );
+          });
+        })
+        .then(function() {
+          console.log('[SW] Pages precached');
+        })
     );
   }
 

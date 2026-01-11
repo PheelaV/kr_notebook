@@ -190,6 +190,18 @@ fn default_tier() -> u8 {
     5
 }
 
+/// Reference pack configuration for grammar/lesson content.
+/// A pack can have reference content alongside cards (e.g., vocabulary + grammar).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReferenceConfig {
+    /// Path to reference content JSON file (relative to pack directory)
+    pub file: String,
+
+    /// Whether this pack contains pattern cards (for future SRS integration)
+    #[serde(default)]
+    pub has_patterns: bool,
+}
+
 /// UI configuration for generic progress/study display.
 /// Allows packs to customize how they appear in the app without hardcoded references.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -291,6 +303,10 @@ pub struct PackManifest {
     /// Card pack configuration (if type == cards)
     #[serde(default)]
     pub cards: Option<CardConfig>,
+
+    /// Reference content configuration (optional, can be combined with cards)
+    #[serde(default)]
+    pub reference: Option<ReferenceConfig>,
 
     /// UI metadata for generic progress/study display
     #[serde(default)]
@@ -584,5 +600,53 @@ mod tests {
         assert_eq!(ui.display_name, "Vocabulary Lessons 1-8");
         assert_eq!(ui.unlock_threshold, 80);
         assert_eq!(ui.lesson_labels.get("1"), Some(&"Basic Nouns".to_string()));
+    }
+
+    #[test]
+    fn test_card_manifest_with_reference() {
+        let json = r#"{
+            "id": "vocab-grammar",
+            "name": "Vocabulary & Grammar",
+            "type": "cards",
+            "provides": ["vocabulary", "grammar"],
+            "cards": {
+                "file": "cards.json",
+                "tier": 5
+            },
+            "reference": {
+                "file": "reference.json",
+                "has_patterns": true
+            }
+        }"#;
+
+        let manifest: PackManifest = serde_json::from_str(json).unwrap();
+        assert_eq!(manifest.pack_type, PackType::Cards);
+        assert!(manifest.cards.is_some());
+        assert!(manifest.reference.is_some());
+        assert!(manifest.validate().is_ok());
+
+        let reference = manifest.reference.unwrap();
+        assert_eq!(reference.file, "reference.json");
+        assert!(reference.has_patterns);
+    }
+
+    #[test]
+    fn test_reference_config_defaults() {
+        let json = r#"{
+            "id": "ref-only",
+            "name": "Reference Only",
+            "type": "cards",
+            "cards": {
+                "file": "cards.json"
+            },
+            "reference": {
+                "file": "grammar.json"
+            }
+        }"#;
+
+        let manifest: PackManifest = serde_json::from_str(json).unwrap();
+        let reference = manifest.reference.unwrap();
+        assert_eq!(reference.file, "grammar.json");
+        assert!(!reference.has_patterns); // default false
     }
 }

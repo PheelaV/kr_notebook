@@ -72,9 +72,29 @@
             <a href="/progress" class="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 px-3 py-2 rounded-md text-sm font-medium">
               Progress
             </a>
+            <!-- Reference link/dropdown - show dropdown if user has grammar access -->
+            {% if nav.has_grammar_access %}
+            <div class="relative group">
+              <a href="/reference" class="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 px-3 py-2 rounded-md text-sm font-medium inline-flex items-center gap-1">
+                Reference
+                <iconify-icon icon="heroicons:chevron-down" width="14" height="14" class="transition-transform group-hover:rotate-180"></iconify-icon>
+              </a>
+              <div class="absolute left-0 top-full pt-1 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-150 z-50">
+                <div class="bg-white dark:bg-gray-800 shadow-lg rounded-lg border border-gray-200 dark:border-gray-700 py-1 min-w-[180px]">
+                  <a href="/reference/basics" class="block px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700">
+                    Hangul Basics
+                  </a>
+                  <a href="/reference/pack/krnb_htsk_voc1_pack" class="block px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700">
+                    Grammar Lessons
+                  </a>
+                </div>
+              </div>
+            </div>
+            {% else %}
             <a href="/reference" class="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 px-3 py-2 rounded-md text-sm font-medium">
               Reference
             </a>
+            {% endif %}
             <a href="/pronunciation" id="nav-pronunciation" class="hidden text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 px-3 py-2 rounded-md text-sm font-medium">
               Pronunciation
             </a>
@@ -146,9 +166,27 @@
           <a href="/progress" class="block text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 px-3 py-2 rounded-md text-base font-medium">
             Progress
           </a>
+          <!-- Reference link/expandable - show expandable menu if user has grammar access -->
+          {% if nav.has_grammar_access %}
+          <details class="reference-mobile-section group">
+            <summary class="flex items-center justify-between text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 px-3 py-2 rounded-md text-base font-medium cursor-pointer list-none">
+              <span>Reference</span>
+              <iconify-icon icon="heroicons:chevron-down" width="16" height="16" class="transition-transform duration-200 group-open:rotate-180"></iconify-icon>
+            </summary>
+            <div class="pl-4 space-y-1">
+              <a href="/reference/basics" class="block text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 px-3 py-2 rounded-md text-sm">
+                Hangul Basics
+              </a>
+              <a href="/reference/pack/krnb_htsk_voc1_pack" class="block text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 px-3 py-2 rounded-md text-sm">
+                Grammar Lessons
+              </a>
+            </div>
+          </details>
+          {% else %}
           <a href="/reference" class="block text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 px-3 py-2 rounded-md text-base font-medium">
             Reference
           </a>
+          {% endif %}
           <a href="/pronunciation" id="nav-pronunciation-mobile" class="hidden block text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 px-3 py-2 rounded-md text-base font-medium">
             Pronunciation
           </a>
@@ -221,9 +259,11 @@
         menu.classList.add('hidden');
         iconClosed.classList.remove('hidden');
         iconOpen.classList.add('hidden');
-        // Reset library submenu state (close any open details elements)
+        // Reset submenu state (close any open details elements)
         const libraryDetails = menu.querySelector('details.library-mobile-section');
         if (libraryDetails) libraryDetails.removeAttribute('open');
+        const referenceDetails = menu.querySelector('details.reference-mobile-section');
+        if (referenceDetails) referenceDetails.removeAttribute('open');
       }
     }
 

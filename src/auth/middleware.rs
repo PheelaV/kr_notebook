@@ -28,6 +28,8 @@ pub struct AuthContext {
     pub user_db: Arc<Mutex<Connection>>,
     /// Whether user has access to vocabulary content (for nav dropdown)
     pub has_vocab_access: bool,
+    /// Whether user has access to grammar reference content (for nav dropdown)
+    pub has_grammar_access: bool,
 }
 
 impl FromRequestParts<AppState> for AuthContext {
@@ -95,8 +97,8 @@ impl FromRequestParts<AppState> for AuthContext {
                 .into_response()
         })?;
 
-        // Check admin status and vocab access
-        let (is_admin, has_vocab_access) = match state.auth_db.lock() {
+        // Check admin status, vocab access, and grammar access
+        let (is_admin, has_vocab_access, has_grammar_access) = match state.auth_db.lock() {
             Ok(db) => {
                 let admin = auth_db::is_user_admin(&db, user_id)
                     .unwrap_or_else(|_| username.eq_ignore_ascii_case("admin"));
@@ -104,9 +106,13 @@ impl FromRequestParts<AppState> for AuthContext {
                 let vocab = crate::services::pack_manager::any_accessible_pack_provides(
                     &db, user_id, "vocabulary"
                 );
-                (admin, vocab)
+                // Check if user has access to any grammar-providing packs
+                let grammar = crate::services::pack_manager::any_accessible_pack_provides(
+                    &db, user_id, "grammar"
+                );
+                (admin, vocab, grammar)
             }
-            Err(_) => (username.eq_ignore_ascii_case("admin"), false),
+            Err(_) => (username.eq_ignore_ascii_case("admin"), false, false),
         };
 
         Ok(AuthContext {
@@ -115,6 +121,7 @@ impl FromRequestParts<AppState> for AuthContext {
             is_admin,
             user_db: Arc::new(Mutex::new(conn)),
             has_vocab_access,
+            has_grammar_access,
         })
     }
 }
@@ -129,6 +136,7 @@ pub struct AdminContext {
     pub username: String,
     pub user_db: Arc<Mutex<Connection>>,
     pub has_vocab_access: bool,
+    pub has_grammar_access: bool,
 }
 
 impl AdminContext {
@@ -140,6 +148,7 @@ impl AdminContext {
             is_admin: true,
             user_db: self.user_db,
             has_vocab_access: self.has_vocab_access,
+            has_grammar_access: self.has_grammar_access,
         }
     }
 }
@@ -165,6 +174,7 @@ impl FromRequestParts<AppState> for AdminContext {
             username: auth.username,
             user_db: auth.user_db,
             has_vocab_access: auth.has_vocab_access,
+            has_grammar_access: auth.has_grammar_access,
         })
     }
 }

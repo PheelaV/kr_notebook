@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+
+{% block title %}{{ pack_name }} - Reference{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto">
+  <nav class="mb-6 text-sm">
+    <a href="/reference" class="text-indigo-600 dark:text-indigo-400 hover:underline">&larr; Reference</a>
+  </nav>
+
+  <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mb-2">{{ pack_name }}</h1>
+  {% if let Some(desc) = description %}
+  <p class="text-gray-600 dark:text-gray-400 mb-8">{{ desc }}</p>
+  {% else %}
+  <div class="mb-8"></div>
+  {% endif %}
+
+  {% if lessons.is_empty() %}
+  <div class="bg-yellow-50 dark:bg-yellow-900/20 rounded-lg p-6 text-center">
+    <p class="text-yellow-800 dark:text-yellow-200">No lessons found in this pack.</p>
+  </div>
+  {% else %}
+  <div class="grid gap-4">
+    {% for lesson in lessons %}
+    <a href="/reference/pack/{{ pack_id }}/lesson/{{ lesson.number }}"
+       class="block bg-white dark:bg-gray-800 shadow rounded-lg p-6 hover:shadow-md transition-shadow">
+      <div class="flex items-center justify-between">
+        <div>
+          <div class="flex items-center gap-3">
+            <span class="bg-purple-100 dark:bg-purple-900 text-purple-800 dark:text-purple-200 text-sm font-bold px-3 py-1 rounded-full">
+              Lesson {{ lesson.number }}
+            </span>
+            <h2 class="text-lg font-bold text-gray-900 dark:text-white">{{ lesson.title }}</h2>
+          </div>
+          {% if let Some(desc) = lesson.description %}
+          <p class="text-gray-600 dark:text-gray-400 mt-2">{{ desc }}</p>
+          {% endif %}
+          <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">{{ lesson.section_count }} section{% if lesson.section_count != 1 %}s{% endif %}</p>
+        </div>
+        <span class="text-indigo-600 dark:text-indigo-400 text-2xl">&rarr;</span>
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

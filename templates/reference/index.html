@@ -5,14 +5,40 @@
 {% block content %}
 <div class="max-w-4xl mx-auto">
   <h1 class="text-3xl font-bold text-gray-900 dark:text-white mb-6">
-    Hangul Reference
+    Reference
   </h1>
 
   <p class="text-gray-600 dark:text-gray-400 mb-8">
-    Quick reference guides for learning Korean Hangul. Start with the basics, then work through each tier.
+    Quick reference guides for learning Korean Hangul and grammar.
   </p>
 
-  <div class="grid gap-4">
+  <!-- Grammar Packs Section -->
+  {% if !grammar_packs.is_empty() %}
+  <section class="mb-8">
+    <h2 class="text-xl font-semibold text-gray-800 dark:text-gray-200 mb-4">Grammar Lessons</h2>
+    <div class="grid gap-4">
+      {% for pack in grammar_packs %}
+      <a href="/reference/pack/{{ pack.pack_id }}" class="block bg-white dark:bg-gray-800 shadow rounded-lg p-6 hover:shadow-md transition-shadow border-l-4 border-purple-500">
+        <div class="flex items-center justify-between">
+          <div>
+            <h3 class="text-lg font-bold text-gray-900 dark:text-white">{{ pack.pack_name }}</h3>
+            {% if let Some(desc) = pack.description %}
+            <p class="text-gray-600 dark:text-gray-400 mt-1">{{ desc }}</p>
+            {% endif %}
+            <p class="text-sm text-purple-600 dark:text-purple-400 mt-2">{{ pack.lesson_count }} lesson{% if pack.lesson_count != 1 %}s{% endif %}</p>
+          </div>
+          <span class="text-indigo-600 dark:text-indigo-400 text-2xl">&rarr;</span>
+        </div>
+      </a>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  <!-- Hangul Basics Section -->
+  <section class="mb-8">
+    <h2 class="text-xl font-semibold text-gray-800 dark:text-gray-200 mb-4">Hangul Basics</h2>
+    <div class="grid gap-4">
     <!-- Basics -->
     <a href="/reference/basics" class="block bg-white dark:bg-gray-800 shadow rounded-lg p-6 hover:shadow-md transition-shadow">
       <div class="flex items-center justify-between">
@@ -77,6 +103,7 @@
         <span class="text-indigo-600 dark:text-indigo-400 text-2xl">&rarr;</span>
       </div>
     </a>
-  </div>
+    </div>
+  </section>
 </div>
 {% endblock %}

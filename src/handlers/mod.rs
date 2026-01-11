@@ -30,6 +30,7 @@ pub const DB_ERROR_HTML: &str = r#"<!DOCTYPE html><html><head><title>Error</titl
 #[derive(Clone, Default)]
 pub struct NavContext {
     pub has_vocab_access: bool,
+    pub has_grammar_access: bool,
 }
 
 impl NavContext {
@@ -37,6 +38,7 @@ impl NavContext {
     pub fn from_auth(auth: &AuthContext) -> Self {
         Self {
             has_vocab_access: auth.has_vocab_access,
+            has_grammar_access: auth.has_grammar_access,
         }
     }
 
@@ -158,8 +160,8 @@ pub use guide::guide;
 pub use library::{library_characters, library_index};
 pub use progress::{progress, unlock_tier};
 pub use reference::{
-  reference_basics, reference_index, reference_tier1, reference_tier2, reference_tier3,
-  reference_tier4,
+  precache_urls, reference_basics, reference_index, reference_lesson, reference_pack_overview,
+  reference_tier1, reference_tier2, reference_tier3, reference_tier4,
 };
 pub use listen::{listen_index, listen_start, listen_answer, listen_answer_htmx, listen_skip};
 pub use pronunciation::{has_scraped_content, pronunciation_page};
