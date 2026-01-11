@@ -34,15 +34,15 @@ pub async fn log_diagnostic(
 
   // Build diagnostic report
   let mut report = String::new();
-  report.push_str(&format!("=== Diagnostic Report ===\n"));
+  report.push_str("=== Diagnostic Report ===\n");
   report.push_str(&format!("Timestamp: {}\n", timestamp.to_rfc3339()));
-  report.push_str(&format!("\n--- What User Saw ---\n"));
+  report.push_str("\n--- What User Saw ---\n");
   report.push_str(&format!("Card ID: {}\n", form.card_id));
   report.push_str(&format!("Displayed Front: {}\n", form.displayed_front));
   report.push_str(&format!("Displayed Answer: {}\n", form.displayed_answer));
 
   // Get actual database state
-  report.push_str(&format!("\n--- Database State ---\n"));
+  report.push_str("\n--- Database State ---\n");
   match db::get_card_by_id(&conn, form.card_id) {
     Ok(Some(card)) => {
       report.push_str(&format!("DB ID: {}\n", card.id));
@@ -59,7 +59,7 @@ pub async fn log_diagnostic(
       report.push_str(&format!("DB Correct Reviews: {}\n", card.correct_reviews));
 
       // Check for potential issues
-      report.push_str(&format!("\n--- Analysis ---\n"));
+      report.push_str("\n--- Analysis ---\n");
       if card.front == card.main_answer {
         report.push_str("WARNING: Front and main_answer are identical!\n");
       }
@@ -88,20 +88,19 @@ pub async fn log_diagnostic(
   }
 
   // Get some context - nearby cards
-  report.push_str(&format!("\n--- Nearby Cards (for context) ---\n"));
+  report.push_str("\n--- Nearby Cards (for context) ---\n");
   let nearby_ids = [form.card_id - 2, form.card_id - 1, form.card_id + 1, form.card_id + 2];
   for id in nearby_ids {
-    if id > 0 {
-      if let Ok(Some(card)) = db::get_card_by_id(&conn, id) {
+    if id > 0
+      && let Ok(Some(card)) = db::get_card_by_id(&conn, id) {
         report.push_str(&format!(
           "Card {}: '{}' -> '{}'\n",
           card.id, card.front, card.main_answer
         ));
       }
-    }
   }
 
-  report.push_str(&format!("\n=== End Report ===\n\n"));
+  report.push_str("\n=== End Report ===\n\n");
 
   // Write to log file
   let log_file = diag_dir.join("diagnostic.log");
@@ -116,21 +115,17 @@ pub async fn log_diagnostic(
 
   // Return confirmation HTML
   let response = if write_result.is_ok() {
-    format!(
-      r#"<div class="fixed top-4 right-4 bg-green-500 text-white px-4 py-2 rounded-lg shadow-lg z-50"
-           x-data="{{ show: true }}"
+    r#"<div class="fixed top-4 right-4 bg-green-500 text-white px-4 py-2 rounded-lg shadow-lg z-50"
+           x-data="{ show: true }"
            x-init="setTimeout(() => $el.remove(), 3000)">
         Diagnostic logged to data/diagnostics/diagnostic.log
-      </div>"#
-    )
+      </div>"#.to_string()
   } else {
-    format!(
-      r#"<div class="fixed top-4 right-4 bg-red-500 text-white px-4 py-2 rounded-lg shadow-lg z-50"
-           x-data="{{ show: true }}"
+    r#"<div class="fixed top-4 right-4 bg-red-500 text-white px-4 py-2 rounded-lg shadow-lg z-50"
+           x-data="{ show: true }"
            x-init="setTimeout(() => $el.remove(), 3000)">
         Failed to write diagnostic log
-      </div>"#
-    )
+      </div>"#.to_string()
   };
 
   Html(response)

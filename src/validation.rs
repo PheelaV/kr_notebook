@@ -1,6 +1,6 @@
-/// Answer validation module with flexible matching for Hangul learning
-///
-/// Handles romanization variations like "g / k" matching "g", "k", "g/k", etc.
+//! Answer validation module with flexible matching for Hangul learning.
+//!
+//! Handles romanization variations like "g / k" matching "g", "k", "g/k", etc.
 
 use serde::{Deserialize, Serialize};
 
@@ -60,7 +60,7 @@ fn extract_variants(main_answer: &str) -> Vec<String> {
   // If answer contains " / ", split into alternatives
   if main_answer.contains(" / ") || main_answer.contains("/") {
     let parts: Vec<&str> = main_answer
-      .split(|c| c == '/')
+      .split('/')
       .map(|s| s.trim())
       .filter(|s| !s.is_empty())
       .collect();
@@ -157,7 +157,7 @@ pub fn validate_answer(user_input: &str, correct_answer: &str) -> AnswerResult {
   let variants = extract_variants(correct_answer);
 
   // Check for exact match with any variant
-  if variants.iter().any(|v| *v == normalized_input) {
+  if variants.contains(&normalized_input) {
     return AnswerResult::Correct;
   }
 

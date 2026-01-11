@@ -395,6 +395,18 @@ impl std::fmt::Display for PackError {
     }
 }
 
+impl PackError {
+    /// Returns a user-facing error message without exposing filesystem paths.
+    pub fn user_message(&self) -> &str {
+        match self {
+            PackError::ManifestNotFound(_) => "Pack manifest not found",
+            PackError::IoError(_, _) => "Failed to read pack file",
+            PackError::ParseError(_, _) => "Failed to parse pack file",
+            PackError::ValidationError(_, _) => "Pack validation error"
+        }
+    }
+}
+
 impl std::error::Error for PackError {}
 
 #[cfg(test)]

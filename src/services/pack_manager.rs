@@ -98,11 +98,10 @@ pub fn get_accessible_packs(
             .into_iter()
             .filter(|p| {
                 // Apply pack_type filter if specified
-                if let Some(ref pt) = filter.pack_type {
-                    if &p.manifest.pack_type != pt {
+                if let Some(ref pt) = filter.pack_type
+                    && &p.manifest.pack_type != pt {
                         return false;
                     }
-                }
                 // Check user access
                 auth_db::can_user_access_pack(auth_db, user_id, &p.manifest.id).unwrap_or(false)
             })
@@ -116,11 +115,10 @@ pub fn get_accessible_packs(
         .into_iter()
         .filter(|p| {
             // Apply pack_type filter if specified
-            if let Some(ref pt) = filter.pack_type {
-                if &p.manifest.pack_type != pt {
+            if let Some(ref pt) = filter.pack_type
+                && &p.manifest.pack_type != pt {
                     return false;
                 }
-            }
             // Check user access
             auth_db::can_user_access_pack(auth_db, user_id, &p.manifest.id).unwrap_or(false)
         })

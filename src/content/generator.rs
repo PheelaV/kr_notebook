@@ -84,7 +84,7 @@ pub fn execute_generator(
         }
     };
 
-    let output_path = output_base.join(&subcommand.output.trim_end_matches('/'));
+    let output_path = output_base.join(subcommand.output.trim_end_matches('/'));
 
     // Create output directory
     std::fs::create_dir_all(&output_path)
@@ -151,8 +151,8 @@ pub fn list_generators() -> Vec<GeneratorPackInfo> {
 
     // Check shared packs directory
     let shared_packs = PathBuf::from(paths::shared_packs_dir());
-    if shared_packs.exists() {
-        if let Ok(entries) = std::fs::read_dir(&shared_packs) {
+    if shared_packs.exists()
+        && let Ok(entries) = std::fs::read_dir(&shared_packs) {
             for entry in entries.filter_map(|e| e.ok()) {
                 let pack_path = entry.path();
                 if let Some(info) = load_generator_pack_info(&pack_path) {
@@ -160,7 +160,6 @@ pub fn list_generators() -> Vec<GeneratorPackInfo> {
                 }
             }
         }
-    }
 
     generators
 }

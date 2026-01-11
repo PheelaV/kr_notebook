@@ -219,7 +219,7 @@ pub fn migrate_from_sm2(card: &Card, desired_retention: f64) -> Option<(f64, f64
   let fsrs = FSRS::new(Some(&DEFAULT_PARAMETERS)).ok()?;
 
   // Use FSRS's built-in SM-2 migration
-  let estimated_retention = (desired_retention as f32).min(0.99).max(0.7);
+  let estimated_retention = (desired_retention as f32).clamp(0.7, 0.99);
 
   let memory_state = fsrs
     .memory_state_from_sm2(

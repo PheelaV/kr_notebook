@@ -128,8 +128,8 @@ pub async fn study_start_interactive(
   // Save session state
   session::update_session(&session_id, study_session);
 
-  if let Some(card_id) = selected_card_id {
-    if let Ok(Some(card)) = db::get_card_by_id(&conn, card_id) {
+  if let Some(card_id) = selected_card_id
+    && let Ok(Some(card)) = db::get_card_by_id(&conn, card_id) {
       let hint_gen = HintGenerator::new(&card.main_answer, card.description.as_deref());
 
       // Check if answer is Korean (needs multiple choice)
@@ -184,7 +184,6 @@ pub async fn study_start_interactive(
       };
       return Html(template.render().unwrap_or_default()).into_response();
     }
-  }
 
   // No cards available
   let template = StudyInteractiveTemplate {
@@ -445,8 +444,8 @@ pub async fn next_card_interactive(
   // Save session state
   session::update_session(&session_id, study_session);
 
-  if let Some(card_id) = selected_card_id {
-    if let Ok(Some(next_card)) = db::get_card_by_id(&conn, card_id) {
+  if let Some(card_id) = selected_card_id
+    && let Ok(Some(next_card)) = db::get_card_by_id(&conn, card_id) {
       let hint_gen = HintGenerator::new(&next_card.main_answer, next_card.description.as_deref());
 
       // Check if answer is Korean (needs multiple choice)
@@ -489,7 +488,6 @@ pub async fn next_card_interactive(
       };
       return Html(template.render().unwrap_or_default()).into_response();
     }
-  }
 
   // Check if a new tier was unlocked - if so, redirect to home to show notification
   if db::try_auto_unlock_tier(&conn).log_warn("Auto tier unlock failed").flatten().is_some() {
@@ -558,8 +556,8 @@ pub async fn submit_review_interactive(
   // Save session state
   session::update_session(&session_id, study_session);
 
-  if let Some(card_id) = selected_card_id {
-    if let Ok(Some(next_card)) = db::get_card_by_id(&conn, card_id) {
+  if let Some(card_id) = selected_card_id
+    && let Ok(Some(next_card)) = db::get_card_by_id(&conn, card_id) {
       let hint_gen = HintGenerator::new(&next_card.main_answer, next_card.description.as_deref());
 
       // Check if answer is Korean (needs multiple choice)
@@ -602,7 +600,6 @@ pub async fn submit_review_interactive(
       };
       return Html(template.render().unwrap_or_default()).into_response();
     }
-  }
 
   // Check if a new tier was unlocked - if so, redirect to home to show notification
   if db::try_auto_unlock_tier(&conn).log_warn("Auto tier unlock failed").flatten().is_some() {
@@ -621,6 +618,7 @@ pub struct StudyFilterForm {
 
 /// Change the study filter mode
 pub async fn set_study_filter(
+  State(state): State<AppState>,
   auth: AuthContext,
   Form(form): Form<StudyFilterForm>,
 ) -> Redirect {
@@ -631,8 +629,25 @@ pub async fn set_study_filter(
 
   // Validate filter value (should be "all", "hangul", or "pack:<id>")
   let filter = form.filter.trim();
-  if filter == "all" || filter == "hangul" || filter.starts_with("pack:") {
+  if filter == "all" || filter == "hangul" {
     let _ = db::set_setting(&conn, "study_filter_mode", filter);
+  } else if let Some(pack_id) = filter.strip_prefix("pack:") {
+    // Validate pack_id exists in content_packs using parameterized query
+    let app_conn = match state.auth_db.lock() {
+      Ok(conn) => conn,
+      Err(_) => return Redirect::to("/study"),
+    };
+    let pack_exists: bool = app_conn
+      .query_row(
+        "SELECT 1 FROM content_packs WHERE id = ?1",
+        rusqlite::params![pack_id],
+        |_| Ok(true),
+      )
+      .unwrap_or(false);
+    if pack_exists {
+      let _ = db::set_setting(&conn, "study_filter_mode", filter);
+    }
+    // If pack doesn't exist, silently ignore (don't store invalid pack_id)
   }
 
   Redirect::to("/study")
