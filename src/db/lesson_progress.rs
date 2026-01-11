@@ -7,13 +7,25 @@ use chrono::Utc;
 use rusqlite::{params, Connection, Result};
 use serde::{Deserialize, Serialize};
 
+/// Validate that a pack_id is safe for SQL string interpolation.
+/// Pack IDs should only contain alphanumeric characters, hyphens, and underscores.
+/// This is a defense-in-depth measure - pack_ids should already be validated at input.
+fn is_safe_pack_id(pack_id: &str) -> bool {
+    !pack_id.is_empty()
+        && pack_id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+}
+
 // ==================== Study Filter Types ====================
 
 /// Filter mode for card selection during study sessions.
 /// Determines which cards are included in the study pool.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default)]
 pub enum StudyFilterMode {
     /// All enabled content (Hangul tiers + enabled packs with unlocked lessons)
+    #[default]
     All,
     /// Only Hangul/baseline content (cards without pack_id or with lesson=NULL)
     HangulOnly,
@@ -23,11 +35,6 @@ pub enum StudyFilterMode {
     PackLesson(String, u8),
 }
 
-impl Default for StudyFilterMode {
-    fn default() -> Self {
-        StudyFilterMode::All
-    }
-}
 
 impl StudyFilterMode {
     /// Parse from settings string format
@@ -120,17 +127,21 @@ pub fn build_filter_where_clause(
             }
 
             // Build pack conditions for each accessible pack
+            // Filter out any pack_ids that don't pass safety validation (defense-in-depth)
             let mut pack_conditions = Vec::new();
             for pack_id in &accessible_packs {
+                if !is_safe_pack_id(pack_id) {
+                    tracing::warn!("Skipping unsafe pack_id in study filter: {:?}", pack_id);
+                    continue;
+                }
                 let is_accel = is_pack_accelerated(conn, pack_id)?;
-                let safe_pack_id = pack_id.replace('\'', "''");
                 if is_accel {
-                    pack_conditions.push(format!("cd.pack_id = '{}'", safe_pack_id));
+                    pack_conditions.push(format!("cd.pack_id = '{}'", pack_id));
                 } else {
                     let max_lesson = get_max_unlocked_lesson(conn, pack_id)?;
                     pack_conditions.push(format!(
                         "(cd.pack_id = '{}' AND (cd.lesson IS NULL OR cd.lesson <= {}))",
-                        safe_pack_id, max_lesson
+                        pack_id, max_lesson
                     ));
                 }
             }
@@ -152,6 +163,12 @@ pub fn build_filter_where_clause(
             Ok(("AND (cd.pack_id IS NULL OR cd.lesson IS NULL)".to_string(), vec![], false))
         }
         StudyFilterMode::PackOnly(pack_id) => {
+            // Defense-in-depth: validate pack_id format before SQL interpolation
+            if !is_safe_pack_id(pack_id) {
+                tracing::warn!("Unsafe pack_id in PackOnly filter: {:?}", pack_id);
+                return build_filter_where_clause(conn, app_conn, user_id, &StudyFilterMode::All);
+            }
+
             // Check if user has permission to access this pack
             if !crate::auth::db::can_user_access_pack(app_conn, user_id, pack_id).unwrap_or(false) {
                 // No access, fall back to All mode
@@ -163,13 +180,13 @@ pub fn build_filter_where_clause(
             let is_accel = is_pack_accelerated(conn, pack_id)?;
             if is_accel {
                 // All lessons available
-                Ok((format!("AND cd.pack_id = '{}'", pack_id.replace('\'', "''")), vec![], true))
+                Ok((format!("AND cd.pack_id = '{}'", pack_id), vec![], true))
             } else {
                 let max_lesson = get_max_unlocked_lesson(conn, pack_id)?;
                 Ok((
                     format!(
                         "AND cd.pack_id = '{}' AND cd.lesson <= {}",
-                        pack_id.replace('\'', "''"),
+                        pack_id,
                         max_lesson
                     ),
                     vec![],
@@ -178,6 +195,12 @@ pub fn build_filter_where_clause(
             }
         }
         StudyFilterMode::PackLesson(pack_id, lesson) => {
+            // Defense-in-depth: validate pack_id format before SQL interpolation
+            if !is_safe_pack_id(pack_id) {
+                tracing::warn!("Unsafe pack_id in PackLesson filter: {:?}", pack_id);
+                return build_filter_where_clause(conn, app_conn, user_id, &StudyFilterMode::All);
+            }
+
             // Check if user has permission to access this pack
             if !crate::auth::db::can_user_access_pack(app_conn, user_id, pack_id).unwrap_or(false) {
                 // No access, fall back to All mode
@@ -188,12 +211,12 @@ pub fn build_filter_where_clause(
             // Skip tier filter - pack filter is sufficient
             if !is_lesson_unlocked(conn, pack_id, *lesson)? {
                 // Lesson not unlocked, fall back to pack-only mode
-                return build_filter_where_clause(conn, app_conn, user_id, &StudyFilterMode::PackOnly(pack_id.clone()));
+                build_filter_where_clause(conn, app_conn, user_id, &StudyFilterMode::PackOnly(pack_id.clone()))
             } else {
                 Ok((
                     format!(
                         "AND cd.pack_id = '{}' AND cd.lesson = {}",
-                        pack_id.replace('\'', "''"),
+                        pack_id,
                         lesson
                     ),
                     vec![],
@@ -639,8 +662,8 @@ pub fn try_auto_unlock_all_pack_lessons(
     let packs = get_all_packs_with_lessons(app_conn)?;
 
     for pack in packs {
-        if let Some(total) = pack.total_lessons {
-            if let Ok(Some(lesson)) = try_auto_unlock_lesson(
+        if let Some(total) = pack.total_lessons
+            && let Ok(Some(lesson)) = try_auto_unlock_lesson(
                 conn,
                 app_conn,
                 &pack.pack_id,
@@ -649,7 +672,6 @@ pub fn try_auto_unlock_all_pack_lessons(
             ) {
                 unlocked.push((pack.pack_id, lesson));
             }
-        }
     }
 
     Ok(unlocked)
