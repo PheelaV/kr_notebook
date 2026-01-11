@@ -42,9 +42,9 @@ impl TierProgress {
         if graduated == 0 {
             return 0;
         }
-        let score = (self.strong_memories * 100 + self.medium_memories * 60 + self.weak_memories * 30)
-            / graduated;
-        score
+        
+        (self.strong_memories * 100 + self.medium_memories * 60 + self.weak_memories * 30)
+            / graduated
     }
 
     /// Returns true if there are any graduated cards with stability data
@@ -198,12 +198,11 @@ pub fn try_auto_unlock_tier(conn: &Connection) -> Result<Option<u8>> {
     let tier_stats = get_progress_by_tier(conn)?;
     let current_progress = tier_stats.iter().find(|t| t.tier == current_tier);
 
-    if let Some(progress) = current_progress {
-        if progress.percentage() >= 80 {
+    if let Some(progress) = current_progress
+        && progress.percentage() >= 80 {
             let new_tier = unlock_next_tier(conn)?;
             return Ok(Some(new_tier));
         }
-    }
 
     Ok(None)
 }

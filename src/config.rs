@@ -25,16 +25,13 @@ pub fn load_database_path() -> PathBuf {
     let _ = dotenvy::dotenv();
 
     // Priority 1: config.toml
-    if let Ok(contents) = std::fs::read_to_string("config.toml") {
-        if let Ok(config) = toml::from_str::<AppConfig>(&contents) {
-            if let Some(db) = config.database {
-                if let Some(path) = db.path {
+    if let Ok(contents) = std::fs::read_to_string("config.toml")
+        && let Ok(config) = toml::from_str::<AppConfig>(&contents)
+            && let Some(db) = config.database
+                && let Some(path) = db.path {
                     tracing::info!("Using database from config.toml: {}", path);
                     return PathBuf::from(path);
                 }
-            }
-        }
-    }
 
     // Priority 2: .env DATABASE_PATH
     if let Ok(path) = std::env::var("DATABASE_PATH") {
