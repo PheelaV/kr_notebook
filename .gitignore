@@ -1,5 +1,7 @@
 # Rust build artifacts
 /target/
+/crates/*/target/
+/crates/*/pkg/
 
 # IDE and editor files
 .idea/
@@ -48,8 +50,14 @@ backups/
 
 # Static assets - generated CSS is built from src/input.css
 static/*
+# Keep JS, WASM, service worker, and PWA assets
 !static/js/
 !static/sw.js
+!static/wasm/
+!static/favicon.*
+!static/apple-touch-icon.png
+!static/android-chrome-*.png
+!static/site.webmanifest
 
 # Logs
 *.log

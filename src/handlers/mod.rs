@@ -182,6 +182,7 @@ pub use study::{
   next_card_interactive, practice_next, practice_start, practice_validate, set_study_filter,
   study_start, submit_review, study_start_interactive, submit_review_interactive,
   toggle_focus_mode, validate_answer_handler,
+  download_session, sync_session,
 };
 pub use vocabulary::vocabulary_library;
 
@@ -203,6 +204,27 @@ pub async fn offline_page() -> Html<String> {
         crate::filters::STYLES_CSS_HASH
     );
     let template = OfflineTemplate { css_url };
+    Html(template.render().unwrap_or_default())
+}
+
+/// Template for the offline study page
+#[derive(Template)]
+#[template(path = "offline_study.html")]
+pub struct OfflineStudyTemplate {
+    pub css_url: String,
+    pub nav: NavContext,
+}
+
+/// Handler for the offline study page
+pub async fn offline_study_page(
+    crate::auth::OptionalAuth(auth): crate::auth::OptionalAuth,
+) -> Html<String> {
+    let css_url = format!(
+        "/static/css/styles.css?v={}",
+        crate::filters::STYLES_CSS_HASH
+    );
+    let nav = auth.as_ref().map(|a| NavContext::from_auth(a)).unwrap_or_default();
+    let template = OfflineStudyTemplate { css_url, nav };
     Html(template.render().unwrap_or_default())
 }
 

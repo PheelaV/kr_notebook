@@ -138,6 +138,7 @@ async fn main() {
         .route("/pronunciation", get(handlers::pronunciation_page))
         // Offline / Service Worker routes
         .route("/offline", get(handlers::offline_page))
+        .route("/offline-study", get(handlers::offline_study_page))
         .route("/sw.js", get(handlers::service_worker));
 
     // Protected routes (auth required - AuthContext extractor handles this)
@@ -169,6 +170,9 @@ async fn main() {
         .route("/reference/pack/{pack_id}/lesson/{lesson}", get(handlers::reference_lesson))
         // API endpoint for service worker to get dynamic precache URLs
         .route("/api/precache-urls", get(handlers::precache_urls))
+        // Offline study mode API
+        .route("/api/study/download-session", post(handlers::study::download_session))
+        .route("/api/study/sync-offline", post(handlers::study::sync_session))
         .route(
             "/settings",
             get(handlers::settings_page).post(handlers::update_settings),

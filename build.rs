@@ -11,6 +11,56 @@ fn hash_file(path: &Path) -> String {
     format!("{:x}", hasher.finish())[..8].to_string()
 }
 
+/// Build the offline-srs WASM module (only when rebuild-wasm feature is enabled)
+#[cfg(feature = "rebuild-wasm")]
+fn build_wasm() {
+    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
+    let crate_dir = Path::new(&manifest_dir).join("crates/offline-srs");
+    let output_dir = Path::new(&manifest_dir).join("static/wasm");
+
+    // Check if wasm-pack is installed
+    let wasm_pack_check = Command::new("wasm-pack").arg("--version").output();
+
+    match wasm_pack_check {
+        Ok(output) if output.status.success() => {}
+        _ => {
+            eprintln!("Warning: 'wasm-pack' not found, skipping WASM build");
+            eprintln!("Install with: cargo install wasm-pack");
+            return;
+        }
+    }
+
+    // Build WASM module
+    eprintln!("Building offline-srs WASM module...");
+    let status = Command::new("wasm-pack")
+        .current_dir(&crate_dir)
+        .args(["build", "--target", "web", "--release"])
+        .status();
+
+    match status {
+        Ok(s) if s.success() => {
+            // Copy output files to static/wasm/
+            fs::create_dir_all(&output_dir).ok();
+            let pkg_dir = crate_dir.join("pkg");
+
+            for file in ["offline_srs_bg.wasm", "offline_srs.js"] {
+                let src = pkg_dir.join(file);
+                let dst = output_dir.join(file);
+                if src.exists() {
+                    fs::copy(&src, &dst).ok();
+                }
+            }
+            eprintln!("WASM build complete: {:?}", output_dir);
+        }
+        Ok(s) => {
+            eprintln!("wasm-pack failed with status: {}", s);
+        }
+        Err(e) => {
+            eprintln!("Failed to run wasm-pack: {}", e);
+        }
+    }
+}
+
 fn build_tailwind() {
     let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
     let css_path = Path::new(&manifest_dir).join("static/css/styles.css");
@@ -55,6 +105,14 @@ fn main() {
     println!("cargo:rerun-if-changed=src/input.css");
     println!("cargo:rerun-if-changed=tailwind.config.js");
     println!("cargo:rerun-if-changed=templates/");
+
+    // WASM source tracking (only matters when rebuild-wasm feature is enabled)
+    #[cfg(feature = "rebuild-wasm")]
+    println!("cargo:rerun-if-changed=crates/offline-srs/src/");
+
+    // Build WASM module (only when feature is enabled)
+    #[cfg(feature = "rebuild-wasm")]
+    build_wasm();
 
     // Build Tailwind CSS
     build_tailwind();

@@ -2,6 +2,7 @@
 
 mod classic;
 mod interactive;
+mod offline;
 mod practice;
 mod templates;
 
@@ -17,6 +18,7 @@ pub use interactive::{
   next_card_interactive, set_study_filter, study_start_interactive, submit_review_interactive,
   toggle_focus_mode, validate_answer_handler,
 };
+pub use offline::{download_session, sync_session, DownloadSessionRequest, SyncSessionRequest};
 pub use practice::{practice_next, practice_start, practice_validate};
 pub use templates::{
   CardTemplate, InteractiveCardTemplate, NextCardForm, NoCardsTemplate, PracticeCardTemplate,

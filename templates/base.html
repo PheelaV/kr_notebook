@@ -28,6 +28,9 @@
           crossorigin="anonymous"></script>
   <script src="{{ "/static/js/card-interactions.js"|asset_url }}"></script>
   <script src="{{ "/static/js/sw-register.js"|asset_url }}"></script>
+  <script src="{{ "/static/js/offline-detect.js"|asset_url }}"></script>
+  <script src="{{ "/static/js/offline-storage.js"|asset_url }}"></script>
+  <script src="{{ "/static/js/offline-sync.js"|asset_url }}"></script>
   <script>
     // Dark mode toggle function
     function toggleDarkMode() {
@@ -522,7 +525,8 @@
       var isOffline = !navigator.onLine;
 
       // Pages that are always available offline (precached in SW install)
-      var alwaysOffline = ['/offline'];
+      // /study redirects to /offline-study when offline (handled by SW)
+      var alwaysOffline = ['/offline', '/study', '/offline-study'];
 
       // Pages that get precached when visiting home
       var precachedPaths = [

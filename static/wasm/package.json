@@ -1,0 +1,17 @@
+{
+  "name": "offline-srs",
+  "type": "module",
+  "description": "WASM module for offline FSRS scheduling and answer validation",
+  "version": "0.1.0",
+  "license": "AGPL-3.0",
+  "files": [
+    "offline_srs_bg.wasm",
+    "offline_srs.js",
+    "offline_srs.d.ts"
+  ],
+  "main": "offline_srs.js",
+  "types": "offline_srs.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}

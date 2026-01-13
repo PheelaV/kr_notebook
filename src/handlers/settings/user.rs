@@ -148,6 +148,9 @@ pub struct SettingsTemplate {
   pub desired_retention: u8, // 80, 85, 90, or 95
   pub daily_new_cards: u32,  // 0 = unlimited, else limit
   pub focus_mode_enabled: bool, // Simple focus mode toggle
+  pub offline_mode_enabled: bool,
+  pub offline_session_duration: u32, // minutes
+  pub offline_audio_enabled: bool,
   pub has_scraped_content: bool,
   pub has_pronunciation: bool,
   // Per-lesson status
@@ -197,6 +200,23 @@ pub async fn settings_page(auth: AuthContext, State(state): State<AppState>) -> 
   let desired_retention = (desired_retention_f64 * 100.0).round() as u8;
   let daily_new_cards = db::get_daily_new_cards_limit(&conn).log_warn_default("Failed to get daily new cards limit");
   let focus_mode_enabled = db::is_focus_mode_enabled(&conn).log_warn_default("Failed to get focus mode");
+
+  // Offline mode settings
+  let offline_mode_enabled = db::get_setting(&conn, "offline_mode_enabled")
+    .ok()
+    .flatten()
+    .map(|v| v == "true")
+    .unwrap_or(false);
+  let offline_session_duration = db::get_setting(&conn, "offline_session_duration")
+    .ok()
+    .flatten()
+    .and_then(|v| v.parse().ok())
+    .unwrap_or(30u32);
+  let offline_audio_enabled = db::get_setting(&conn, "offline_audio_enabled")
+    .ok()
+    .flatten()
+    .map(|v| v == "true")
+    .unwrap_or(false);
 
   let has_l1 = has_lesson1();
   let has_l2 = has_lesson2();
@@ -338,6 +358,9 @@ pub async fn settings_page(auth: AuthContext, State(state): State<AppState>) -> 
     desired_retention,
     daily_new_cards,
     focus_mode_enabled,
+    offline_mode_enabled,
+    offline_session_duration,
+    offline_audio_enabled,
     has_scraped_content: scraped_content_available,
     has_pronunciation: scraped_content_available,
     has_lesson1: has_l1,
@@ -378,6 +401,15 @@ pub struct SettingsForm {
   pub daily_new_cards: Option<u32>, // 0 = off/unlimited
   #[serde(default)]
   pub focus_mode: Option<String>, // "true" if checked
+  // Offline mode settings
+  #[serde(default)]
+  pub _action: Option<String>, // "offline_mode" when submitting offline form
+  #[serde(default)]
+  pub offline_mode_enabled: Option<String>,
+  #[serde(default)]
+  pub offline_session_duration: Option<u32>,
+  #[serde(default)]
+  pub offline_audio_enabled: Option<String>,
 }
 
 pub async fn update_settings(
@@ -479,7 +511,23 @@ pub async fn update_settings(
     username: auth.username.clone(),
   });
 
-  Redirect::to("/settings")
+  // Update offline mode settings (separate form)
+  if form._action.as_deref() == Some("offline_mode") {
+    let offline_enabled = form.offline_mode_enabled.is_some();
+    db::set_setting(&conn, "offline_mode_enabled", if offline_enabled { "true" } else { "false" })
+      .log_warn("Failed to save offline_mode_enabled setting");
+
+    if let Some(duration) = form.offline_session_duration {
+      db::set_setting(&conn, "offline_session_duration", &duration.to_string())
+        .log_warn("Failed to save offline_session_duration setting");
+    }
+
+    let audio_enabled = form.offline_audio_enabled.is_some();
+    db::set_setting(&conn, "offline_audio_enabled", if audio_enabled { "true" } else { "false" })
+      .log_warn("Failed to save offline_audio_enabled setting");
+  }
+
+  Redirect::to("/settings#offline-mode")
 }
 
 /// Export user's learning database as a downloadable ZIP file

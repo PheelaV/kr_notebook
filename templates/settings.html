@@ -192,6 +192,237 @@
     </button>
   </form>
 
+  <!-- Offline Mode -->
+  <section id="offline-mode" class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6 scroll-mt-16">
+    <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+      <iconify-icon icon="mdi:cloud-off-outline" class="text-gray-500"></iconify-icon>
+      Offline Mode
+      <span class="text-xs font-normal bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200 px-2 py-0.5 rounded-full">
+        Experimental
+      </span>
+    </h2>
+
+    <div id="offline-status" class="mb-4 text-sm">
+      <span class="text-gray-500 dark:text-gray-400">Checking browser support...</span>
+    </div>
+
+    <form method="POST" action="/settings">
+      <input type="hidden" name="_action" value="offline_mode">
+
+      <div class="mb-4">
+        <label class="flex items-center cursor-pointer">
+          <input type="checkbox" name="offline_mode_enabled" value="true"
+                 id="offlineModeToggle"
+                 {% if offline_mode_enabled %}checked{% endif %}
+                 class="w-5 h-5 text-indigo-600 rounded focus:ring-indigo-500 dark:focus:ring-indigo-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600">
+          <span class="ml-3 text-gray-900 dark:text-gray-100">Enable Offline Study</span>
+        </label>
+        <p class="text-sm text-gray-500 dark:text-gray-400 mt-1 ml-8">
+          Download study sessions before going offline (e.g., on the tube).
+          Your progress syncs automatically when back online.
+        </p>
+      </div>
+
+      <div id="offline-options" class="{% if !offline_mode_enabled %}hidden{% endif %} mb-4 ml-8 space-y-4">
+        <div>
+          <label class="block text-gray-700 dark:text-gray-300 text-sm font-medium mb-2">
+            Default Session Duration
+          </label>
+          <select name="offline_session_duration"
+                  class="w-full sm:w-auto px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500">
+            <option value="15" {% if offline_session_duration == 15 %}selected{% endif %}>15 minutes (~20 cards)</option>
+            <option value="30" {% if offline_session_duration == 30 %}selected{% endif %}>30 minutes (~45 cards)</option>
+            <option value="45" {% if offline_session_duration == 45 %}selected{% endif %}>45 minutes (~70 cards)</option>
+            <option value="60" {% if offline_session_duration == 60 %}selected{% endif %}>60 minutes (~90 cards)</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="flex items-center cursor-pointer">
+            <input type="checkbox" name="offline_audio_enabled" value="true"
+                   {% if offline_audio_enabled %}checked{% endif %}
+                   class="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500 dark:focus:ring-indigo-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600">
+            <span class="ml-3 text-gray-700 dark:text-gray-300">Include audio files</span>
+          </label>
+          <p class="text-xs text-gray-500 dark:text-gray-400 mt-1 ml-7">
+            Downloads pronunciation audio for offline playback. Increases download size.
+          </p>
+        </div>
+      </div>
+
+      <button type="submit"
+              class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800">
+        Save
+      </button>
+    </form>
+
+    <div id="offline-download" class="{% if !offline_mode_enabled %}hidden{% endif %} mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">
+      <h3 class="text-sm font-medium text-gray-900 dark:text-white mb-2">Prepare for Offline</h3>
+
+      <!-- Current session info -->
+      <div id="current-session-info" class="hidden mb-4 p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <iconify-icon icon="mdi:cards" class="text-2xl text-indigo-600 dark:text-indigo-400"></iconify-icon>
+            <div>
+              <div class="font-medium text-gray-900 dark:text-white">
+                <span id="session-card-count">0</span> cards ready
+              </div>
+              <div class="text-sm text-gray-500 dark:text-gray-400">
+                Downloaded <span id="session-age">-</span>
+              </div>
+            </div>
+          </div>
+          <div id="session-freshness" class="text-xs px-2 py-1 rounded-full bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-200">
+            Fresh
+          </div>
+        </div>
+      </div>
+
+      <button id="download-session-btn"
+              onclick="downloadOfflineSession()"
+              class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 focus:ring-2 focus:ring-green-500 inline-flex items-center gap-2">
+        <iconify-icon icon="mdi:download"></iconify-icon>
+        <span id="download-btn-text">Download Session</span>
+      </button>
+      <p id="download-status" class="text-sm text-gray-500 dark:text-gray-400 mt-2"></p>
+    </div>
+  </section>
+
+  <script>
+    // Feature detection
+    document.addEventListener('DOMContentLoaded', async () => {
+      if (window.OfflineCapability) {
+        const statusEl = document.getElementById('offline-status');
+        statusEl.innerHTML = await OfflineCapability.getStatusHtml();
+      }
+
+      // Toggle offline options visibility
+      const toggle = document.getElementById('offlineModeToggle');
+      const options = document.getElementById('offline-options');
+      const download = document.getElementById('offline-download');
+
+      if (toggle) {
+        toggle.addEventListener('change', () => {
+          options.classList.toggle('hidden', !toggle.checked);
+          download.classList.toggle('hidden', !toggle.checked);
+        });
+      }
+
+      // Load current session info
+      await updateSessionInfoDisplay();
+    });
+
+    // Update the session info display
+    async function updateSessionInfoDisplay() {
+      const infoEl = document.getElementById('current-session-info');
+      const cardCountEl = document.getElementById('session-card-count');
+      const ageEl = document.getElementById('session-age');
+      const freshnessEl = document.getElementById('session-freshness');
+      const btnTextEl = document.getElementById('download-btn-text');
+
+      if (!window.OfflineStorage || !infoEl) return;
+
+      try {
+        const session = await window.OfflineStorage.getSession();
+        if (!session || !session.cards) {
+          infoEl.classList.add('hidden');
+          if (btnTextEl) btnTextEl.textContent = 'Download Session';
+          return;
+        }
+
+        // Show the info box
+        infoEl.classList.remove('hidden');
+        cardCountEl.textContent = session.cards.length;
+
+        // Calculate age
+        const ageHours = await window.OfflineStorage.getSessionAgeHours();
+        let ageText = 'just now';
+        if (ageHours !== null) {
+          if (ageHours < 1) {
+            ageText = 'less than an hour ago';
+          } else if (ageHours < 24) {
+            const hours = Math.floor(ageHours);
+            ageText = hours === 1 ? '1 hour ago' : `${hours} hours ago`;
+          } else {
+            const days = Math.floor(ageHours / 24);
+            ageText = days === 1 ? '1 day ago' : `${days} days ago`;
+          }
+        }
+        ageEl.textContent = ageText;
+
+        // Update freshness indicator
+        if (ageHours !== null && ageHours > 48) {
+          freshnessEl.textContent = 'Stale';
+          freshnessEl.className = 'text-xs px-2 py-1 rounded-full bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-200';
+        } else if (ageHours !== null && ageHours > 4) {
+          freshnessEl.textContent = 'Aging';
+          freshnessEl.className = 'text-xs px-2 py-1 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200';
+        } else {
+          freshnessEl.textContent = 'Fresh';
+          freshnessEl.className = 'text-xs px-2 py-1 rounded-full bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-200';
+        }
+
+        // Update button text
+        if (btnTextEl) btnTextEl.textContent = 'Refresh Session';
+
+      } catch (e) {
+        console.warn('Could not load session info:', e);
+        infoEl.classList.add('hidden');
+      }
+    }
+
+    // Download offline session
+    async function downloadOfflineSession() {
+      const btn = document.getElementById('download-session-btn');
+      const status = document.getElementById('download-status');
+      const duration = document.querySelector('[name="offline_session_duration"]')?.value || 30;
+
+      btn.disabled = true;
+      btn.innerHTML = '<iconify-icon icon="mdi:loading" class="animate-spin"></iconify-icon> Downloading...';
+      status.textContent = '';
+
+      try {
+        const response = await fetch('/api/study/download-session', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            duration_minutes: parseInt(duration),
+            filter_mode: 'all'
+          })
+        });
+
+        const data = await response.json();
+
+        if (data.error) {
+          status.innerHTML = `<span class="text-red-600">${data.error}</span>`;
+        } else {
+          const cardCount = data.cards?.length || 0;
+
+          // Store in IndexedDB for offline use
+          if (window.OfflineStorage) {
+            await window.OfflineStorage.saveSession(data);
+            status.innerHTML = `
+              <span class="text-green-600">
+                <iconify-icon icon="mdi:check-circle" class="align-middle"></iconify-icon>
+                Downloaded ${cardCount} cards! Ready for offline study.
+              </span>
+            `;
+            // Update the session info display
+            await updateSessionInfoDisplay();
+          } else {
+            status.innerHTML = `<span class="text-yellow-600">Downloaded ${cardCount} cards (storage unavailable)</span>`;
+          }
+        }
+      } catch (err) {
+        status.innerHTML = `<span class="text-red-600">Failed to download: ${err.message}</span>`;
+      }
+
+      btn.disabled = false;
+      btn.innerHTML = '<iconify-icon icon="mdi:download"></iconify-icon> <span id="download-btn-text">Refresh Session</span>';
+    }
+  </script>
+
   <!-- Study Tools -->
   <section id="study-tools" class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6 scroll-mt-16">
     <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">

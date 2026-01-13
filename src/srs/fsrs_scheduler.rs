@@ -60,24 +60,35 @@ pub fn calculate_fsrs_review(
   desired_retention: f64,
   focus_mode: bool,
 ) -> FsrsResult {
+  calculate_fsrs_review_at(card, quality, desired_retention, focus_mode, Utc::now())
+}
+
+/// Calculate FSRS review at a specific point in time.
+/// Used for offline sync where review happened at a past timestamp.
+pub fn calculate_fsrs_review_at(
+  card: &Card,
+  quality: u8,
+  desired_retention: f64,
+  focus_mode: bool,
+  review_time: DateTime<Utc>,
+) -> FsrsResult {
   // SrsCalculation profiling moved to handler level (requires username)
-  let now = Utc::now();
   let is_correct = quality >= 2;
   let learning_steps = config::get_learning_steps(focus_mode);
 
   // In learning phase (step 0-3): use learning steps
   if card.learning_step < GRADUATING_STEP {
-    return calculate_learning_phase(card, quality, is_correct, now, learning_steps);
+    return calculate_learning_phase(card, quality, is_correct, review_time, learning_steps);
   }
 
   // Graduated: use FSRS for long-term scheduling
   // But if failed, return to learning phase
   if !is_correct {
-    return return_to_learning(card, now, learning_steps);
+    return return_to_learning(card, review_time, learning_steps);
   }
 
   // Correct answer on graduated card: use FSRS
-  calculate_fsrs_graduated(card, quality, desired_retention, now)
+  calculate_fsrs_graduated(card, quality, desired_retention, review_time)
 }
 
 /// Handle learning phase with short intra-day intervals

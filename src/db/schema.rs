@@ -17,7 +17,7 @@ use std::path::Path;
 
 /// Current schema version for learning.db
 /// Increment this when adding a new migration
-pub const LEARNING_DB_VERSION: i32 = 6;
+pub const LEARNING_DB_VERSION: i32 = 7;
 
 pub fn run_migrations(conn: &Connection) -> Result<()> {
     run_migrations_with_app_db(conn, None)
@@ -57,6 +57,9 @@ pub fn run_migrations_with_app_db(conn: &Connection, app_db_path: Option<&Path>)
     }
     if current_version < 6 {
         migrate_v5_to_v6(conn)?;
+    }
+    if current_version < 7 {
+        migrate_v6_to_v7(conn)?;
     }
 
     // Legacy cards → card_progress migration (has its own idempotency guards)
@@ -370,6 +373,32 @@ fn migrate_v5_to_v6(conn: &Connection) -> Result<()> {
     )?;
 
     record_version(conn, 6, "Remove legacy FK constraints from review_logs and confusions")?;
+    Ok(())
+}
+
+/// v6→v7: Add offline study mode settings and tracking
+fn migrate_v6_to_v7(conn: &Connection) -> Result<()> {
+    tracing::info!("Running migration v6→v7: Add offline study mode support");
+
+    conn.execute_batch(
+        r#"
+        -- Offline mode settings
+        INSERT OR IGNORE INTO settings (key, value) VALUES ('offline_mode_enabled', 'false');
+        INSERT OR IGNORE INTO settings (key, value) VALUES ('offline_session_duration', '30');
+
+        -- Track offline sessions for sync
+        CREATE TABLE IF NOT EXISTS offline_sessions (
+            session_id TEXT PRIMARY KEY,
+            created_at TEXT NOT NULL,
+            card_count INTEGER NOT NULL,
+            filter_mode TEXT,
+            synced INTEGER NOT NULL DEFAULT 0,
+            synced_at TEXT
+        );
+        "#,
+    )?;
+
+    record_version(conn, 7, "Add offline study mode support")?;
     Ok(())
 }
 

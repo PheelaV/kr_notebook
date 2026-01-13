@@ -123,8 +123,17 @@ pub fn get_card_confusions(
     Ok(confusions)
 }
 
+/// Raw problem card data from database
+pub struct ProblemCardRaw {
+    pub id: i64,
+    pub front: String,
+    pub main_answer: String,
+    pub is_reverse: bool,
+    pub confusion_count: i64,
+}
+
 /// Get cards with most confusions (problem cards)
-pub fn get_problem_cards(conn: &Connection, limit: usize) -> Result<Vec<(i64, String, i64)>> {
+pub fn get_problem_cards(conn: &Connection, limit: usize) -> Result<Vec<ProblemCardRaw>> {
     #[cfg(feature = "profiling")]
     crate::profile_log!(EventType::DbQuery {
         operation: "select_problem".into(),
@@ -133,9 +142,9 @@ pub fn get_problem_cards(conn: &Connection, limit: usize) -> Result<Vec<(i64, St
 
     let mut stmt = conn.prepare(
         r#"
-    SELECT c.card_id, cards.front, SUM(c.count) as total_confusions
+    SELECT c.card_id, cd.front, cd.main_answer, cd.is_reverse, SUM(c.count) as total_confusions
     FROM confusions c
-    JOIN cards ON c.card_id = cards.id
+    JOIN app.card_definitions cd ON c.card_id = cd.id
     GROUP BY c.card_id
     ORDER BY total_confusions DESC
     LIMIT ?1
@@ -144,7 +153,13 @@ pub fn get_problem_cards(conn: &Connection, limit: usize) -> Result<Vec<(i64, St
 
     let problems = stmt
         .query_map(params![limit as i64], |row| {
-            Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+            Ok(ProblemCardRaw {
+                id: row.get(0)?,
+                front: row.get(1)?,
+                main_answer: row.get(2)?,
+                is_reverse: row.get(3)?,
+                confusion_count: row.get(4)?,
+            })
         })?
         .collect::<Result<Vec<_>>>()?;
 
