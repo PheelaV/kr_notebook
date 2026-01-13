@@ -124,12 +124,31 @@ pub fn get_max_unlocked_tier(conn: &Connection) -> Result<u8> {
 
 // ==================== Focus Mode ====================
 
+/// Check if focus mode is enabled (simple boolean toggle)
+pub fn is_focus_mode_enabled(conn: &Connection) -> Result<bool> {
+    get_setting(conn, "focus_mode").map(|v| v.as_deref() == Some("true"))
+}
+
+/// Enable or disable focus mode (faster learning steps)
+pub fn set_focus_mode_enabled(conn: &Connection, enabled: bool) -> Result<()> {
+    set_setting(conn, "focus_mode", if enabled { "true" } else { "false" })
+}
+
+/// Check if focus mode is active (uses new simple boolean)
+pub fn is_focus_mode_active(conn: &Connection) -> Result<bool> {
+    is_focus_mode_enabled(conn)
+}
+
+// --- Deprecated: tier/lesson focus (kept for migration/cleanup) ---
+
 /// Get the currently focused tier (None = no focus, study all unlocked tiers)
+/// DEPRECATED: Use is_focus_mode_enabled() instead
 pub fn get_focus_tier(conn: &Connection) -> Result<Option<u8>> {
     get_setting(conn, "focus_tier").map(|v| v.and_then(|s| s.parse().ok()))
 }
 
 /// Set the focus tier (None to disable focus mode)
+/// DEPRECATED: Use set_focus_mode_enabled() instead
 pub fn set_focus_tier(conn: &Connection, tier: Option<u8>) -> Result<()> {
     match tier {
         Some(t) => set_setting(conn, "focus_tier", &t.to_string()),
@@ -141,9 +160,199 @@ pub fn set_focus_tier(conn: &Connection, tier: Option<u8>) -> Result<()> {
     }
 }
 
-/// Check if focus mode is active
-pub fn is_focus_mode_active(conn: &Connection) -> Result<bool> {
-    get_focus_tier(conn).map(|t| t.is_some())
+// --- Deprecated: Focus Lesson Mode (kept for migration/cleanup) ---
+
+/// Get the currently focused lesson (None = no focus)
+/// DEPRECATED: Use is_focus_mode_enabled() instead
+/// Returns (pack_id, lesson_number) if set
+pub fn get_focus_lesson(conn: &Connection) -> Result<Option<(String, u8)>> {
+    let pack = get_setting(conn, "focus_pack")?;
+    let lesson = get_setting(conn, "focus_lesson")?;
+
+    match (pack, lesson) {
+        (Some(p), Some(l)) if !p.is_empty() => {
+            if let Ok(lesson_num) = l.parse::<u8>() {
+                Ok(Some((p, lesson_num)))
+            } else {
+                Ok(None)
+            }
+        }
+        _ => Ok(None),
+    }
+}
+
+/// Set the focus lesson (None to disable focus lesson mode)
+/// DEPRECATED: Use set_focus_mode_enabled() instead
+pub fn set_focus_lesson(conn: &Connection, focus: Option<(&str, u8)>) -> Result<()> {
+    match focus {
+        Some((pack_id, lesson)) => {
+            set_setting(conn, "focus_pack", pack_id)?;
+            set_setting(conn, "focus_lesson", &lesson.to_string())?;
+        }
+        None => {
+            conn.execute("DELETE FROM settings WHERE key = 'focus_pack'", [])?;
+            conn.execute("DELETE FROM settings WHERE key = 'focus_lesson'", [])?;
+        }
+    }
+    Ok(())
+}
+
+// ==================== Daily New Card Limit ====================
+
+/// Get the daily new cards limit (0 = unlimited/off)
+pub fn get_daily_new_cards_limit(conn: &Connection) -> Result<u32> {
+    get_setting(conn, "daily_new_cards")
+        .map(|v| v.and_then(|s| s.parse().ok()).unwrap_or(20))
+}
+
+/// Set the daily new cards limit (0 = unlimited/off)
+pub fn set_daily_new_cards_limit(conn: &Connection, limit: u32) -> Result<()> {
+    set_setting(conn, "daily_new_cards", &limit.to_string())
+}
+
+/// Count new cards introduced today (first review was today)
+/// A "new card" is one where the first review happened today
+pub fn count_new_cards_today(conn: &Connection) -> Result<u32> {
+    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+
+    // Count cards whose first-ever review was today
+    // We find cards where the earliest review_log entry for that card was today
+    // Note: Don't filter on total_reviews since it increases with each learning step
+    let count: i64 = conn.query_row(
+        r#"
+        SELECT COUNT(DISTINCT rl.card_id)
+        FROM review_logs rl
+        WHERE date(rl.reviewed_at, 'localtime') = ?1
+          AND rl.id = (
+            SELECT MIN(rl2.id) FROM review_logs rl2 WHERE rl2.card_id = rl.card_id
+          )
+        "#,
+        params![today],
+        |row| row.get(0),
+    )?;
+
+    Ok(count as u32)
+}
+
+/// Check if we can introduce a new card based on daily limit
+/// Returns true if limit is 0 (off) or we haven't reached the limit yet
+pub fn can_introduce_new_card(conn: &Connection) -> Result<bool> {
+    let limit = get_daily_new_cards_limit(conn)?;
+    if limit == 0 {
+        return Ok(true); // Unlimited
+    }
+    let today_count = count_new_cards_today(conn)?;
+    Ok(today_count < limit)
+}
+
+// ==================== Session Stats ====================
+
+/// Stats about the current study session
+#[derive(Debug, Clone, Default)]
+pub struct SessionStats {
+    /// Number of new cards introduced today
+    pub new_cards_today: u32,
+    /// Daily new cards limit (0 = unlimited)
+    pub new_cards_limit: u32,
+    /// Number of new cards available (never seen, no progress entry)
+    pub new_available: u32,
+    /// Number of due reviews remaining (graduated cards, learning_step >= 4)
+    pub reviews_due: u32,
+    /// Number of cards in learning queue (learning_step 1-3)
+    pub learning_due: u32,
+}
+
+impl SessionStats {
+    /// Total due cards (should match home page count)
+    pub fn total_due(&self) -> u32 {
+        self.new_available + self.reviews_due + self.learning_due
+    }
+}
+
+/// Get session statistics for display
+/// Uses same query pattern as home page for consistency
+pub fn get_session_stats(
+    conn: &Connection,
+    app_conn: &Connection,
+    user_id: i64,
+    filter: &super::StudyFilterMode,
+) -> Result<SessionStats> {
+    use chrono::Utc;
+
+    let new_cards_today = count_new_cards_today(conn)?;
+    let new_cards_limit = get_daily_new_cards_limit(conn)?;
+
+    let now = Utc::now().to_rfc3339();
+    let (filter_clause, _, skip_tier_filter) = super::build_filter_where_clause(conn, app_conn, user_id, filter)?;
+
+    let tier_clause = if skip_tier_filter {
+        String::new()
+    } else {
+        let effective_tiers = get_effective_tiers(conn)?;
+        if effective_tiers.is_empty() {
+            return Ok(SessionStats {
+                new_cards_today,
+                new_cards_limit,
+                new_available: 0,
+                reviews_due: 0,
+                learning_due: 0,
+            });
+        }
+        let tier_list = effective_tiers
+            .iter()
+            .map(|t| t.to_string())
+            .collect::<Vec<_>>()
+            .join(",");
+        format!("AND cd.tier IN ({})", tier_list)
+    };
+
+    // Count new cards (no progress entry yet)
+    let new_query = format!(
+        r#"
+        SELECT COUNT(*)
+        FROM app.card_definitions cd
+        LEFT JOIN card_progress cp ON cp.card_id = cd.id
+        WHERE cp.card_id IS NULL
+        {} {}
+        "#,
+        tier_clause, filter_clause
+    );
+    let new_available: i64 = conn.query_row(&new_query, [], |row| row.get(0)).unwrap_or(0);
+
+    // Count due reviews (graduated cards: learning_step >= 4, due now)
+    let reviews_query = format!(
+        r#"
+        SELECT COUNT(*)
+        FROM app.card_definitions cd
+        LEFT JOIN card_progress cp ON cp.card_id = cd.id
+        WHERE cp.learning_step >= 4
+          AND cp.next_review <= ?1
+        {} {}
+        "#,
+        tier_clause, filter_clause
+    );
+    let reviews_due: i64 = conn.query_row(&reviews_query, params![now], |row| row.get(0)).unwrap_or(0);
+
+    // Count learning queue (ALL cards in learning steps 1-3, regardless of when due)
+    let learning_query = format!(
+        r#"
+        SELECT COUNT(*)
+        FROM app.card_definitions cd
+        LEFT JOIN card_progress cp ON cp.card_id = cd.id
+        WHERE cp.learning_step BETWEEN 1 AND 3
+        {} {}
+        "#,
+        tier_clause, filter_clause
+    );
+    let learning_due: i64 = conn.query_row(&learning_query, [], |row| row.get(0)).unwrap_or(0);
+
+    Ok(SessionStats {
+        new_cards_today,
+        new_cards_limit,
+        new_available: new_available as u32,
+        reviews_due: reviews_due as u32,
+        learning_due: learning_due as u32,
+    })
 }
 
 /// Get the effective tiers to use for card selection
@@ -647,5 +856,118 @@ mod tests {
     fn test_has_stability_data_only_strong() {
         let progress = make_tier_progress(1, 30, 10, 10, 0, 0);
         assert!(progress.has_stability_data());
+    }
+
+    // Helper to create a test database with review_logs table
+    fn setup_test_db() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute(
+            "CREATE TABLE review_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                card_id INTEGER NOT NULL,
+                quality INTEGER NOT NULL,
+                reviewed_at TEXT NOT NULL
+            )",
+            [],
+        )
+        .unwrap();
+        conn
+    }
+
+    #[test]
+    fn test_count_new_cards_today_single_review() {
+        let conn = setup_test_db();
+        let today = chrono::Local::now().format("%Y-%m-%dT%H:%M:%S").to_string();
+
+        // Insert one review for card 1 today
+        conn.execute(
+            "INSERT INTO review_logs (card_id, quality, reviewed_at) VALUES (1, 4, ?1)",
+            params![today],
+        )
+        .unwrap();
+
+        assert_eq!(count_new_cards_today(&conn).unwrap(), 1);
+    }
+
+    #[test]
+    fn test_count_new_cards_today_multiple_reviews_same_card() {
+        let conn = setup_test_db();
+        let today = chrono::Local::now().format("%Y-%m-%dT%H:%M:%S").to_string();
+
+        // Insert 4 reviews for the same card today (simulating learning steps)
+        for _ in 0..4 {
+            conn.execute(
+                "INSERT INTO review_logs (card_id, quality, reviewed_at) VALUES (1, 4, ?1)",
+                params![today],
+            )
+            .unwrap();
+        }
+
+        // Should count as 1 new card, not 4
+        assert_eq!(count_new_cards_today(&conn).unwrap(), 1);
+    }
+
+    #[test]
+    fn test_count_new_cards_today_multiple_cards() {
+        let conn = setup_test_db();
+        let today = chrono::Local::now().format("%Y-%m-%dT%H:%M:%S").to_string();
+
+        // Card 1: 3 reviews today
+        for _ in 0..3 {
+            conn.execute(
+                "INSERT INTO review_logs (card_id, quality, reviewed_at) VALUES (1, 4, ?1)",
+                params![today],
+            )
+            .unwrap();
+        }
+
+        // Card 2: 2 reviews today
+        for _ in 0..2 {
+            conn.execute(
+                "INSERT INTO review_logs (card_id, quality, reviewed_at) VALUES (2, 4, ?1)",
+                params![today],
+            )
+            .unwrap();
+        }
+
+        // Should count as 2 new cards
+        assert_eq!(count_new_cards_today(&conn).unwrap(), 2);
+    }
+
+    #[test]
+    fn test_count_new_cards_today_excludes_yesterday() {
+        let conn = setup_test_db();
+        let today = chrono::Local::now().format("%Y-%m-%dT%H:%M:%S").to_string();
+        let yesterday = (chrono::Local::now() - chrono::Duration::days(1))
+            .format("%Y-%m-%dT%H:%M:%S")
+            .to_string();
+
+        // Card 1: first reviewed yesterday, reviewed again today
+        conn.execute(
+            "INSERT INTO review_logs (card_id, quality, reviewed_at) VALUES (1, 4, ?1)",
+            params![yesterday],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO review_logs (card_id, quality, reviewed_at) VALUES (1, 4, ?1)",
+            params![today],
+        )
+        .unwrap();
+
+        // Card 2: first reviewed today
+        conn.execute(
+            "INSERT INTO review_logs (card_id, quality, reviewed_at) VALUES (2, 4, ?1)",
+            params![today],
+        )
+        .unwrap();
+
+        // Should only count card 2 (card 1's first review was yesterday)
+        assert_eq!(count_new_cards_today(&conn).unwrap(), 1);
+    }
+
+    #[test]
+    fn test_count_new_cards_today_empty() {
+        let conn = setup_test_db();
+        assert_eq!(count_new_cards_today(&conn).unwrap(), 0);
     }
 }

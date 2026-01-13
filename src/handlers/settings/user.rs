@@ -14,7 +14,7 @@ use crate::auth::AuthContext;
 use crate::content::{self, PackLocation, PackType};
 use crate::db::{self, run_migrations, LogOnError};
 use crate::filters;
-use crate::services::pack_manager;
+use crate::services::{backup, pack_manager};
 use crate::state::AppState;
 #[cfg(feature = "profiling")]
 use crate::profiling::EventType;
@@ -146,8 +146,11 @@ pub struct SettingsTemplate {
   pub all_tiers_unlocked: bool,
   pub enabled_tiers: Vec<u8>,
   pub desired_retention: u8, // 80, 85, 90, or 95
-  pub focus_tier: Option<u8>, // Currently focused tier (None = no focus)
-  pub max_unlocked_tier: u8,
+  pub daily_new_cards: u32,  // 0 = unlimited, else limit
+  pub focus_mode_enabled: bool, // Simple focus mode toggle
+  pub offline_mode_enabled: bool,
+  pub offline_session_duration: u32, // minutes
+  pub offline_audio_enabled: bool,
   pub has_scraped_content: bool,
   pub has_pronunciation: bool,
   // Per-lesson status
@@ -195,8 +198,25 @@ pub async fn settings_page(auth: AuthContext, State(state): State<AppState>) -> 
   let enabled_tiers = db::get_enabled_tiers(&conn).log_warn_default("Failed to get enabled tiers");
   let desired_retention_f64 = db::get_desired_retention(&conn).log_warn_default("Failed to get desired retention");
   let desired_retention = (desired_retention_f64 * 100.0).round() as u8;
-  let focus_tier = db::get_focus_tier(&conn).log_warn_default("Failed to get focus tier");
-  let max_unlocked_tier = db::get_max_unlocked_tier(&conn).log_warn_default("Failed to get max unlocked tier");
+  let daily_new_cards = db::get_daily_new_cards_limit(&conn).log_warn_default("Failed to get daily new cards limit");
+  let focus_mode_enabled = db::is_focus_mode_enabled(&conn).log_warn_default("Failed to get focus mode");
+
+  // Offline mode settings
+  let offline_mode_enabled = db::get_setting(&conn, "offline_mode_enabled")
+    .ok()
+    .flatten()
+    .map(|v| v == "true")
+    .unwrap_or(false);
+  let offline_session_duration = db::get_setting(&conn, "offline_session_duration")
+    .ok()
+    .flatten()
+    .and_then(|v| v.parse().ok())
+    .unwrap_or(30u32);
+  let offline_audio_enabled = db::get_setting(&conn, "offline_audio_enabled")
+    .ok()
+    .flatten()
+    .map(|v| v == "true")
+    .unwrap_or(false);
 
   let has_l1 = has_lesson1();
   let has_l2 = has_lesson2();
@@ -336,8 +356,11 @@ pub async fn settings_page(auth: AuthContext, State(state): State<AppState>) -> 
     all_tiers_unlocked,
     enabled_tiers,
     desired_retention,
-    focus_tier,
-    max_unlocked_tier,
+    daily_new_cards,
+    focus_mode_enabled,
+    offline_mode_enabled,
+    offline_session_duration,
+    offline_audio_enabled,
     has_scraped_content: scraped_content_available,
     has_pronunciation: scraped_content_available,
     has_lesson1: has_l1,
@@ -375,7 +398,18 @@ pub struct SettingsForm {
   #[serde(default)]
   pub desired_retention: Option<u8>,
   #[serde(default)]
-  pub focus_tier: Option<String>, // "none" or "1", "2", "3", "4"
+  pub daily_new_cards: Option<u32>, // 0 = off/unlimited
+  #[serde(default)]
+  pub focus_mode: Option<String>, // "true" if checked
+  // Offline mode settings
+  #[serde(default)]
+  pub _action: Option<String>, // "offline_mode" when submitting offline form
+  #[serde(default)]
+  pub offline_mode_enabled: Option<String>,
+  #[serde(default)]
+  pub offline_session_duration: Option<u32>,
+  #[serde(default)]
+  pub offline_audio_enabled: Option<String>,
 }
 
 pub async fn update_settings(
@@ -452,28 +486,51 @@ pub async fn update_settings(
     });
   }
 
-  // Update focus tier if provided
-  if let Some(focus_str) = form.focus_tier {
-    let focus_tier = if focus_str == "none" || focus_str.is_empty() {
-      None
-    } else {
-      focus_str.parse::<u8>().ok()
-    };
-    db::set_focus_tier(&conn, focus_tier)
-      .log_warn("Failed to save focus_tier setting");
+  // Update daily new cards limit if provided
+  if let Some(limit) = form.daily_new_cards {
+    db::set_daily_new_cards_limit(&conn, limit)
+      .log_warn("Failed to save daily_new_cards setting");
 
     #[cfg(feature = "profiling")]
     crate::profile_log!(EventType::SettingsUpdate {
-      setting: "focus_tier".into(),
-      value: focus_tier.map(|t| t.to_string()).unwrap_or_else(|| "none".to_string()),
+      setting: "daily_new_cards".into(),
+      value: limit.to_string(),
       username: auth.username.clone(),
     });
   }
 
-  Redirect::to("/settings")
+  // Update focus mode (checkbox)
+  let focus_mode = form.focus_mode.is_some();
+  db::set_focus_mode_enabled(&conn, focus_mode)
+    .log_warn("Failed to save focus_mode setting");
+
+  #[cfg(feature = "profiling")]
+  crate::profile_log!(EventType::SettingsUpdate {
+    setting: "focus_mode".into(),
+    value: focus_mode.to_string(),
+    username: auth.username.clone(),
+  });
+
+  // Update offline mode settings (separate form)
+  if form._action.as_deref() == Some("offline_mode") {
+    let offline_enabled = form.offline_mode_enabled.is_some();
+    db::set_setting(&conn, "offline_mode_enabled", if offline_enabled { "true" } else { "false" })
+      .log_warn("Failed to save offline_mode_enabled setting");
+
+    if let Some(duration) = form.offline_session_duration {
+      db::set_setting(&conn, "offline_session_duration", &duration.to_string())
+        .log_warn("Failed to save offline_session_duration setting");
+    }
+
+    let audio_enabled = form.offline_audio_enabled.is_some();
+    db::set_setting(&conn, "offline_audio_enabled", if audio_enabled { "true" } else { "false" })
+      .log_warn("Failed to save offline_audio_enabled setting");
+  }
+
+  Redirect::to("/settings#offline-mode")
 }
 
-/// Export user's learning database as a downloadable file
+/// Export user's learning database as a downloadable ZIP file
 pub async fn export_data(auth: AuthContext, State(state): State<AppState>) -> Response {
   #[cfg(feature = "profiling")]
   crate::profile_log!(EventType::HandlerStart {
@@ -484,34 +541,69 @@ pub async fn export_data(auth: AuthContext, State(state): State<AppState>) -> Re
 
   let db_path = state.user_db_path(&auth.username);
 
-  // Read the database file
-  let file_bytes = match std::fs::read(&db_path) {
+  // Get user connection for building mappings
+  // Note: app.db is already attached as "app" by the auth middleware
+  let user_conn = match auth.user_db.lock() {
+    Ok(conn) => conn,
+    Err(_) => {
+      return (StatusCode::INTERNAL_SERVER_ERROR, "Database error").into_response();
+    }
+  };
+
+  // Build card mappings with hashes (uses attached app.db)
+  let mappings = match backup::build_export_mappings(&user_conn) {
+    Ok(m) => m,
+    Err(e) => {
+      tracing::error!("Failed to build export mappings: {}", e);
+      return (StatusCode::INTERNAL_SERVER_ERROR, "Failed to prepare export").into_response();
+    }
+  };
+
+  // Release lock before file I/O
+  drop(user_conn);
+
+  // Create manifest
+  let manifest = backup::ExportManifest {
+    format_version: backup::MANIFEST_VERSION,
+    exported_at: Utc::now().to_rfc3339(),
+    app_version: env!("CARGO_PKG_VERSION").to_string(),
+    card_mappings: mappings,
+  };
+
+  // Create ZIP archive
+  let zip_bytes = match backup::create_export_zip(&db_path, &manifest) {
     Ok(bytes) => bytes,
     Err(e) => {
-      tracing::error!("Failed to read database file for export: {}", e);
-      return (StatusCode::INTERNAL_SERVER_ERROR, "Failed to export data").into_response();
+      tracing::error!("Failed to create export ZIP: {}", e);
+      return (StatusCode::INTERNAL_SERVER_ERROR, "Failed to create export").into_response();
     }
   };
 
   // Generate filename with timestamp
   let date = Utc::now().format("%Y%m%d");
-  let filename = format!("kr_notebook_{}_{}.db", auth.username, date);
+  let filename = format!("kr_notebook_{}_{}.zip", auth.username, date);
 
-  // Return as downloadable file
+  tracing::info!(
+    "User {} exported data: {} card mappings",
+    auth.username,
+    manifest.card_mappings.len()
+  );
+
+  // Return as downloadable ZIP file
   (
     [
-      (header::CONTENT_TYPE, "application/x-sqlite3"),
+      (header::CONTENT_TYPE, "application/zip"),
       (
         header::CONTENT_DISPOSITION,
         &format!("attachment; filename=\"{}\"", filename),
       ),
     ],
-    file_bytes,
+    zip_bytes,
   )
     .into_response()
 }
 
-/// Import a learning database from uploaded file
+/// Import a learning database from uploaded ZIP file
 pub async fn import_data(
   auth: AuthContext,
   State(state): State<AppState>,
@@ -533,63 +625,143 @@ pub async fn import_data(
     }
   };
 
-  // Validate it's a valid SQLite database with expected tables
-  if let Err(e) = validate_imported_database(&file_bytes) {
-    tracing::warn!("Import validation failed: {}", e);
-    return import_error_redirect(&e);
+  // Check file format - must be ZIP
+  if backup::is_sqlite_file(&file_bytes) {
+    return import_error_redirect(
+      "Raw database files are no longer supported. Please use a ZIP file exported from this app."
+    );
   }
+
+  if !backup::is_zip_file(&file_bytes) {
+    return import_error_redirect("Invalid file format. Please upload a ZIP file exported from this app.");
+  }
+
+  // Extract ZIP and parse manifest
+  let (db_bytes, manifest) = match backup::extract_import_zip(&file_bytes) {
+    Ok(result) => result,
+    Err(e) => {
+      tracing::warn!("Failed to extract import ZIP: {}", e);
+      return import_error_redirect(&e.to_string());
+    }
+  };
+
+  // Check version compatibility
+  let current_version = env!("CARGO_PKG_VERSION");
+  let version_warning = !backup::check_version_compatible(&manifest.app_version, current_version);
+
+  if version_warning {
+    tracing::warn!(
+      "Import version mismatch: export={}, current={}",
+      manifest.app_version,
+      current_version
+    );
+  }
+
+  // Get app.db connection for building local hash table
+  let app_conn = match state.auth_db.lock() {
+    Ok(conn) => conn,
+    Err(_) => return import_error_redirect("Database error"),
+  };
+
+  // Build local hash table from card_definitions
+  let local_hashes = match backup::build_local_hash_table(&app_conn) {
+    Ok(h) => h,
+    Err(e) => {
+      tracing::error!("Failed to build local hash table: {}", e);
+      return import_error_redirect("Failed to prepare import");
+    }
+  };
+  drop(app_conn);
+
+  // Build remap table
+  let (remap, unmapped_ids) = backup::build_remap_table(&manifest.card_mappings, &local_hashes);
+
+  let cards_matched = remap.len();
+  let cards_unmapped = unmapped_ids.len();
+
+  tracing::info!(
+    "Import remap: {} matched, {} unmapped",
+    cards_matched,
+    cards_unmapped
+  );
 
   // Drop the current database connection before file operations
   drop(auth.user_db);
 
   let db_path = state.user_db_path(&auth.username);
   let backup_path = db_path.with_extension("db.old");
+  let temp_path = db_path.with_extension("db.import");
 
-  // Backup current database
-  if db_path.exists()
-    && let Err(e) = std::fs::rename(&db_path, &backup_path) {
-      tracing::error!("Failed to backup current database: {}", e);
-      return import_error_redirect("Failed to backup current data");
+  // Write imported database to temp file first
+  if let Err(e) = std::fs::write(&temp_path, &db_bytes) {
+    tracing::error!("Failed to write temp import database: {}", e);
+    return import_error_redirect("Failed to save imported data");
+  }
+
+  // Open temp database and perform remapping
+  let remap_result = (|| -> Result<(), String> {
+    let conn = Connection::open(&temp_path).map_err(|e| format!("Failed to open database: {}", e))?;
+
+    // Run migrations first
+    run_migrations(&conn).map_err(|e| format!("Migration failed: {}", e))?;
+
+    // Remap card IDs
+    backup::remap_card_ids(&conn, &remap).map_err(|e| format!("Remap failed: {}", e))?;
+
+    // Delete progress for unmapped cards
+    if !unmapped_ids.is_empty() {
+      backup::delete_unmapped_progress(&conn, &unmapped_ids)
+        .map_err(|e| format!("Cleanup failed: {}", e))?;
     }
 
-  // Write new database file
-  if let Err(e) = std::fs::write(&db_path, &file_bytes) {
-    tracing::error!("Failed to write imported database: {}", e);
+    Ok(())
+  })();
+
+  if let Err(e) = remap_result {
+    tracing::error!("Import remap failed: {}", e);
+    let _ = std::fs::remove_file(&temp_path);
+    return import_error_redirect(&e);
+  }
+
+  // Backup current database
+  if db_path.exists() {
+    if let Err(e) = std::fs::rename(&db_path, &backup_path) {
+      tracing::error!("Failed to backup current database: {}", e);
+      let _ = std::fs::remove_file(&temp_path);
+      return import_error_redirect("Failed to backup current data");
+    }
+  }
+
+  // Move temp to final location
+  if let Err(e) = std::fs::rename(&temp_path, &db_path) {
+    tracing::error!("Failed to move imported database: {}", e);
     // Try to restore backup
     if backup_path.exists() {
       let _ = std::fs::rename(&backup_path, &db_path);
     }
-    return import_error_redirect("Failed to save imported data");
+    return import_error_redirect("Failed to finalize import");
   }
 
-  // Run migrations on the new database
-  match Connection::open(&db_path) {
-    Ok(conn) => {
-      if let Err(e) = run_migrations(&conn) {
-        tracing::error!("Failed to run migrations on imported database: {}", e);
-        // Restore backup
-        drop(conn);
-        let _ = std::fs::remove_file(&db_path);
-        if backup_path.exists() {
-          let _ = std::fs::rename(&backup_path, &db_path);
-        }
-        return import_error_redirect("Imported database failed migration");
-      }
-    }
-    Err(e) => {
-      tracing::error!("Failed to open imported database: {}", e);
-      let _ = std::fs::remove_file(&db_path);
-      if backup_path.exists() {
-        let _ = std::fs::rename(&backup_path, &db_path);
-      }
-      return import_error_redirect("Failed to open imported database");
-    }
+  tracing::info!(
+    "User {} successfully imported database: {} cards matched, {} unmapped",
+    auth.username,
+    cards_matched,
+    cards_unmapped
+  );
+
+  // Build success URL with stats
+  let mut url = "/settings?import=success".to_string();
+  url.push_str(&format!("&matched={}", cards_matched));
+
+  if cards_unmapped > 0 {
+    url.push_str(&format!("&unmapped={}", cards_unmapped));
   }
 
-  tracing::info!("User {} successfully imported database", auth.username);
+  if version_warning {
+    url.push_str("&version_warning=true");
+  }
 
-  // Success - redirect with message
-  Redirect::to("/settings?import=success").into_response()
+  Redirect::to(&url).into_response()
 }
 
 /// Extract file bytes from multipart upload
@@ -605,58 +777,6 @@ async fn extract_uploaded_file(multipart: &mut Multipart) -> Result<Vec<u8>, Str
     }
   }
   Err("No database file uploaded".to_string())
-}
-
-/// Validate that the uploaded bytes are a valid SQLite database with expected schema
-fn validate_imported_database(bytes: &[u8]) -> Result<(), String> {
-  // Check SQLite magic header
-  if bytes.len() < 16 || &bytes[0..16] != b"SQLite format 3\0" {
-    return Err("Not a valid SQLite database file".to_string());
-  }
-
-  // Write to temp file and try to open
-  let temp_path = std::env::temp_dir().join(format!("import_validate_{}.db", std::process::id()));
-  std::fs::write(&temp_path, bytes).map_err(|e| format!("Validation error: {}", e))?;
-
-  let result = (|| {
-    let conn = Connection::open(&temp_path).map_err(|e| format!("Invalid database: {}", e))?;
-
-    // Check for required tables (accept either legacy 'cards' or new 'card_progress')
-    let has_cards: bool = conn
-      .query_row(
-        "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='cards')",
-        [],
-        |row| row.get(0),
-      )
-      .unwrap_or(false);
-
-    let has_card_progress: bool = conn
-      .query_row(
-        "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='card_progress')",
-        [],
-        |row| row.get(0),
-      )
-      .unwrap_or(false);
-
-    if !has_cards && !has_card_progress {
-      return Err("Database missing 'cards' or 'card_progress' table".to_string());
-    }
-
-    // For legacy format, verify the schema
-    if has_cards {
-      let column_check = conn.prepare("SELECT id, front, main_answer FROM cards LIMIT 1");
-      if column_check.is_err() {
-        return Err("Cards table missing required columns".to_string());
-      }
-    }
-
-    Ok(())
-  })();
-
-  // Clean up temp file
-  let _ = std::fs::remove_file(&temp_path);
-
-  result
 }
 
 /// Create redirect response for import error

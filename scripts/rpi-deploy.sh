@@ -204,6 +204,24 @@ if [ "$DO_BUILD" = true ]; then
         echo "  Using native cross-compiler..."
         cargo build $PROFILE --target "$TARGET" $FEATURES_ARG
     fi
+
+    # Build WASM module for offline study (if crate exists)
+    if [ -d "$PROJECT_DIR/crates/offline-srs" ]; then
+        echo "  Building WASM module..."
+        if command -v wasm-pack &>/dev/null; then
+            cd "$PROJECT_DIR/crates/offline-srs"
+            wasm-pack build --target web --release --out-dir "$PROJECT_DIR/static/wasm" --out-name offline_srs 2>/dev/null || {
+                echo "  Warning: WASM build failed, using existing files if present"
+            }
+            cd "$PROJECT_DIR"
+        else
+            echo "  Warning: wasm-pack not installed, skipping WASM build"
+            echo "  Install with: cargo install wasm-pack"
+            if [ ! -f "$PROJECT_DIR/static/wasm/offline_srs_bg.wasm" ]; then
+                echo "  Error: No existing WASM files found. Install wasm-pack and rebuild."
+            fi
+        fi
+    fi
     echo ""
 else
     echo "[1/8] Skipping build (--no-build)"

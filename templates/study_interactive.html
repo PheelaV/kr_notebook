@@ -5,16 +5,34 @@
 {% block content %}
 <div class="max-w-lg mx-auto" id="study-container">
   {% if study_filters.len() > 2 %}
-  <!-- Study filter dropdown (only shown when packs with lessons are enabled) -->
+  <!-- Study filter dropdown and focus mode toggle -->
   <div class="mb-4 flex items-center justify-between bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2">
-    <label for="study-filter" class="text-sm text-gray-600 dark:text-gray-400 font-medium">Study:</label>
-    <select id="study-filter"
-            class="ml-2 text-sm bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-gray-700 dark:text-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            onchange="updateStudyFilter(this.value)">
-      {% for filter in study_filters %}
-      <option value="{{ filter.id }}" {% if filter.is_selected %}selected{% endif %}>{{ filter.label }}</option>
-      {% endfor %}
-    </select>
+    <div class="flex items-center gap-2 flex-1">
+      <label for="study-filter" class="text-sm text-gray-600 dark:text-gray-400 font-medium">Study:</label>
+      <select id="study-filter"
+              class="flex-1 max-w-xs text-sm bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-gray-700 dark:text-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              onchange="updateStudyFilter(this.value)">
+        {% for filter in study_filters %}
+        <option value="{{ filter.id }}" {% if filter.is_selected %}selected{% endif %}>
+          {%- if filter.is_lesson %}  ↳ {% endif %}{{ filter.label -}}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+    <!-- Focus mode toggle with lightning icon, text, and switch -->
+    <button type="button" id="focus-toggle" onclick="toggleFocusMode()" title="Focus Mode: Faster learning steps (1→5→15→30 min)"
+            class="ml-3 flex items-center gap-2 px-3 py-1.5 rounded-lg transition-all cursor-pointer
+                   {% if focus_mode_active %}bg-purple-100 dark:bg-purple-900/30{% else %}bg-gray-100 dark:bg-gray-700{% endif %}
+                   hover:bg-purple-200 dark:hover:bg-purple-900/50 hover:scale-[1.02]">
+      <svg class="w-4 h-4 {% if focus_mode_active %}text-yellow-500{% else %}text-purple-500 dark:text-purple-400{% endif %}" fill="currentColor" viewBox="0 0 20 20">
+        <path d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z"/>
+      </svg>
+      <span class="text-sm font-medium {% if focus_mode_active %}text-purple-700 dark:text-purple-300{% else %}text-gray-600 dark:text-gray-400{% endif %}">Focus</span>
+      <!-- Toggle switch -->
+      <div class="relative w-8 h-4 rounded-full transition-colors {% if focus_mode_active %}bg-purple-500{% else %}bg-gray-300 dark:bg-gray-600{% endif %}">
+        <div class="absolute top-0.5 w-3 h-3 rounded-full bg-white shadow transition-transform {% if focus_mode_active %}translate-x-4{% else %}translate-x-0.5{% endif %}"></div>
+      </div>
+    </button>
   </div>
   <script>
     function updateStudyFilter(value) {
@@ -24,47 +42,52 @@
         body: 'filter=' + encodeURIComponent(value)
       }).then(() => window.location.reload());
     }
+    function toggleFocusMode() {
+      const currentlyEnabled = {{ focus_mode_active }};
+      fetch('/study/focus', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 'enabled=' + (!currentlyEnabled)
+      }).then(() => window.location.reload());
+    }
   </script>
   {% endif %}
 
-  {% if show_exit_focus_recommendation %}
-  <!-- Focus mode exit recommendation -->
-  <div id="focus-recommendation" class="mb-4 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
-    <div class="flex items-start gap-3">
-      <span class="text-blue-500 dark:text-blue-400 text-xl shrink-0">&#128161;</span>
-      <div class="flex-1 min-w-0">
-        <p class="text-sm font-medium text-blue-900 dark:text-blue-100">
-          Tier {{ focus_tier }} is {{ focus_tier_progress }}% learned!
-        </p>
-        <p class="text-xs text-blue-700 dark:text-blue-300 mt-1">
-          Consider switching to <strong>All Tiers</strong> mode to interleave reviews and strengthen discrimination between similar characters.
-        </p>
-        <div class="flex flex-wrap gap-2 mt-3">
-          <a href="/settings" class="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-md bg-blue-600 text-white hover:bg-blue-700 transition-colors">
-            Switch to All Tiers
-          </a>
-          <button onclick="document.getElementById('focus-recommendation').remove()" class="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-md bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
-            Keep Focus Mode
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
-  {% else if focus_mode_active %}
-  <!-- Focus mode indicator (when not showing recommendation) -->
-  <div class="mb-4 flex items-center justify-between bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-lg px-3 py-2">
-    <span class="text-sm text-indigo-700 dark:text-indigo-300">
-      <span class="font-medium">Focus:</span> Tier {{ focus_tier }} ({{ focus_tier_progress }}% learned)
-    </span>
-    <a href="/settings" class="text-xs text-indigo-600 dark:text-indigo-400 hover:underline">Change</a>
-  </div>
-  {% endif %}
+  <!-- Session stats bar -->
+  {% include "partials/stats_bar.html" %}
 
   {% if has_card %}
   {% include "interactive_card.html" %}
   {% else %}
   {% include "no_cards.html" %}
   {% endif %}
+
+  <!-- Last Card (collapsible, shown after first card is answered) -->
+  <div id="last-card-section" class="hidden mt-4">
+    <button type="button" onclick="toggleLastCard()" class="w-full text-left text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 flex items-center gap-2 py-2">
+      <span id="last-card-chevron" class="transition-transform">&#9654;</span>
+      <span>Show last card</span>
+    </button>
+    <div id="last-card-content" class="hidden bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4 mt-1">
+      <div class="text-center">
+        <div id="last-card-front" class="text-2xl font-bold text-gray-900 dark:text-white mb-2"></div>
+        <div class="text-gray-400 dark:text-gray-500 text-sm mb-2">&#8595;</div>
+        <div id="last-card-answer" class="text-xl font-semibold text-indigo-600 dark:text-indigo-400 mb-1"></div>
+        <div id="last-card-user-answer" class="hidden text-sm text-gray-500 dark:text-gray-400 mb-1">
+          <span>You answered: </span><span class="text-red-500"></span>
+        </div>
+        <div id="last-card-description" class="text-sm text-gray-500 dark:text-gray-400"></div>
+        <div id="last-card-result" class="mt-2 text-sm font-medium"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Practice Mode nav button -->
+  <div class="mt-6">
+    <a href="/practice" class="block w-full bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-white font-semibold py-3 px-4 rounded-lg transition-colors text-center">
+      Practice Mode
+    </a>
+  </div>
 </div>
 
 <script>
@@ -72,5 +95,88 @@
   // Enable testing mode for global keystroke handler
   window.TESTING_MODE = true;
   {% endif %}
+
+  // Last card tracking
+  window.lastCardData = null;
+
+  function toggleLastCard() {
+    const content = document.getElementById('last-card-content');
+    const chevron = document.getElementById('last-card-chevron');
+    if (content.classList.contains('hidden')) {
+      content.classList.remove('hidden');
+      chevron.style.transform = 'rotate(90deg)';
+    } else {
+      content.classList.add('hidden');
+      chevron.style.transform = 'rotate(0deg)';
+    }
+  }
+
+  function captureCurrentCard() {
+    const container = document.getElementById('card-container');
+    if (!container) return;
+
+    const front = container.querySelector('[data-testid="card-front"]');
+    const resultPhase = container.querySelector('#result-phase');
+
+    if (front && resultPhase) {
+      // Card has been answered, capture it using data attributes
+      const answerEl = resultPhase.querySelector('[data-correct-answer]');
+      const userAnswerEl = resultPhase.querySelector('[data-user-answer]');
+      const descEl = resultPhase.querySelector('[data-description]');
+      const resultEl = resultPhase.querySelector('[data-result]');
+
+      window.lastCardData = {
+        front: front.textContent.trim(),
+        answer: answerEl ? answerEl.textContent.trim() : '',
+        userAnswer: userAnswerEl ? userAnswerEl.textContent.trim() : '',
+        description: descEl ? descEl.textContent.trim() : '',
+        isCorrect: resultEl?.dataset.result === 'correct',
+        isIncorrect: resultEl?.dataset.result === 'incorrect'
+      };
+
+      updateLastCardDisplay();
+    }
+  }
+
+  function updateLastCardDisplay() {
+    if (!window.lastCardData) return;
+
+    const section = document.getElementById('last-card-section');
+    const frontEl = document.getElementById('last-card-front');
+    const answerEl = document.getElementById('last-card-answer');
+    const userAnswerEl = document.getElementById('last-card-user-answer');
+    const descEl = document.getElementById('last-card-description');
+    const resultEl = document.getElementById('last-card-result');
+
+    section.classList.remove('hidden');
+    frontEl.textContent = window.lastCardData.front;
+    answerEl.textContent = window.lastCardData.answer;
+    descEl.textContent = window.lastCardData.description || '';
+
+    // Show user's wrong answer if they got it wrong
+    if (window.lastCardData.userAnswer) {
+      userAnswerEl.classList.remove('hidden');
+      userAnswerEl.querySelector('.text-red-500').textContent = window.lastCardData.userAnswer;
+    } else {
+      userAnswerEl.classList.add('hidden');
+    }
+
+    if (window.lastCardData.isCorrect) {
+      resultEl.textContent = 'Correct';
+      resultEl.className = 'mt-2 text-sm font-medium text-green-600 dark:text-green-400';
+    } else if (window.lastCardData.isIncorrect) {
+      resultEl.textContent = 'Incorrect';
+      resultEl.className = 'mt-2 text-sm font-medium text-red-600 dark:text-red-400';
+    } else {
+      resultEl.textContent = '';
+    }
+  }
+
+  // Capture card data before HTMX swaps it out
+  document.body.addEventListener('htmx:beforeSwap', function(evt) {
+    if (evt.detail.target && evt.detail.target.id === 'card-container') {
+      captureCurrentCard();
+    }
+  });
 </script>
 {% endblock %}

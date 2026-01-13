@@ -43,6 +43,22 @@
         </div>
       </div>
 
+      <!-- Offline Study (if session available) -->
+      <div id="offline-study-section" class="hidden bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 mb-6">
+        <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-2 flex items-center gap-2">
+          <iconify-icon icon="heroicons:academic-cap" class="text-indigo-600 dark:text-indigo-400"></iconify-icon>
+          Offline Study Ready
+        </h2>
+        <p id="offline-study-info" class="text-sm text-gray-500 dark:text-gray-400 mb-4">
+          You have a study session downloaded and ready to use.
+        </p>
+        <a href="/offline-study"
+           class="inline-flex items-center gap-2 px-4 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium">
+          <iconify-icon icon="heroicons:play" width="20" height="20"></iconify-icon>
+          Start Offline Study
+        </a>
+      </div>
+
       <!-- Available offline content -->
       <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 mb-6">
         <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-2">
@@ -78,13 +94,14 @@
       </div>
 
       <!-- Unavailable offline notice -->
-      <div class="bg-gray-100 dark:bg-gray-800/50 rounded-lg p-4 mb-6">
+      <div id="requires-internet-notice" class="bg-gray-100 dark:bg-gray-800/50 rounded-lg p-4 mb-6">
         <div class="flex items-start gap-3">
           <iconify-icon icon="heroicons:information-circle" class="text-gray-400 flex-shrink-0 mt-0.5" width="20" height="20"></iconify-icon>
           <div>
             <h3 class="font-medium text-gray-700 dark:text-gray-300 mb-1">Requires Internet</h3>
             <p class="text-sm text-gray-500 dark:text-gray-400">
               Study, Practice, and Progress tracking need an internet connection to save your learning data.
+              <span id="offline-study-hint" class="hidden"><br><strong>Tip:</strong> Download a study session in Settings when online to study offline.</span>
             </p>
           </div>
         </div>
@@ -100,5 +117,59 @@
       </div>
     </div>
   </div>
+
+  <script>
+    // Check if offline study session is available in IndexedDB
+    (async function() {
+      try {
+        const hasSession = await new Promise((resolve) => {
+          const request = indexedDB.open('kr-offline-study', 1);
+          request.onerror = () => resolve(false);
+          request.onsuccess = () => {
+            const db = request.result;
+            if (!db.objectStoreNames.contains('sessions')) {
+              resolve(false);
+              return;
+            }
+            const tx = db.transaction('sessions', 'readonly');
+            const store = tx.objectStore('sessions');
+            const getAll = store.getAll();
+            getAll.onsuccess = () => {
+              const sessions = getAll.result;
+              if (sessions && sessions.length > 0) {
+                const session = sessions[0];
+                // Update UI with session info
+                const cardCount = session.cards ? session.cards.length : 0;
+                const info = document.getElementById('offline-study-info');
+                if (info) {
+                  info.textContent = `You have ${cardCount} cards ready to study offline.`;
+                }
+                resolve(true);
+              } else {
+                resolve(false);
+              }
+            };
+            getAll.onerror = () => resolve(false);
+          };
+          request.onupgradeneeded = () => resolve(false);
+        });
+
+        if (hasSession) {
+          // Show offline study section
+          const section = document.getElementById('offline-study-section');
+          if (section) section.classList.remove('hidden');
+        } else {
+          // Show hint about downloading
+          const hint = document.getElementById('offline-study-hint');
+          if (hint) hint.classList.remove('hidden');
+        }
+      } catch (e) {
+        console.log('Could not check offline session:', e);
+        // Show hint about downloading
+        const hint = document.getElementById('offline-study-hint');
+        if (hint) hint.classList.remove('hidden');
+      }
+    })();
+  </script>
 </body>
 </html>

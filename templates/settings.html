@@ -103,30 +103,20 @@
 
     <!-- Focus Mode -->
     <div class="mb-6">
-      <label class="block text-gray-900 dark:text-gray-100 font-medium mb-2">
-        Focus Mode
-      </label>
-      <select name="focus_tier"
-              class="w-full sm:w-auto px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-600">
-        <option value="none" {% if focus_tier.is_none() %}selected{% endif %}>
-          All tiers (normal mode)
-        </option>
-        {% for t in 1..=max_unlocked_tier %}
-        <option value="{{ t }}" {% match focus_tier %}{% when Some with (ft) %}{% if *ft == t %}selected{% endif %}{% when None %}{% endmatch %}>
-          Focus on Tier {{ t }}
-        </option>
-        {% endfor %}
-      </select>
-      <p class="text-sm text-gray-500 dark:text-gray-400 mt-2">
-        {% if focus_tier.is_some() %}
-        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 mr-2">
-          Focus active
+      <label class="flex items-center cursor-pointer">
+        <input type="checkbox" name="focus_mode" value="true"
+               {% if focus_mode_enabled %}checked{% endif %}
+               class="w-5 h-5 text-amber-600 rounded focus:ring-amber-500 dark:focus:ring-amber-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600">
+        <span class="ml-3 text-gray-900 dark:text-gray-100 flex items-center gap-2">
+          <svg class="w-5 h-5 text-amber-500" fill="currentColor" viewBox="0 0 20 20">
+            <path d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z"/>
+          </svg>
+          Focus Mode (faster learning)
         </span>
-        Only Tier {{ focus_tier.unwrap() }} cards will appear in /study.
-        {% else %}
-        Focus on a specific tier to master it before mixing with others.
-        Automatically enabled when you unlock a new tier.
-        {% endif %}
+      </label>
+      <p class="text-sm text-gray-500 dark:text-gray-400 mt-1 ml-8">
+        When enabled, new cards graduate in ~50 minutes instead of ~5 hours.<br>
+        Uses steps: 1 → 5 → 15 → 30 min vs. 1 → 10 → 60 → 240 min.
       </p>
     </div>
 
@@ -161,11 +151,277 @@
       </div>
     </div>
 
+    <!-- Daily New Cards Limit -->
+    <div class="mb-6">
+      <label class="block text-gray-900 dark:text-gray-100 font-medium mb-2">
+        New Cards Per Day
+      </label>
+      <select name="daily_new_cards"
+              class="w-full sm:w-auto px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-600">
+        <option value="0" {% if daily_new_cards == 0 %}selected{% endif %}>
+          Off (unlimited)
+        </option>
+        <option value="5" {% if daily_new_cards == 5 %}selected{% endif %}>
+          5 cards/day
+        </option>
+        <option value="10" {% if daily_new_cards == 10 %}selected{% endif %}>
+          10 cards/day
+        </option>
+        <option value="15" {% if daily_new_cards == 15 %}selected{% endif %}>
+          15 cards/day
+        </option>
+        <option value="20" {% if daily_new_cards == 20 %}selected{% endif %}>
+          20 cards/day (recommended)
+        </option>
+        <option value="30" {% if daily_new_cards == 30 %}selected{% endif %}>
+          30 cards/day
+        </option>
+        <option value="50" {% if daily_new_cards == 50 %}selected{% endif %}>
+          50 cards/day
+        </option>
+      </select>
+      <p class="text-sm text-gray-500 dark:text-gray-400 mt-2">
+        Limits how many brand new cards are introduced per day. Already-learning cards are not affected.
+        Set to "Off" for unlimited new cards.
+      </p>
+    </div>
+
     <button type="submit" data-testid="settings-submit"
             class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800">
       Save Settings
     </button>
   </form>
+
+  <!-- Offline Mode -->
+  <section id="offline-mode" class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6 scroll-mt-16">
+    <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+      <iconify-icon icon="mdi:cloud-off-outline" class="text-gray-500"></iconify-icon>
+      Offline Mode
+      <span class="text-xs font-normal bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200 px-2 py-0.5 rounded-full">
+        Experimental
+      </span>
+    </h2>
+
+    <div id="offline-status" class="mb-4 text-sm">
+      <span class="text-gray-500 dark:text-gray-400">Checking browser support...</span>
+    </div>
+
+    <form method="POST" action="/settings">
+      <input type="hidden" name="_action" value="offline_mode">
+
+      <div class="mb-4">
+        <label class="flex items-center cursor-pointer">
+          <input type="checkbox" name="offline_mode_enabled" value="true"
+                 id="offlineModeToggle"
+                 {% if offline_mode_enabled %}checked{% endif %}
+                 class="w-5 h-5 text-indigo-600 rounded focus:ring-indigo-500 dark:focus:ring-indigo-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600">
+          <span class="ml-3 text-gray-900 dark:text-gray-100">Enable Offline Study</span>
+        </label>
+        <p class="text-sm text-gray-500 dark:text-gray-400 mt-1 ml-8">
+          Download study sessions before going offline (e.g., on the tube).
+          Your progress syncs automatically when back online.
+        </p>
+      </div>
+
+      <div id="offline-options" class="{% if !offline_mode_enabled %}hidden{% endif %} mb-4 ml-8 space-y-4">
+        <div>
+          <label class="block text-gray-700 dark:text-gray-300 text-sm font-medium mb-2">
+            Default Session Duration
+          </label>
+          <select name="offline_session_duration"
+                  class="w-full sm:w-auto px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500">
+            <option value="15" {% if offline_session_duration == 15 %}selected{% endif %}>15 minutes (~20 cards)</option>
+            <option value="30" {% if offline_session_duration == 30 %}selected{% endif %}>30 minutes (~45 cards)</option>
+            <option value="45" {% if offline_session_duration == 45 %}selected{% endif %}>45 minutes (~70 cards)</option>
+            <option value="60" {% if offline_session_duration == 60 %}selected{% endif %}>60 minutes (~90 cards)</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="flex items-center cursor-pointer">
+            <input type="checkbox" name="offline_audio_enabled" value="true"
+                   {% if offline_audio_enabled %}checked{% endif %}
+                   class="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500 dark:focus:ring-indigo-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600">
+            <span class="ml-3 text-gray-700 dark:text-gray-300">Include audio files</span>
+          </label>
+          <p class="text-xs text-gray-500 dark:text-gray-400 mt-1 ml-7">
+            Downloads pronunciation audio for offline playback. Increases download size.
+          </p>
+        </div>
+      </div>
+
+      <button type="submit"
+              class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800">
+        Save
+      </button>
+    </form>
+
+    <div id="offline-download" class="{% if !offline_mode_enabled %}hidden{% endif %} mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">
+      <h3 class="text-sm font-medium text-gray-900 dark:text-white mb-2">Prepare for Offline</h3>
+
+      <!-- Current session info -->
+      <div id="current-session-info" class="hidden mb-4 p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <iconify-icon icon="mdi:cards" class="text-2xl text-indigo-600 dark:text-indigo-400"></iconify-icon>
+            <div>
+              <div class="font-medium text-gray-900 dark:text-white">
+                <span id="session-card-count">0</span> cards ready
+              </div>
+              <div class="text-sm text-gray-500 dark:text-gray-400">
+                Downloaded <span id="session-age">-</span>
+              </div>
+            </div>
+          </div>
+          <div id="session-freshness" class="text-xs px-2 py-1 rounded-full bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-200">
+            Fresh
+          </div>
+        </div>
+      </div>
+
+      <button id="download-session-btn"
+              onclick="downloadOfflineSession()"
+              class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 focus:ring-2 focus:ring-green-500 inline-flex items-center gap-2">
+        <iconify-icon icon="mdi:download"></iconify-icon>
+        <span id="download-btn-text">Download Session</span>
+      </button>
+      <p id="download-status" class="text-sm text-gray-500 dark:text-gray-400 mt-2"></p>
+    </div>
+  </section>
+
+  <script>
+    // Feature detection
+    document.addEventListener('DOMContentLoaded', async () => {
+      if (window.OfflineCapability) {
+        const statusEl = document.getElementById('offline-status');
+        statusEl.innerHTML = await OfflineCapability.getStatusHtml();
+      }
+
+      // Toggle offline options visibility
+      const toggle = document.getElementById('offlineModeToggle');
+      const options = document.getElementById('offline-options');
+      const download = document.getElementById('offline-download');
+
+      if (toggle) {
+        toggle.addEventListener('change', () => {
+          options.classList.toggle('hidden', !toggle.checked);
+          download.classList.toggle('hidden', !toggle.checked);
+        });
+      }
+
+      // Load current session info
+      await updateSessionInfoDisplay();
+    });
+
+    // Update the session info display
+    async function updateSessionInfoDisplay() {
+      const infoEl = document.getElementById('current-session-info');
+      const cardCountEl = document.getElementById('session-card-count');
+      const ageEl = document.getElementById('session-age');
+      const freshnessEl = document.getElementById('session-freshness');
+      const btnTextEl = document.getElementById('download-btn-text');
+
+      if (!window.OfflineStorage || !infoEl) return;
+
+      try {
+        const session = await window.OfflineStorage.getSession();
+        if (!session || !session.cards) {
+          infoEl.classList.add('hidden');
+          if (btnTextEl) btnTextEl.textContent = 'Download Session';
+          return;
+        }
+
+        // Show the info box
+        infoEl.classList.remove('hidden');
+        cardCountEl.textContent = session.cards.length;
+
+        // Calculate age
+        const ageHours = await window.OfflineStorage.getSessionAgeHours();
+        let ageText = 'just now';
+        if (ageHours !== null) {
+          if (ageHours < 1) {
+            ageText = 'less than an hour ago';
+          } else if (ageHours < 24) {
+            const hours = Math.floor(ageHours);
+            ageText = hours === 1 ? '1 hour ago' : `${hours} hours ago`;
+          } else {
+            const days = Math.floor(ageHours / 24);
+            ageText = days === 1 ? '1 day ago' : `${days} days ago`;
+          }
+        }
+        ageEl.textContent = ageText;
+
+        // Update freshness indicator
+        if (ageHours !== null && ageHours > 48) {
+          freshnessEl.textContent = 'Stale';
+          freshnessEl.className = 'text-xs px-2 py-1 rounded-full bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-200';
+        } else if (ageHours !== null && ageHours > 4) {
+          freshnessEl.textContent = 'Aging';
+          freshnessEl.className = 'text-xs px-2 py-1 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200';
+        } else {
+          freshnessEl.textContent = 'Fresh';
+          freshnessEl.className = 'text-xs px-2 py-1 rounded-full bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-200';
+        }
+
+        // Update button text
+        if (btnTextEl) btnTextEl.textContent = 'Refresh Session';
+
+      } catch (e) {
+        console.warn('Could not load session info:', e);
+        infoEl.classList.add('hidden');
+      }
+    }
+
+    // Download offline session
+    async function downloadOfflineSession() {
+      const btn = document.getElementById('download-session-btn');
+      const status = document.getElementById('download-status');
+      const duration = document.querySelector('[name="offline_session_duration"]')?.value || 30;
+
+      btn.disabled = true;
+      btn.innerHTML = '<iconify-icon icon="mdi:loading" class="animate-spin"></iconify-icon> Downloading...';
+      status.textContent = '';
+
+      try {
+        const response = await fetch('/api/study/download-session', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            duration_minutes: parseInt(duration),
+            filter_mode: 'all'
+          })
+        });
+
+        const data = await response.json();
+
+        if (data.error) {
+          status.innerHTML = `<span class="text-red-600">${data.error}</span>`;
+        } else {
+          const cardCount = data.cards?.length || 0;
+
+          // Store in IndexedDB for offline use
+          if (window.OfflineStorage) {
+            await window.OfflineStorage.saveSession(data);
+            status.innerHTML = `
+              <span class="text-green-600">
+                <iconify-icon icon="mdi:check-circle" class="align-middle"></iconify-icon>
+                Downloaded ${cardCount} cards! Ready for offline study.
+              </span>
+            `;
+            // Update the session info display
+            await updateSessionInfoDisplay();
+          } else {
+            status.innerHTML = `<span class="text-yellow-600">Downloaded ${cardCount} cards (storage unavailable)</span>`;
+          }
+        }
+      } catch (err) {
+        status.innerHTML = `<span class="text-red-600">Failed to download: ${err.message}</span>`;
+      }
+
+      btn.disabled = false;
+      btn.innerHTML = '<iconify-icon icon="mdi:download"></iconify-icon> <span id="download-btn-text">Refresh Session</span>';
+    }
+  </script>
 
   <!-- Study Tools -->
   <section id="study-tools" class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6 scroll-mt-16">
@@ -251,7 +507,7 @@
             <label data-testid="import-btn" class="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 cursor-pointer focus-within:ring-2 focus-within:ring-blue-500 focus-within:ring-offset-2 dark:focus-within:ring-offset-gray-800">
               <iconify-icon icon="heroicons:arrow-up-tray" class="mr-2" width="16" height="16"></iconify-icon>
               Import Data
-              <input type="file" name="database" accept=".db" class="hidden" onchange="this.form.querySelector('[type=submit]').disabled=false; this.form.querySelector('.file-name').textContent = this.files[0]?.name || 'No file selected';">
+              <input type="file" name="database" accept=".zip" class="hidden" onchange="this.form.querySelector('[type=submit]').disabled=false; this.form.querySelector('.file-name').textContent = this.files[0]?.name || 'No file selected';">
             </label>
             <span class="file-name text-sm text-gray-500 dark:text-gray-400">No file selected</span>
           </div>

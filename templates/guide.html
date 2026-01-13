@@ -55,6 +55,67 @@
       </div>
     </section>
 
+    <!-- Study Page Controls -->
+    <section id="study-controls" class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6 scroll-mt-16">
+      <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-4">
+        Study Page Controls
+      </h2>
+      <p class="text-gray-700 dark:text-gray-300 mb-4">
+        The study page has controls to customize your learning session.
+      </p>
+
+      <!-- Study Filter -->
+      <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 mb-4">
+        <div class="font-medium text-gray-900 dark:text-white mb-2">Study Filter</div>
+        <p class="text-sm text-gray-700 dark:text-gray-300">
+          Use the dropdown to filter what content appears. Options include:
+        </p>
+        <ul class="text-sm text-gray-600 dark:text-gray-400 mt-2 ml-4 list-disc space-y-1">
+          <li><strong>All Content</strong> - Study everything you've unlocked</li>
+          <li><strong>Hangul Only</strong> - Focus on the Korean alphabet</li>
+          <li><strong>Pack / Lesson</strong> - Focus on a specific content pack or lesson</li>
+        </ul>
+      </div>
+
+      <!-- Focus Mode Toggle -->
+      <div class="bg-purple-50 dark:bg-purple-900/30 rounded-lg p-4 mb-4">
+        <div class="font-medium text-purple-900 dark:text-purple-100 mb-2">Focus Mode Toggle</div>
+        <p class="text-sm text-purple-800 dark:text-purple-200">
+          Click the lightning bolt to enable faster learning steps. Cards graduate in ~50 minutes
+          instead of ~5 hours. Great for intensive study sessions.
+        </p>
+      </div>
+
+      <!-- Stats Bar -->
+      <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+        <div class="font-medium text-gray-900 dark:text-white mb-2">Understanding the Stats Bar</div>
+        <p class="text-sm text-gray-700 dark:text-gray-300 mb-2">
+          The stats bar shows your current study queue:
+        </p>
+        <div class="text-sm space-y-2 text-gray-600 dark:text-gray-400">
+          <div>
+            <span class="text-blue-500">●</span> <strong>New:</strong> Cards you haven't seen yet (available to learn)
+            <div class="ml-4 text-xs text-gray-500 dark:text-gray-500">
+              <strong>(X/Y today)</strong> = X new cards introduced today out of Y daily limit.
+              A card counts as "new today" when you see it for the first time today.
+            </div>
+          </div>
+          <div>
+            <span class="text-orange-500">●</span> <strong>Learning:</strong> Cards in learning steps (not yet graduated)
+            <div class="ml-4 text-xs text-gray-500 dark:text-gray-500">
+              You've seen these cards but they need more repetitions before graduating.
+            </div>
+          </div>
+          <div>
+            <span class="text-green-500">●</span> <strong>Review:</strong> Graduated cards due for review
+            <div class="ml-4 text-xs text-gray-500 dark:text-gray-500">
+              Cards that have graduated and are scheduled for spaced repetition.
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- Hints System -->
     <section id="hints" class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6 scroll-mt-16">
       <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-4">
@@ -217,7 +278,7 @@
         <p class="text-indigo-800 dark:text-indigo-200 text-sm">
           <strong>How to unlock:</strong> Learn 80% of the cards in your current tier,
           then visit the <a href="/progress" class="underline">Progress</a> page to unlock the next tier.
-          Focus Mode will automatically activate to help you learn the new characters.
+          Use the Study Filter to focus on specific tiers, and enable Focus Mode for faster learning.
         </p>
       </div>
     </section>
@@ -246,29 +307,29 @@
         Focus Mode
       </h2>
       <p class="text-gray-700 dark:text-gray-300 mb-4">
-        Focus Mode lets you concentrate on a single tier without mixing in cards from other tiers.
-        This is especially useful when you've just unlocked a new tier and want to learn its cards
-        before reviewing older material.
+        Focus Mode uses faster learning steps to help you graduate new cards more quickly.
+        Ideal for intensive study sessions when you want to learn new material efficiently.
       </p>
       <div class="space-y-3">
-        <div class="bg-blue-50 dark:bg-blue-900/30 rounded-lg p-4">
-          <p class="text-blue-800 dark:text-blue-200 text-sm">
-            <strong>Auto-activates on tier unlock:</strong> When you unlock a new tier, Focus Mode
-            automatically activates for that tier. This helps you learn new characters without
-            the fatigue of reviewing ones you already know.
+        <div class="bg-purple-50 dark:bg-purple-900/30 rounded-lg p-4">
+          <p class="text-purple-800 dark:text-purple-200 text-sm">
+            <strong>Faster learning steps:</strong> Cards graduate in ~50 minutes instead of ~5 hours.
           </p>
+          <div class="mt-2 text-xs text-purple-700 dark:text-purple-300 font-mono">
+            Normal: 1 min → 10 min → 1 hr → 4 hr<br>
+            Focus: 1 min → 5 min → 15 min → 30 min
+          </div>
         </div>
         <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
           <p class="text-gray-700 dark:text-gray-300 text-sm">
-            <strong>How to use:</strong> Go to <a href="/settings" class="text-indigo-600 dark:text-indigo-400 hover:underline">Settings</a>
-            and use the "Focus Mode" dropdown to select a specific tier, or choose "All unlocked tiers"
-            to study everything together.
+            <strong>How to use:</strong> Click the lightning bolt toggle on the study page header.
+            You can also toggle it in <a href="/settings" class="text-indigo-600 dark:text-indigo-400 hover:underline">Settings</a>.
           </p>
         </div>
       </div>
       <p class="text-gray-600 dark:text-gray-400 mt-4 text-sm">
-        Even in Focus Mode, the spaced repetition system still works normally - your progress
-        is tracked and cards graduate through the learning phases just like usual.
+        Focus Mode only affects cards in learning steps. Once cards graduate to FSRS review,
+        they follow normal spaced repetition intervals regardless of Focus Mode.
       </p>
     </section>
 
@@ -424,6 +485,68 @@
         Manage packs in <a href="/settings" class="text-indigo-600 dark:text-indigo-400 hover:underline">Settings</a> → Content Packs.
         Enable or disable packs to customize what content appears in your study sessions.
       </p>
+    </section>
+
+    <!-- Learning Large Packs -->
+    <section id="large-packs" class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6 scroll-mt-16">
+      <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-4">
+        Learning Large Packs
+      </h2>
+      <p class="text-gray-700 dark:text-gray-300 mb-4">
+        Some packs have many lessons, each with dozens of cards. Here's how to learn efficiently
+        without getting overwhelmed.
+      </p>
+
+      <!-- The Challenge -->
+      <div class="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-4 mb-4">
+        <div class="font-semibold text-amber-800 dark:text-amber-200 mb-2">The Challenge</div>
+        <p class="text-amber-700 dark:text-amber-300 text-sm">
+          Learning steps take ~5 hours to graduate one card (1min → 10min → 1hr → 4hr).
+          You can't learn 60 cards in one 20-minute session - the SRS is designed for
+          <strong>spaced sessions</strong>, not cramming.
+        </p>
+      </div>
+
+      <!-- Strategy -->
+      <div class="space-y-4 mb-4">
+        <div class="font-semibold text-gray-900 dark:text-white">Recommended Strategy</div>
+
+        <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+          <div class="font-medium text-gray-900 dark:text-white mb-2">Day 1: Multiple Short Sessions</div>
+          <div class="space-y-2 text-sm text-gray-700 dark:text-gray-300">
+            <div class="flex gap-2">
+              <span class="font-mono text-indigo-600 dark:text-indigo-400 w-20 shrink-0">Session 1</span>
+              <span>~30 min: Start studying. New cards enter the learning queue.</span>
+            </div>
+            <div class="flex gap-2">
+              <span class="font-mono text-indigo-600 dark:text-indigo-400 w-20 shrink-0">Session 2</span>
+              <span>~15 min, 1-2 hours later: Review cards at the 1-hour step.</span>
+            </div>
+            <div class="flex gap-2">
+              <span class="font-mono text-indigo-600 dark:text-indigo-400 w-20 shrink-0">Session 3</span>
+              <span>~15 min, 4 hours later: Graduate cards to FSRS scheduling.</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+          <div class="font-medium text-gray-900 dark:text-white mb-2">Days 2+: Review Sessions</div>
+          <p class="text-sm text-gray-700 dark:text-gray-300">
+            Cards will become due throughout the day. Review as they appear.
+            Intervals grow naturally: 1 day → 3 days → 1 week → 2 weeks → etc.
+          </p>
+        </div>
+      </div>
+
+      <!-- Tips -->
+      <div class="bg-indigo-50 dark:bg-indigo-900/30 rounded-lg p-4">
+        <div class="font-semibold text-indigo-800 dark:text-indigo-200 mb-2">Tips</div>
+        <ul class="text-sm text-indigo-700 dark:text-indigo-300 space-y-1 list-disc ml-4">
+          <li>Use the <strong>Study Filter</strong> to focus on one lesson at a time</li>
+          <li>Set <strong>New Cards/Day</strong> to 10-20 to avoid overwhelm</li>
+          <li>Enable <strong>Focus Mode</strong> for faster graduation (~50 min vs ~5 hr)</li>
+        </ul>
+      </div>
     </section>
 
     <!-- Keyboard Shortcuts -->

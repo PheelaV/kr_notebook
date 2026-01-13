@@ -161,16 +161,22 @@ pub async fn progress(
   let problem_cards_raw = db::get_problem_cards(&conn, 5).log_warn_default("Failed to get problem cards");
   let problem_cards: Vec<ProblemCard> = problem_cards_raw
     .into_iter()
-    .map(|(id, front, count)| {
-      let top_wrong = db::get_card_confusions(&conn, id, 3)
+    .map(|raw| {
+      let top_wrong = db::get_card_confusions(&conn, raw.id, 3)
         .log_warn_default("Failed to get card confusions")
         .into_iter()
         .map(|(answer, _)| answer)
         .collect();
+      // For reverse cards, show the Korean answer (main_answer) instead of the question text (front)
+      let display_text = if raw.is_reverse {
+        raw.main_answer
+      } else {
+        raw.front
+      };
       ProblemCard {
-        id,
-        front,
-        confusion_count: count,
+        id: raw.id,
+        front: display_text,
+        confusion_count: raw.confusion_count,
         top_wrong_answers: top_wrong,
       }
     })

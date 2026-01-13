@@ -22,7 +22,7 @@
         {{ cards_learned }}
       </div>
       <div class="text-xs sm:text-sm text-gray-600 dark:text-gray-400">
-        Cards Learned
+        Cards Graduated
       </div>
     </div>
     <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-3 sm:p-4 text-center">
@@ -88,7 +88,7 @@
           <div class="flex items-center gap-2">
             <span class="text-sm text-gray-600 dark:text-gray-400">
               {% if tier.is_unlocked %}
-              {{ tier.learned }} / {{ tier.total }} learned
+              {{ tier.learned }} / {{ tier.total }} graduated
               {% else %}
               Locked
               {% endif %}
@@ -122,7 +122,7 @@
           </div>
           <div class="bg-green-50 dark:bg-green-900/20 rounded-lg p-2">
             <div class="text-xl font-bold text-green-600 dark:text-green-400">{{ tier.learned }}</div>
-            <div class="text-xs text-gray-500 dark:text-gray-400">Learned</div>
+            <div class="text-xs text-gray-500 dark:text-gray-400">Graduated</div>
           </div>
           <div class="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-2">
             <div class="text-xl font-bold text-purple-600 dark:text-purple-400">{{ tier.total_reviews }}</div>
@@ -171,7 +171,7 @@
         <p class="text-xs text-gray-500 dark:text-gray-400 mt-3">
           <span class="font-medium">New:</span> Never reviewed &bull;
           <span class="font-medium">Learning:</span> In learning phase &bull;
-          <span class="font-medium">Learned:</span> Graduated to FSRS
+          <span class="font-medium">Graduated:</span> Completed learning steps
         </p>
       </div>
       {% endif %}
@@ -197,45 +197,111 @@
 
         <div class="space-y-3">
           {% for lesson in pack.lessons %}
-          <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-4 {% if !lesson.is_unlocked %}opacity-50{% endif %}">
-            <div class="flex justify-between items-center mb-2">
-              <div class="font-semibold text-gray-900 dark:text-white flex items-center">
+          <details class="bg-white dark:bg-gray-800 shadow rounded-lg {% if !lesson.is_unlocked %}opacity-50{% endif %} group">
+            <summary class="p-4 cursor-pointer list-none">
+              <div class="flex justify-between items-center mb-2">
+                <div class="font-semibold text-gray-900 dark:text-white flex items-center">
+                  {% if lesson.is_unlocked %}
+                  <span class="text-green-500 mr-2">&#10003;</span>
+                  {% else %}
+                  <span class="text-gray-400 mr-2">&#128274;</span>
+                  {% endif %}
+                  {{ pack.section_prefix }} {{ lesson.lesson }}
+                  {% if let Some(label) = lesson.label %}
+                  <span class="text-sm font-normal text-gray-500 dark:text-gray-400 ml-2">{{ label }}</span>
+                  {% endif %}
+                </div>
+                <div class="flex items-center gap-2">
+                  <span class="text-sm text-gray-600 dark:text-gray-400">
+                    {% if lesson.is_unlocked %}
+                    {{ lesson.learned }} / {{ lesson.total }} graduated
+                    {% else %}
+                    Locked
+                    {% endif %}
+                  </span>
+                  {% if lesson.is_unlocked %}
+                  <iconify-icon icon="heroicons:chevron-down" class="text-gray-400 transition-transform duration-200 group-open:rotate-180" width="20" height="20"></iconify-icon>
+                  {% endif %}
+                </div>
+              </div>
+              <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
                 {% if lesson.is_unlocked %}
-                <span class="text-green-500 mr-2">&#10003;</span>
-                {% else %}
-                <span class="text-gray-400 mr-2">&#128274;</span>
-                {% endif %}
-                {{ pack.section_prefix }} {{ lesson.lesson }}
-                {% if let Some(label) = lesson.label %}
-                <span class="text-sm font-normal text-gray-500 dark:text-gray-400 ml-2">{{ label }}</span>
+                <div class="bg-indigo-600 h-2 rounded-full transition-all duration-300" style="width: {{ lesson.percentage }}%"></div>
                 {% endif %}
               </div>
-              <span class="text-sm text-gray-600 dark:text-gray-400">
-                {% if lesson.is_unlocked %}
-                {{ lesson.learned }} / {{ lesson.total }} learned
-                {% else %}
-                Locked
-                {% endif %}
-              </span>
-            </div>
-            <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-              {% if lesson.is_unlocked %}
-              <div class="bg-indigo-600 h-2 rounded-full transition-all duration-300" style="width: {{ lesson.percentage }}%"></div>
-              {% endif %}
-            </div>
+            </summary>
             {% if lesson.is_unlocked %}
-            <div class="flex justify-between mt-2 text-xs text-gray-500 dark:text-gray-400">
-              <span>New: {{ lesson.new_cards }}</span>
-              <span>Learning: {{ lesson.learning }}</span>
-              <span>Learned: {{ lesson.learned }}</span>
+            <div class="px-4 pb-4 pt-2 border-t border-gray-100 dark:border-gray-700">
+              <div class="grid grid-cols-4 gap-3 text-center text-sm">
+                <div class="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-2">
+                  <div class="text-xl font-bold text-blue-600 dark:text-blue-400">{{ lesson.new_cards }}</div>
+                  <div class="text-xs text-gray-500 dark:text-gray-400">New</div>
+                </div>
+                <div class="bg-yellow-50 dark:bg-yellow-900/20 rounded-lg p-2">
+                  <div class="text-xl font-bold text-yellow-600 dark:text-yellow-400">{{ lesson.learning }}</div>
+                  <div class="text-xs text-gray-500 dark:text-gray-400">Learning</div>
+                </div>
+                <div class="bg-green-50 dark:bg-green-900/20 rounded-lg p-2">
+                  <div class="text-xl font-bold text-green-600 dark:text-green-400">{{ lesson.learned }}</div>
+                  <div class="text-xs text-gray-500 dark:text-gray-400">Graduated</div>
+                </div>
+                <div class="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-2">
+                  <div class="text-xl font-bold text-purple-600 dark:text-purple-400">{{ lesson.total_reviews }}</div>
+                  <div class="text-xs text-gray-500 dark:text-gray-400">Reviews</div>
+                </div>
+              </div>
+
+              {% if lesson.has_stability_data() %}
+              <!-- Memory Strength (FSRS stability) -->
+              <div class="mt-4 pt-3 border-t border-gray-100 dark:border-gray-700">
+                <div class="flex items-center justify-between mb-2">
+                  <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Memory Strength</span>
+                  <span class="text-sm font-semibold {% if lesson.memory_strength() >= 80 %}text-green-600 dark:text-green-400{% else if lesson.memory_strength() >= 50 %}text-yellow-600 dark:text-yellow-400{% else %}text-orange-600 dark:text-orange-400{% endif %}">
+                    {{ lesson.memory_strength() }}%
+                  </span>
+                </div>
+                <!-- Stacked bar showing strong/medium/weak distribution -->
+                <div class="flex h-2 rounded-full overflow-hidden bg-gray-200 dark:bg-gray-700">
+                  {% let total_graduated = lesson.strong_memories + lesson.medium_memories + lesson.weak_memories %}
+                  {% if total_graduated > 0 %}
+                  <div class="bg-green-500" style="width: {{ (lesson.strong_memories * 100) / total_graduated }}%"></div>
+                  <div class="bg-yellow-500" style="width: {{ (lesson.medium_memories * 100) / total_graduated }}%"></div>
+                  <div class="bg-orange-500" style="width: {{ (lesson.weak_memories * 100) / total_graduated }}%"></div>
+                  {% endif %}
+                </div>
+                <div class="flex justify-between mt-2 text-xs text-gray-500 dark:text-gray-400">
+                  <span class="flex items-center gap-1">
+                    <span class="w-2 h-2 rounded-full bg-green-500"></span>
+                    Strong ({{ lesson.strong_memories }})
+                  </span>
+                  <span class="flex items-center gap-1">
+                    <span class="w-2 h-2 rounded-full bg-yellow-500"></span>
+                    Medium ({{ lesson.medium_memories }})
+                  </span>
+                  <span class="flex items-center gap-1">
+                    <span class="w-2 h-2 rounded-full bg-orange-500"></span>
+                    Weak ({{ lesson.weak_memories }})
+                  </span>
+                </div>
+                <p class="text-xs text-gray-400 dark:text-gray-500 mt-2">
+                  Based on FSRS stability: Strong &ge;14d, Medium 7-14d, Weak &lt;7d
+                </p>
+              </div>
+              {% endif %}
+
+              <p class="text-xs text-gray-500 dark:text-gray-400 mt-3">
+                <span class="font-medium">New:</span> Never reviewed &bull;
+                <span class="font-medium">Learning:</span> In learning phase &bull;
+                <span class="font-medium">Graduated:</span> Completed learning steps
+              </p>
             </div>
             {% endif %}
-          </div>
+          </details>
           {% endfor %}
         </div>
 
         <div class="mt-3 text-sm text-gray-500 dark:text-gray-400">
-          Overall: {{ pack.total_learned }} / {{ pack.total_cards }} cards learned
+          Overall: {{ pack.total_learned }} / {{ pack.total_cards }} cards graduated
         </div>
       </div>
       {% when ProgressUnit::HangulTiers with { .. } %}

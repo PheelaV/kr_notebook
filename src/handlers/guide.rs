@@ -23,6 +23,7 @@ pub async fn guide() -> Html<String> {
     let toc_items = vec![
         TocItem { id: "quick-start".into(), short_label: "Quick Start".into(), full_label: "Quick Start".into() },
         TocItem { id: "interactive".into(), short_label: "Interactive".into(), full_label: "Interactive Learning".into() },
+        TocItem { id: "study-controls".into(), short_label: "Controls".into(), full_label: "Study Page Controls".into() },
         TocItem { id: "hints".into(), short_label: "Hints".into(), full_label: "Using Hints".into() },
         TocItem { id: "srs".into(), short_label: "SRS".into(), full_label: "Spaced Repetition".into() },
         TocItem { id: "scoring".into(), short_label: "Scoring".into(), full_label: "Answer Scoring".into() },
@@ -35,6 +36,7 @@ pub async fn guide() -> Html<String> {
         TocItem { id: "learned".into(), short_label: "Learned".into(), full_label: "What \"Learned\" Means".into() },
         TocItem { id: "practice".into(), short_label: "Practice".into(), full_label: "Practice Mode".into() },
         TocItem { id: "content-packs".into(), short_label: "Packs".into(), full_label: "Content Packs".into() },
+        TocItem { id: "large-packs".into(), short_label: "Large Packs".into(), full_label: "Learning Large Packs".into() },
         TocItem { id: "shortcuts".into(), short_label: "Shortcuts".into(), full_label: "Keyboard Shortcuts".into() },
     ];
 

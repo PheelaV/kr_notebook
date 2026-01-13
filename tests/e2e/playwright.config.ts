@@ -165,6 +165,21 @@ export default defineConfig({
       },
     },
 
+    // ==================== Offline Study Tests ====================
+    // Tests for offline study mode (download, study, sync)
+    {
+      name: 'offline-study-tests',
+      testMatch: 'offline-study.spec.ts',
+      use: {
+        ...devices['Desktop Chrome'],
+        baseURL: 'http://localhost:3010',
+      },
+      metadata: {
+        dataDir: 'data/test/e2e-offline',
+        port: 3010,
+      },
+    },
+
     // ==================== Cross-Browser (Optional) ====================
     // Run the same tests on different browsers (shares server with auth-tests)
     // Uncomment to enable cross-browser testing

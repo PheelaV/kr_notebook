@@ -3,6 +3,7 @@
 use askama::Template;
 use serde::Deserialize;
 
+use crate::db::SessionStats;
 use crate::domain::InputMethod;
 use crate::filters;
 use crate::handlers::NavContext;
@@ -10,9 +11,11 @@ use crate::handlers::NavContext;
 /// A filter option for the study page dropdown
 #[derive(Debug, Clone)]
 pub struct StudyFilterOption {
-    pub id: String,        // "all", "hangul", "pack:krnb_htsk_voc1_pack"
+    pub id: String,        // "all", "hangul", "pack:X", "pack:X:lesson:1"
     pub label: String,     // "All Content", "Hangul Only", "Vocabulary"
     pub is_selected: bool,
+    pub group: Option<String>,  // Group label for optgroup (e.g., "Vocabulary")
+    pub is_lesson: bool,        // true if this is a lesson-specific filter
 }
 
 #[derive(Template)]
@@ -87,6 +90,10 @@ pub struct InteractiveCardTemplate {
   // Mode control
   pub is_tracked: bool,        // true = study mode, false = practice mode
   pub track_progress: bool,    // for practice mode: whether to log progress
+  // Session stats (for OOB update of stats bar in study mode)
+  pub stats: SessionStats,
+  // HTMX partial flag (true = render OOB swap, false = included in full page)
+  pub is_htmx_partial: bool,
 }
 
 /// Wrapper template for initial interactive study page load
@@ -118,14 +125,15 @@ pub struct StudyInteractiveTemplate {
   pub track_progress: bool,
   // Testing mode flag
   pub testing_mode: bool,
-  // Focus mode recommendation
+  // Focus mode (faster learning steps)
   pub focus_mode_active: bool,
-  pub focus_tier: u8,
-  pub focus_tier_progress: i64,
-  pub show_exit_focus_recommendation: bool,
   // Study filter (content type selection)
   pub study_filters: Vec<StudyFilterOption>,
   pub current_filter: String,
+  // Session stats
+  pub stats: SessionStats,
+  // HTMX partial flag (false for full page, child template checks this)
+  pub is_htmx_partial: bool,
   pub nav: NavContext,
 }
 
@@ -158,6 +166,10 @@ pub struct PracticeTemplate {
   pub hint_final: String,
   pub session_id: String,
   pub is_tracked: bool,
+  // Stats (not used in practice mode but required by interactive_card.html)
+  pub stats: SessionStats,
+  // HTMX partial flag (false for full page, child template checks this)
+  pub is_htmx_partial: bool,
   pub nav: NavContext,
 }
 
@@ -198,6 +210,8 @@ pub struct PracticeQuery {
   pub mode: Option<String>,
   #[serde(default = "default_track_progress")]
   pub track: Option<bool>,
+  /// Optional card_id to show a specific card (e.g., when toggling track progress)
+  pub card_id: Option<i64>,
 }
 
 fn default_track_progress() -> Option<bool> {

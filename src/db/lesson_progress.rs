@@ -258,8 +258,17 @@ pub struct LessonProgress {
     pub new_cards: i64,
     pub learning: i64,
     pub learned: i64,
+    pub total_reviews: i64,
     pub is_unlocked: bool,
     pub percentage: i64,
+    /// Average stability in days for graduated cards (fsrs_stability > 0)
+    pub avg_stability_days: f64,
+    /// Count of cards with strong memories (stability >= 14 days)
+    pub strong_memories: i64,
+    /// Count of cards with medium memories (stability 7-14 days)
+    pub medium_memories: i64,
+    /// Count of cards with weak memories (stability < 7 days, but > 0)
+    pub weak_memories: i64,
 }
 
 impl LessonProgress {
@@ -269,6 +278,23 @@ impl LessonProgress {
         } else {
             0
         }
+    }
+
+    /// Memory strength as a 0-100 score based on stability distribution
+    /// Strong = 100 points, Medium = 60 points, Weak = 30 points
+    pub fn memory_strength(&self) -> i64 {
+        let graduated = self.strong_memories + self.medium_memories + self.weak_memories;
+        if graduated == 0 {
+            return 0;
+        }
+
+        (self.strong_memories * 100 + self.medium_memories * 60 + self.weak_memories * 30)
+            / graduated
+    }
+
+    /// Returns true if there are any graduated cards with stability data
+    pub fn has_stability_data(&self) -> bool {
+        self.strong_memories + self.medium_memories + self.weak_memories > 0
     }
 }
 
@@ -471,6 +497,54 @@ pub fn get_lesson_progress(
         |row| row.get(0),
     )?;
 
+    let total_reviews: i64 = conn.query_row(
+        &format!(
+            "SELECT COALESCE(SUM(cp.total_reviews), 0) {} WHERE cd.pack_id = ?1 AND cd.lesson = ?2",
+            LESSON_FROM
+        ),
+        params![pack_id, lesson],
+        |row| row.get(0),
+    )?;
+
+    // Stability metrics for graduated cards only (learning_step >= 4)
+    let avg_stability_days: f64 = conn
+        .query_row(
+            &format!(
+                "SELECT COALESCE(AVG(cp.fsrs_stability), 0) {} WHERE cd.pack_id = ?1 AND cd.lesson = ?2 AND COALESCE(cp.learning_step, 0) >= 4 AND cp.fsrs_stability > 0",
+                LESSON_FROM
+            ),
+            params![pack_id, lesson],
+            |row| row.get(0),
+        )
+        .unwrap_or(0.0);
+
+    let strong_memories: i64 = conn.query_row(
+        &format!(
+            "SELECT COUNT(*) {} WHERE cd.pack_id = ?1 AND cd.lesson = ?2 AND COALESCE(cp.learning_step, 0) >= 4 AND cp.fsrs_stability >= 14",
+            LESSON_FROM
+        ),
+        params![pack_id, lesson],
+        |row| row.get(0),
+    )?;
+
+    let medium_memories: i64 = conn.query_row(
+        &format!(
+            "SELECT COUNT(*) {} WHERE cd.pack_id = ?1 AND cd.lesson = ?2 AND COALESCE(cp.learning_step, 0) >= 4 AND cp.fsrs_stability >= 7 AND cp.fsrs_stability < 14",
+            LESSON_FROM
+        ),
+        params![pack_id, lesson],
+        |row| row.get(0),
+    )?;
+
+    let weak_memories: i64 = conn.query_row(
+        &format!(
+            "SELECT COUNT(*) {} WHERE cd.pack_id = ?1 AND cd.lesson = ?2 AND COALESCE(cp.learning_step, 0) >= 4 AND cp.fsrs_stability > 0 AND cp.fsrs_stability < 7",
+            LESSON_FROM
+        ),
+        params![pack_id, lesson],
+        |row| row.get(0),
+    )?;
+
     let is_unlocked = is_lesson_unlocked(conn, pack_id, lesson)?;
     let percentage = LessonProgress::calculate_percentage(learned, total);
 
@@ -481,8 +555,13 @@ pub fn get_lesson_progress(
         new_cards,
         learning,
         learned,
+        total_reviews,
         is_unlocked,
         percentage,
+        avg_stability_days,
+        strong_memories,
+        medium_memories,
+        weak_memories,
     })
 }
 

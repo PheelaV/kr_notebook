@@ -46,12 +46,16 @@
     </div>
     <!-- Track progress toggle -->
     <label class="inline-flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400 cursor-pointer mb-1">
-      <input type="checkbox"
-             id="track-progress-toggle"
-             {% if track_progress %}checked{% endif %}
-             onchange="window.location.href='/practice?mode={{ mode }}&track=' + this.checked"
-             class="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500">
       <span>Track progress</span>
+      <div class="relative inline-flex items-center">
+        <input type="checkbox"
+               id="track-progress-toggle"
+               {% if track_progress %}checked{% endif %}
+               onchange="toggleTrackProgress(this.checked)"
+               class="sr-only peer">
+        <div class="w-10 h-6 bg-gray-200 dark:bg-gray-700 rounded-full peer peer-checked:bg-indigo-600 transition-colors"></div>
+        <div class="absolute left-1 top-1 w-4 h-4 bg-white rounded-full shadow peer-checked:translate-x-4 transition-transform"></div>
+      </div>
     </label>
     <p class="text-xs text-gray-500 dark:text-gray-400">
       {% if track_progress %}
@@ -66,7 +70,141 @@
   {% else %}
   {% include "practice_card.html" %}
   {% endif %}
+
+  <!-- Last Card (collapsible, shown after first card) -->
+  <div id="last-card-section" class="hidden mt-4">
+    <button type="button" onclick="toggleLastCard()" class="w-full text-left text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 flex items-center gap-2 py-2">
+      <span id="last-card-chevron" class="transition-transform">&#9654;</span>
+      <span>Show last card</span>
+    </button>
+    <div id="last-card-content" class="hidden bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4 mt-1">
+      <div class="text-center">
+        <div id="last-card-front" class="text-2xl font-bold text-gray-900 dark:text-white mb-2"></div>
+        <div class="text-gray-400 dark:text-gray-500 text-sm mb-2">&#8595;</div>
+        <div id="last-card-answer" class="text-xl font-semibold text-indigo-600 dark:text-indigo-400 mb-1"></div>
+        <div id="last-card-description" class="text-sm text-gray-500 dark:text-gray-400"></div>
+        <div id="last-card-result" class="mt-2 text-sm font-medium"></div>
+      </div>
+    </div>
+  </div>
 </div>
+
+<script>
+  // Toggle track progress - reload with same card
+  function toggleTrackProgress(enabled) {
+    // Get current card_id from the card container
+    const cardIdInput = document.querySelector('input[name="card_id"]');
+    const cardId = cardIdInput ? cardIdInput.value : '';
+    const mode = document.getElementById('study-container').dataset.practiceMode;
+
+    // Build URL with card_id to preserve current card
+    let url = '/practice?mode=' + mode + '&track=' + enabled;
+    if (cardId) {
+      url += '&card_id=' + cardId;
+    }
+    window.location.href = url;
+  }
+
+  // Last card tracking (shared between flip and interactive modes)
+  window.lastCardData = null;
+
+  function toggleLastCard() {
+    const content = document.getElementById('last-card-content');
+    const chevron = document.getElementById('last-card-chevron');
+    if (content.classList.contains('hidden')) {
+      content.classList.remove('hidden');
+      chevron.style.transform = 'rotate(90deg)';
+    } else {
+      content.classList.add('hidden');
+      chevron.style.transform = 'rotate(0deg)';
+    }
+  }
+
+  function captureCurrentCard() {
+    const container = document.getElementById('card-container');
+    if (!container) return;
+
+    const front = container.querySelector('[data-testid="card-front"]');
+    const back = container.querySelector('[data-testid="card-back"]');
+    const resultPhase = container.querySelector('#result-phase');
+
+    // For flip mode: capture from card-back
+    if (front && back) {
+      const answerEl = back.querySelector('.text-indigo-600');
+      const descEl = back.querySelector('.text-gray-500');
+
+      window.lastCardData = {
+        front: front.textContent.trim(),
+        answer: answerEl ? answerEl.textContent.trim() : '',
+        description: descEl ? descEl.textContent.trim() : '',
+        isCorrect: null,
+        isIncorrect: null
+      };
+      updateLastCardDisplay();
+      return;
+    }
+
+    // For interactive mode: capture from result phase
+    if (front && resultPhase) {
+      const answerEl = resultPhase.querySelector('.text-indigo-600, .text-green-600, .text-red-600');
+      const descEl = resultPhase.querySelector('.text-gray-500');
+      const correctEl = resultPhase.querySelector('.text-green-600');
+      const incorrectEl = resultPhase.querySelector('.text-red-600');
+
+      window.lastCardData = {
+        front: front.textContent.trim(),
+        answer: answerEl ? answerEl.textContent.trim() : '',
+        description: descEl ? descEl.textContent.trim() : '',
+        isCorrect: !!correctEl,
+        isIncorrect: !!incorrectEl
+      };
+      updateLastCardDisplay();
+    }
+  }
+
+  function updateLastCardDisplay() {
+    if (!window.lastCardData) return;
+
+    const section = document.getElementById('last-card-section');
+    const frontEl = document.getElementById('last-card-front');
+    const answerEl = document.getElementById('last-card-answer');
+    const descEl = document.getElementById('last-card-description');
+    const resultEl = document.getElementById('last-card-result');
+
+    section.classList.remove('hidden');
+    frontEl.textContent = window.lastCardData.front;
+    answerEl.textContent = window.lastCardData.answer;
+    descEl.textContent = window.lastCardData.description || '';
+
+    if (window.lastCardData.isCorrect) {
+      resultEl.textContent = 'Correct';
+      resultEl.className = 'mt-2 text-sm font-medium text-green-600 dark:text-green-400';
+    } else if (window.lastCardData.isIncorrect) {
+      resultEl.textContent = 'Incorrect';
+      resultEl.className = 'mt-2 text-sm font-medium text-red-600 dark:text-red-400';
+    } else {
+      resultEl.textContent = '';
+    }
+  }
+
+  // Capture card data before HTMX swaps it out
+  document.body.addEventListener('htmx:beforeSwap', function(evt) {
+    if (evt.detail.target && evt.detail.target.id === 'card-container') {
+      captureCurrentCard();
+    }
+  });
+
+  // Clear card_id from URL after new card loads (so refresh gets fresh card)
+  document.body.addEventListener('htmx:afterSwap', function(evt) {
+    if (evt.detail.target && evt.detail.target.id === 'card-container') {
+      const url = new URL(window.location.href);
+      if (url.searchParams.has('card_id')) {
+        url.searchParams.delete('card_id');
+        history.replaceState(null, '', url.toString());
+      }
+    }
+  });
+</script>
 
 {% if mode == "flip" %}
 <script>

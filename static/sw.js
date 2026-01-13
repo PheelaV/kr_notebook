@@ -11,7 +11,7 @@
 'use strict';
 
 // Bump version to trigger update
-const CACHE_VERSION = '9';
+const CACHE_VERSION = '25';
 const CACHE_NAMES = {
   static: `kr-static-${CACHE_VERSION}`,
   pages: `kr-pages-${CACHE_VERSION}`,
@@ -24,6 +24,12 @@ const PRECACHE_STATIC = [
   '/static/js/card-interactions.js',
   '/static/js/auth.js',
   '/static/js/sw-register.js',
+  '/static/js/offline-detect.js',
+  '/static/js/offline-storage.js',
+  '/static/js/offline-study.js',
+  '/static/js/offline-sync.js',
+  '/static/wasm/offline_srs.js',
+  '/static/wasm/offline_srs_bg.wasm',
   '/static/favicon.svg',
   '/static/favicon.ico',
   '/static/favicon-16x16.png',
@@ -32,7 +38,8 @@ const PRECACHE_STATIC = [
   '/static/android-chrome-192x192.png',
   '/static/android-chrome-512x512.png',
   '/static/site.webmanifest',
-  '/offline'
+  '/offline',
+  '/offline-study'
 ];
 
 // CDN resources to precache
@@ -89,6 +96,9 @@ const CACHE_FIRST_PATTERNS = [
   /^\/audio\/scraped\//
 ];
 
+// Offline study route - redirect to offline study page when offline
+const OFFLINE_STUDY_PATTERN = /^\/study$/;
+
 /**
  * Install event - precache static assets and CDN resources
  */
@@ -96,11 +106,19 @@ self.addEventListener('install', function(event) {
   console.log('[SW] Installing version', CACHE_VERSION);
   event.waitUntil(
     Promise.all([
-      // Precache static assets
+      // Precache static assets (bypass browser cache to get fresh files)
       caches.open(CACHE_NAMES.static).then(function(cache) {
-        return cache.addAll(PRECACHE_STATIC).catch(function(error) {
-          console.warn('[SW] Failed to precache some static assets:', error);
-        });
+        return Promise.all(
+          PRECACHE_STATIC.map(function(url) {
+            return fetch(url, { cache: 'reload' }).then(function(response) {
+              if (response.ok) {
+                return cache.put(url, response);
+              }
+            }).catch(function(error) {
+              console.warn('[SW] Failed to precache:', url, error);
+            });
+          })
+        );
       }),
       // Precache CDN resources (may fail if offline during install)
       caches.open(CACHE_NAMES.cdn).then(function(cache) {
@@ -148,9 +166,14 @@ self.addEventListener('activate', function(event) {
 /**
  * Cache-first strategy (for static assets)
  * Returns cached response if available, otherwise fetches and caches
+ * Uses ignoreSearch to match URLs with different query strings (versioning)
  */
 function cacheFirst(request, cacheName) {
-  return caches.match(request).then(function(cachedResponse) {
+  // For static assets, ignore query string when matching cache
+  // This allows versioned URLs (?v=abc) to match non-versioned cached files
+  var matchOptions = cacheName === CACHE_NAMES.static ? { ignoreSearch: true } : {};
+
+  return caches.match(request, matchOptions).then(function(cachedResponse) {
     if (cachedResponse) {
       return cachedResponse;
     }
@@ -159,10 +182,16 @@ function cacheFirst(request, cacheName) {
       if (networkResponse.ok) {
         var responseToCache = networkResponse.clone();
         caches.open(cacheName).then(function(cache) {
+          // Store with original URL (including query string) for future exact matches
           cache.put(request, responseToCache);
         });
       }
       return networkResponse;
+    }).catch(function(error) {
+      // Network failed and not in cache - return empty response for CDN resources
+      // (prevents console errors when offline)
+      console.warn('[SW] Cache-first fetch failed:', request.url);
+      return new Response('', { status: 503, statusText: 'Service Unavailable (offline)' });
     });
   });
 }
@@ -316,6 +345,22 @@ self.addEventListener('fetch', function(event) {
   // Home page gets special handling
   if (url.pathname === '/') {
     event.respondWith(handleHomePage(event.request));
+    return;
+  }
+
+  // Study page when offline - redirect to offline study page
+  if (OFFLINE_STUDY_PATTERN.test(url.pathname) && !navigator.onLine) {
+    event.respondWith(
+      caches.match('/offline-study').then(function(cachedResponse) {
+        if (cachedResponse) {
+          return cachedResponse;
+        }
+        // Fallback to network if not cached
+        return fetch(event.request).catch(function() {
+          return caches.match('/offline');
+        });
+      })
+    );
     return;
   }
 

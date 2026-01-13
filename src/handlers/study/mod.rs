@@ -2,6 +2,7 @@
 
 mod classic;
 mod interactive;
+mod offline;
 mod practice;
 mod templates;
 
@@ -15,8 +16,9 @@ use crate::domain::{Card, ReviewDirection};
 pub use classic::{study_start, submit_review};
 pub use interactive::{
   next_card_interactive, set_study_filter, study_start_interactive, submit_review_interactive,
-  validate_answer_handler,
+  toggle_focus_mode, validate_answer_handler,
 };
+pub use offline::{download_session, sync_session, DownloadSessionRequest, SyncSessionRequest};
 pub use practice::{practice_next, practice_start, practice_validate};
 pub use templates::{
   CardTemplate, InteractiveCardTemplate, NextCardForm, NoCardsTemplate, PracticeCardTemplate,
@@ -106,13 +108,21 @@ pub(crate) fn generate_choices(card: &Card, all_cards: &[Card]) -> Vec<String> {
 }
 
 /// Convert filter string to StudyFilterMode
-fn parse_filter_mode(filter: &str) -> db::StudyFilterMode {
+/// Supports: "all", "hangul", "pack:X", "pack:X:lesson:N"
+pub(crate) fn parse_filter_mode(filter: &str) -> db::StudyFilterMode {
   match filter {
     "all" => db::StudyFilterMode::All,
     "hangul" => db::StudyFilterMode::HangulOnly,
     s if s.starts_with("pack:") => {
-      let pack_id = s.strip_prefix("pack:").unwrap_or("").to_string();
-      db::StudyFilterMode::PackOnly(pack_id)
+      let rest = s.strip_prefix("pack:").unwrap_or("");
+      // Check for lesson format: pack:X:lesson:N
+      if let Some((pack_id, lesson_part)) = rest.split_once(":lesson:") {
+        if let Ok(lesson_num) = lesson_part.parse::<u8>() {
+          return db::StudyFilterMode::PackLesson(pack_id.to_string(), lesson_num);
+        }
+      }
+      // Otherwise, it's just pack:X
+      db::StudyFilterMode::PackOnly(rest.to_string())
     }
     _ => db::StudyFilterMode::All,
   }
@@ -147,6 +157,9 @@ pub(crate) fn get_available_study_cards_filtered(
   let accelerated =
     db::get_all_tiers_unlocked(conn).log_warn_default("Failed to get accelerated mode setting");
 
+  // Check if we can introduce new cards (daily limit)
+  let can_add_new = db::can_introduce_new_card(conn).unwrap_or(true);
+
   let mut cards = Vec::new();
 
   // Get due cards (filtered)
@@ -157,10 +170,16 @@ pub(crate) fn get_available_study_cards_filtered(
     db::get_due_cards_filtered(conn, app_conn, user_id, 50, None, filter)
       .log_warn_default("Failed to get due cards")
   };
-  cards.extend(due);
+
+  // Filter out brand new cards if daily limit is reached
+  for card in due {
+    if card.total_reviews > 0 || can_add_new {
+      cards.push(card);
+    }
+  }
 
   // In accelerated mode, also get unreviewed cards (filtered)
-  if accelerated {
+  if accelerated && can_add_new {
     let unreviewed = db::get_unreviewed_today_filtered(conn, app_conn, user_id, 50, None, filter)
       .log_warn_default("Failed to get unreviewed cards");
     // Avoid duplicates

@@ -10,6 +10,7 @@ description = "Korean Hangul learning app with FSRS spaced repetition"
 default = []
 profiling = []
 testing = []
+rebuild-wasm = []  # Rebuild offline-srs WASM module during cargo build
 
 [dependencies]
 argon2 = "0.5"
@@ -34,6 +35,7 @@ sha2 = "0.10.9"
 hex = "0.4.3"
 urlencoding = "2.1"
 html-escape = "0.2.13"
+zip = "2.1"
 
 [dev-dependencies]
 axum-test = "18.4.1"
