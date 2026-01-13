@@ -6,6 +6,14 @@
 
 A self-hosted Rust web application for learning Korean Hangul using spaced repetition with the modern FSRS algorithm. Multi-user support with per-user databases.
 
+<p align="center">
+  <img src="doc/static/home-page-prew.png" alt="Desktop home page" width="700">
+</p>
+
+<p align="center">
+  <img src="doc/static/progress-mobile-prew.png" alt="Mobile progress view" width="280">
+</p>
+
 ## Features
 
 - **Multi-User Support**: User registration/login with isolated per-user databases

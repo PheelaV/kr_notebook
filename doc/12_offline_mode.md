@@ -91,6 +91,8 @@ POST /api/study/download-session
 
 ### Sync
 
+When coming back online, an auto-sync modal appears prompting to sync pending reviews.
+
 ```
 POST /api/study/sync-offline
 {
@@ -101,15 +103,14 @@ POST /api/study/sync-offline
       "quality": 4,
       "is_correct": true,
       "hints_used": 0,
-      "timestamp": "...",
-      "learning_step": 1,
-      "fsrs_stability": 1.5,
-      "fsrs_difficulty": 5.0,
-      "next_review": "..."
+      "timestamp": "2024-01-13T10:05:00Z",
+      ...
     }
   ]
 }
 ```
+
+**Important**: The server recalculates `next_review` using its own FSRS algorithm based on the offline review `timestamp`. Client-provided SRS values are not trusted. This ensures accurate scheduling even if sync happens hours after the offline session.
 
 ## Files
 
@@ -119,7 +120,10 @@ POST /api/study/sync-offline
 | `scripts/build-wasm.sh` | Build script |
 | `static/wasm/` | Built WASM + JS |
 | `static/js/offline-study.js` | Client-side study controller |
+| `static/js/offline-storage.js` | IndexedDB storage for sessions/responses |
+| `static/js/offline-sync.js` | Auto-sync logic and UI |
 | `static/js/offline-detect.js` | Feature detection |
+| `src/handlers/study/offline.rs` | Server endpoints (download, sync) |
 
 ## Testing
 
