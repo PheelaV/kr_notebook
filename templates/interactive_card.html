@@ -145,3 +145,23 @@
     {% endif %}
   </div>
 </div>
+
+{% if is_tracked && is_htmx_partial %}
+<!-- OOB swap for stats bar (updates after each card in study mode) -->
+<div id="stats-bar" hx-swap-oob="true" class="mb-4 flex items-center justify-center gap-3 text-xs text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2">
+  <span class="flex items-center gap-1" title="New cards available (never seen)">
+    <span class="text-blue-500 dark:text-blue-400">&#9679;</span>
+    New: {{ stats.new_available }}{% if stats.new_cards_limit > 0 %} ({{ stats.new_cards_today }}/{{ stats.new_cards_limit }} today){% endif %}
+  </span>
+  <span class="text-gray-300 dark:text-gray-600">|</span>
+  <span class="flex items-center gap-1" title="Cards in learning steps (not yet graduated)">
+    <span class="text-orange-500 dark:text-orange-400">&#9679;</span>
+    Learning: {{ stats.learning_due }}
+  </span>
+  <span class="text-gray-300 dark:text-gray-600">|</span>
+  <span class="flex items-center gap-1" title="Due reviews (graduated cards)">
+    <span class="text-green-500 dark:text-green-400">&#9679;</span>
+    Review: {{ stats.reviews_due }}
+  </span>
+</div>
+{% endif %}

@@ -17,7 +17,7 @@ use std::path::Path;
 
 /// Current schema version for learning.db
 /// Increment this when adding a new migration
-pub const LEARNING_DB_VERSION: i32 = 5;
+pub const LEARNING_DB_VERSION: i32 = 6;
 
 pub fn run_migrations(conn: &Connection) -> Result<()> {
     run_migrations_with_app_db(conn, None)
@@ -54,6 +54,9 @@ pub fn run_migrations_with_app_db(conn: &Connection, app_db_path: Option<&Path>)
     }
     if current_version < 5 {
         migrate_v4_to_v5(conn)?;
+    }
+    if current_version < 6 {
+        migrate_v5_to_v6(conn)?;
     }
 
     // Legacy cards → card_progress migration (has its own idempotency guards)
@@ -318,6 +321,55 @@ fn migrate_v4_to_v5(conn: &Connection) -> Result<()> {
     )?;
 
     record_version(conn, 5, "Add pack lesson progression")?;
+    Ok(())
+}
+
+/// v5→v6: Remove foreign key constraints from review_logs and confusions
+/// These tables referenced cards(id) but pack cards are in app.card_definitions
+fn migrate_v5_to_v6(conn: &Connection) -> Result<()> {
+    tracing::info!("Running migration v5→v6: Remove legacy foreign key constraints");
+
+    // Recreate review_logs without FK constraint
+    conn.execute_batch(
+        r#"
+        CREATE TABLE IF NOT EXISTS review_logs_new (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            card_id INTEGER NOT NULL,
+            quality INTEGER NOT NULL,
+            reviewed_at TEXT NOT NULL,
+            is_correct INTEGER,
+            study_mode TEXT,
+            direction TEXT,
+            response_time_ms INTEGER,
+            hints_used INTEGER DEFAULT 0
+        );
+        INSERT INTO review_logs_new SELECT * FROM review_logs;
+        DROP TABLE review_logs;
+        ALTER TABLE review_logs_new RENAME TO review_logs;
+
+        CREATE INDEX IF NOT EXISTS idx_review_logs_card_id ON review_logs(card_id);
+        CREATE INDEX IF NOT EXISTS idx_review_logs_reviewed_at ON review_logs(reviewed_at);
+        CREATE INDEX IF NOT EXISTS idx_review_logs_study_mode ON review_logs(study_mode);
+        "#,
+    )?;
+
+    // Recreate confusions without FK constraint
+    conn.execute_batch(
+        r#"
+        CREATE TABLE IF NOT EXISTS confusions_new (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            card_id INTEGER NOT NULL,
+            wrong_answer TEXT NOT NULL,
+            count INTEGER NOT NULL DEFAULT 1,
+            last_confused_at TEXT NOT NULL
+        );
+        INSERT INTO confusions_new SELECT * FROM confusions;
+        DROP TABLE confusions;
+        ALTER TABLE confusions_new RENAME TO confusions;
+        "#,
+    )?;
+
+    record_version(conn, 6, "Remove legacy FK constraints from review_logs and confusions")?;
     Ok(())
 }
 

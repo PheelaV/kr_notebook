@@ -228,10 +228,11 @@ impl HintGenerator {
 
   /// Get hint level 1: First letter and length
   pub fn hint_level_1(&self) -> String {
-    let first_char = self.answer.chars().next().unwrap_or('?');
-    let len = self.answer.len();
-    let underscores = "_".repeat(len.saturating_sub(1));
-    format!("{}{} ({} letters)", first_char, underscores, len)
+    let chars: Vec<char> = self.answer.chars().collect();
+    let first_char = chars.first().copied().unwrap_or('?');
+    let char_count = chars.len();
+    let underscores = "_".repeat(char_count.saturating_sub(1));
+    format!("{}{} ({} letters)", first_char, underscores, char_count)
   }
 
   /// Get hint level 2: Description if available, otherwise more letters
@@ -329,9 +330,22 @@ mod tests {
   fn test_hint_generation() {
     let hint_gen = HintGenerator::new("g / k", Some("Like 'g' in 'go'"));
     assert!(hint_gen.hint_level_1().contains("g"));
-    assert!(hint_gen.hint_level_1().contains("5")); // length
+    assert!(hint_gen.hint_level_1().contains("5")); // 5 characters
     assert_eq!(hint_gen.hint_level_2(), "Like 'g' in 'go'");
     assert_eq!(hint_gen.hint_final(), "g / k");
+  }
+
+  #[test]
+  fn test_hint_generation_korean() {
+    // Korean characters should count correctly (not byte length)
+    let hint_gen = HintGenerator::new("안녕", None);
+    assert_eq!(hint_gen.hint_level_1(), "안_ (2 letters)");
+    assert_eq!(hint_gen.hint_level_2(), "안녕"); // 2 chars, shows full answer
+    assert_eq!(hint_gen.hint_final(), "안녕");
+
+    let hint_gen = HintGenerator::new("안녕하세요", Some("Hello (formal)"));
+    assert_eq!(hint_gen.hint_level_1(), "안____ (5 letters)");
+    assert_eq!(hint_gen.hint_level_2(), "Hello (formal)");
   }
 
   #[test]

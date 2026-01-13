@@ -181,7 +181,7 @@ pub use settings::{
 pub use study::{
   next_card_interactive, practice_next, practice_start, practice_validate, set_study_filter,
   study_start, submit_review, study_start_interactive, submit_review_interactive,
-  validate_answer_handler,
+  toggle_focus_mode, validate_answer_handler,
 };
 pub use vocabulary::vocabulary_library;
 

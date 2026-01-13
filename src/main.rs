@@ -150,6 +150,7 @@ async fn main() {
         .route("/validate-answer", post(handlers::validate_answer_handler))
         .route("/next-card", post(handlers::next_card_interactive))
         .route("/study/filter", post(handlers::set_study_filter))
+        .route("/study/focus", post(handlers::toggle_focus_mode))
         .route("/practice", get(handlers::practice_start))
         .route("/practice-next", post(handlers::practice_next))
         .route("/practice-validate", post(handlers::practice_validate))

@@ -6,7 +6,7 @@ use axum::response::{Html, IntoResponse};
 use axum::Form;
 
 use crate::auth::AuthContext;
-use crate::db::{self, LogOnError};
+use crate::db::{self, LogOnError, SessionStats};
 use crate::domain::StudyMode;
 use crate::handlers::NavContext;
 use crate::state::AppState;
@@ -20,7 +20,7 @@ use super::{generate_choices, get_character_type, get_review_direction, get_trac
 
 /// Build study filter options for practice mode
 fn build_study_filters(
-  _conn: &std::sync::MutexGuard<'_, rusqlite::Connection>,
+  conn: &std::sync::MutexGuard<'_, rusqlite::Connection>,
   app_conn: &std::sync::MutexGuard<'_, rusqlite::Connection>,
   user_id: i64,
   current_filter: &str,
@@ -30,11 +30,15 @@ fn build_study_filters(
       id: "all".to_string(),
       label: "All Content".to_string(),
       is_selected: current_filter == "all",
+      group: None,
+      is_lesson: false,
     },
     StudyFilterOption {
       id: "hangul".to_string(),
       label: "Hangul Only".to_string(),
       is_selected: current_filter == "hangul",
+      group: None,
+      is_lesson: false,
     },
   ];
 
@@ -48,13 +52,43 @@ fn build_study_filters(
       {
         continue;
       }
+      let pack_label = pack.study_filter_label.clone().unwrap_or(pack.display_name.clone());
       let filter_id = format!("pack:{}", pack.pack_id);
-      let label = pack.study_filter_label.unwrap_or(pack.display_name);
+
+      // Add "All Lessons" option for the pack
       filters.push(StudyFilterOption {
         is_selected: current_filter == filter_id,
         id: filter_id,
-        label,
+        label: format!("{} (All)", pack_label),
+        group: Some(pack_label.clone()),
+        is_lesson: false,
       });
+
+      // Add individual lesson options (only show unlocked lessons)
+      if let Some(total_lessons) = pack.total_lessons {
+        for lesson_num in 1..=total_lessons {
+          // Only show lessons the user has unlocked
+          if !db::is_lesson_unlocked(conn, &pack.pack_id, lesson_num).unwrap_or(false) {
+            continue;
+          }
+
+          let lesson_filter_id = format!("pack:{}:lesson:{}", pack.pack_id, lesson_num);
+          let prefix = if pack.section_prefix.is_empty() { "Lesson" } else { &pack.section_prefix };
+          let lesson_label = pack.lesson_labels
+            .as_ref()
+            .and_then(|labels| labels.get(&lesson_num.to_string()).cloned())
+            .map(|label| format!("L{}: {}", lesson_num, label))
+            .unwrap_or_else(|| format!("{} {}", prefix, lesson_num));
+
+          filters.push(StudyFilterOption {
+            is_selected: current_filter == lesson_filter_id,
+            id: lesson_filter_id,
+            label: lesson_label,
+            group: Some(pack_label.clone()),
+            is_lesson: true,
+          });
+        }
+      }
     }
   }
 
@@ -91,13 +125,19 @@ pub async fn practice_start(
   // Build study filter options
   let study_filters = build_study_filters(&conn, &app_conn, auth.user_id, &current_filter);
 
-  // Get practice cards with filter applied
-  let cards = db::get_practice_cards_filtered(&conn, &app_conn, auth.user_id, 1, None, &filter)
-    .log_warn_default("Failed to get practice cards");
   let mode = query.mode.unwrap_or_else(|| "flip".to_string());
   let track_progress = query.track.unwrap_or(true);
 
-  if let Some(card) = cards.first() {
+  // Get card - either specific card_id or random
+  let card = if let Some(card_id) = query.card_id {
+    db::get_card_by_id(&conn, card_id).ok().flatten()
+  } else {
+    let cards = db::get_practice_cards_filtered(&conn, &app_conn, auth.user_id, 1, None, &filter)
+      .log_warn_default("Failed to get practice cards");
+    cards.into_iter().next()
+  };
+
+  if let Some(card) = card {
     let is_korean = is_korean(&card.main_answer);
     let choices = if is_korean && mode == "interactive" {
       // For vocabulary cards, get choices from same lesson; for Hangul, from unlocked cards
@@ -107,7 +147,7 @@ pub async fn practice_start(
       } else {
         db::get_unlocked_cards(&conn).log_warn_default("Failed to get unlocked cards for choices")
       };
-      generate_choices(card, &all_cards)
+      generate_choices(&card, &all_cards)
     } else {
       vec![]
     };
@@ -136,6 +176,9 @@ pub async fn practice_start(
       hint_final: String::new(),
       session_id: String::new(),
       is_tracked: false,
+      // Stats not shown in practice mode but required by template
+      stats: SessionStats::default(),
+      is_htmx_partial: false,
       nav: NavContext::from_auth(&auth),
     };
     Html(template.render().unwrap_or_default())
@@ -221,6 +264,9 @@ pub async fn practice_next(
         session_id: String::new(),
         is_tracked: false,
         track_progress,
+        // Stats not shown in practice mode but required by template struct
+        stats: SessionStats::default(),
+        is_htmx_partial: true,
       };
       Html(template.render().unwrap_or_default())
     } else {
@@ -326,6 +372,9 @@ pub async fn practice_validate(
     session_id: String::new(),
     is_tracked: false,
     track_progress: form.track_progress,
+    // Stats not shown in practice mode but required by template struct
+    stats: SessionStats::default(),
+    is_htmx_partial: true,
   };
 
   Html(template.render().unwrap_or_default())

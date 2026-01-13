@@ -64,11 +64,15 @@ pub async fn study_start_interactive(
       id: "all".to_string(),
       label: "All Content".to_string(),
       is_selected: current_filter == "all",
+      group: None,
+      is_lesson: false,
     },
     StudyFilterOption {
       id: "hangul".to_string(),
       label: "Hangul Only".to_string(),
       is_selected: current_filter == "hangul",
+      group: None,
+      is_lesson: false,
     },
   ];
 
@@ -82,36 +86,56 @@ pub async fn study_start_interactive(
       {
         continue;
       }
+      let pack_label = pack.study_filter_label.clone().unwrap_or(pack.display_name.clone());
       let filter_id = format!("pack:{}", pack.pack_id);
-      let label = pack.study_filter_label.unwrap_or(pack.display_name);
+
+      // Add "All Lessons" option for the pack
       study_filters.push(StudyFilterOption {
         is_selected: current_filter == filter_id,
         id: filter_id,
-        label,
+        label: format!("{} (All)", pack_label),
+        group: Some(pack_label.clone()),
+        is_lesson: false,
       });
+
+      // Add individual lesson options (only show unlocked lessons)
+      if let Some(total_lessons) = pack.total_lessons {
+        for lesson_num in 1..=total_lessons {
+          // Only show lessons the user has unlocked
+          if !db::is_lesson_unlocked(&conn, &pack.pack_id, lesson_num).unwrap_or(false) {
+            continue;
+          }
+
+          let lesson_filter_id = format!("pack:{}:lesson:{}", pack.pack_id, lesson_num);
+          let prefix = if pack.section_prefix.is_empty() { "Lesson" } else { &pack.section_prefix };
+          let lesson_label = pack.lesson_labels
+            .as_ref()
+            .and_then(|labels| labels.get(&lesson_num.to_string()).cloned())
+            .map(|label| format!("L{}: {}", lesson_num, label))
+            .unwrap_or_else(|| format!("{} {}", prefix, lesson_num));
+
+          study_filters.push(StudyFilterOption {
+            is_selected: current_filter == lesson_filter_id,
+            id: lesson_filter_id,
+            label: lesson_label,
+            group: Some(pack_label.clone()),
+            is_lesson: true,
+          });
+        }
+      }
     }
   }
 
-  // Check focus mode status for exit recommendation
-  let focus_tier = db::get_focus_tier(&conn).log_warn_default("Failed to get focus tier");
-  let (focus_mode_active, focus_tier_num, focus_tier_progress, show_exit_focus_recommendation) =
-    if let Some(tier) = focus_tier {
-      let tiers = db::get_progress_by_tier(&conn).log_warn_default("Failed to get tier progress");
-      let progress = tiers
-        .iter()
-        .find(|t| t.tier == tier)
-        .map(|t| t.percentage())
-        .unwrap_or(0);
-      // Recommend exiting focus mode when tier reaches 50% learned
-      let show_recommendation = progress >= 50;
-      (true, tier, progress, show_recommendation)
-    } else {
-      (false, 0, 0, false)
-    };
+  // Check if focus mode is enabled (simple boolean)
+  let focus_mode_active = db::is_focus_mode_enabled(&conn).log_warn_default("Failed to get focus mode");
 
   // Generate a new session ID for this study session
   let session_id = session::generate_session_id();
   let mut study_session = session::get_session(&session_id);
+
+  // Get session stats for display (using current filter mode)
+  let filter_mode = super::parse_filter_mode(&current_filter);
+  let stats = db::get_session_stats(&conn, &app_conn, auth.user_id, &filter_mode).unwrap_or_default();
 
   // Get available cards using existing logic
   let available_cards = get_available_study_cards(&conn, &app_conn, auth.user_id);
@@ -175,11 +199,10 @@ pub async fn study_start_interactive(
         #[cfg(not(feature = "testing"))]
         testing_mode: false,
         focus_mode_active,
-        focus_tier: focus_tier_num,
-        focus_tier_progress,
-        show_exit_focus_recommendation,
         study_filters: study_filters.clone(),
         current_filter: current_filter.clone(),
+        stats,
+        is_htmx_partial: false,
         nav: NavContext::from_auth(&auth),
       };
       return Html(template.render().unwrap_or_default()).into_response();
@@ -208,16 +231,15 @@ pub async fn study_start_interactive(
     session_id,
     is_tracked: true,
     track_progress: false,
-    focus_mode_active,
-    focus_tier: focus_tier_num,
-    focus_tier_progress,
-    show_exit_focus_recommendation,
     #[cfg(feature = "testing")]
     testing_mode: true,
     #[cfg(not(feature = "testing"))]
     testing_mode: false,
+    focus_mode_active,
     study_filters,
     current_filter,
+    stats,
+    is_htmx_partial: false,
     nav: NavContext::from_auth(&auth),
   };
   Html(template.render().unwrap_or_default()).into_response()
@@ -225,6 +247,7 @@ pub async fn study_start_interactive(
 
 /// Validate user's typed answer and record the review result
 pub async fn validate_answer_handler(
+  State(state): State<AppState>,
   auth: AuthContext,
   Form(form): Form<ValidateAnswerForm>,
 ) -> Response {
@@ -236,6 +259,13 @@ pub async fn validate_answer_handler(
   });
 
   let conn = match auth.user_db.lock() {
+    Ok(conn) => conn,
+    Err(_) => {
+      return Html("<h1>Database Error</h1><p>Please refresh the page.</p>".to_string()).into_response()
+    }
+  };
+
+  let app_conn = match state.auth_db.lock() {
     Ok(conn) => conn,
     Err(_) => {
       return Html("<h1>Database Error</h1><p>Please refresh the page.</p>".to_string()).into_response()
@@ -342,7 +372,7 @@ pub async fn validate_answer_handler(
 
     // Log review with enhanced tracking
     let direction = get_review_direction(&card);
-    let _ = db::insert_review_log_enhanced(
+    if let Err(e) = db::insert_review_log_enhanced(
       &conn,
       card.id,
       quality,
@@ -351,7 +381,9 @@ pub async fn validate_answer_handler(
       direction,
       None,
       form.hints_used.into(),
-    );
+    ) {
+      tracing::error!("Failed to insert review log for card {}: {}", card.id, e);
+    }
 
     // Update character stats
     let tracked_char = get_tracked_character(&card);
@@ -365,6 +397,14 @@ pub async fn validate_answer_handler(
 
     // Check if answer is Korean (for template display purposes)
     let is_multiple_choice = is_korean(&card.main_answer);
+
+    // Get updated session stats for OOB swap
+    let current_filter = db::get_setting(&conn, "study_filter_mode")
+      .ok()
+      .flatten()
+      .unwrap_or_else(|| "all".to_string());
+    let filter_mode = super::parse_filter_mode(&current_filter);
+    let stats = db::get_session_stats(&conn, &app_conn, auth.user_id, &filter_mode).unwrap_or_default();
 
     let template = InteractiveCardTemplate {
       card_id: card.id,
@@ -387,6 +427,8 @@ pub async fn validate_answer_handler(
       session_id,
       is_tracked: true,
       track_progress: false,
+      stats,
+      is_htmx_partial: true,
     };
     Html(template.render().unwrap_or_default()).into_response()
   } else {
@@ -464,6 +506,14 @@ pub async fn next_card_interactive(
         vec![]
       };
 
+      // Get updated session stats for OOB swap
+      let current_filter = db::get_setting(&conn, "study_filter_mode")
+        .ok()
+        .flatten()
+        .unwrap_or_else(|| "all".to_string());
+      let filter_mode = super::parse_filter_mode(&current_filter);
+      let stats = db::get_session_stats(&conn, &app_conn, auth.user_id, &filter_mode).unwrap_or_default();
+
       let template = InteractiveCardTemplate {
         card_id: next_card.id,
         front: next_card.front.clone(),
@@ -485,6 +535,8 @@ pub async fn next_card_interactive(
         session_id,
         is_tracked: true,
         track_progress: false,
+        stats,
+        is_htmx_partial: true,
       };
       return Html(template.render().unwrap_or_default()).into_response();
     }
@@ -576,6 +628,14 @@ pub async fn submit_review_interactive(
         vec![]
       };
 
+      // Get updated session stats for OOB swap
+      let current_filter = db::get_setting(&conn, "study_filter_mode")
+        .ok()
+        .flatten()
+        .unwrap_or_else(|| "all".to_string());
+      let filter_mode = super::parse_filter_mode(&current_filter);
+      let stats = db::get_session_stats(&conn, &app_conn, auth.user_id, &filter_mode).unwrap_or_default();
+
       let template = InteractiveCardTemplate {
         card_id: next_card.id,
         front: next_card.front.clone(),
@@ -597,6 +657,8 @@ pub async fn submit_review_interactive(
         session_id,
         is_tracked: true,
         track_progress: false,
+        stats,
+        is_htmx_partial: true,
       };
       return Html(template.render().unwrap_or_default()).into_response();
     }
@@ -627,16 +689,25 @@ pub async fn set_study_filter(
     Err(_) => return Redirect::to("/study"),
   };
 
-  // Validate filter value (should be "all", "hangul", or "pack:<id>")
+  // Validate filter value: "all", "hangul", "pack:<id>", or "pack:<id>:lesson:<n>"
   let filter = form.filter.trim();
   if filter == "all" || filter == "hangul" {
     let _ = db::set_setting(&conn, "study_filter_mode", filter);
-  } else if let Some(pack_id) = filter.strip_prefix("pack:") {
-    // Validate pack_id exists in content_packs using parameterized query
+  } else if let Some(rest) = filter.strip_prefix("pack:") {
     let app_conn = match state.auth_db.lock() {
       Ok(conn) => conn,
       Err(_) => return Redirect::to("/study"),
     };
+
+    // Check if this is a lesson-specific filter: pack:X:lesson:N
+    let (pack_id, lesson_num) = if let Some((pack_part, lesson_part)) = rest.split_once(":lesson:") {
+      let lesson: Option<u8> = lesson_part.parse().ok();
+      (pack_part, lesson)
+    } else {
+      (rest, None)
+    };
+
+    // Validate pack_id exists in content_packs
     let pack_exists: bool = app_conn
       .query_row(
         "SELECT 1 FROM content_packs WHERE id = ?1",
@@ -644,11 +715,38 @@ pub async fn set_study_filter(
         |_| Ok(true),
       )
       .unwrap_or(false);
+
     if pack_exists {
+      // Store the filter - includes lesson number if specified
       let _ = db::set_setting(&conn, "study_filter_mode", filter);
+
+      // Also update the structured settings for compatibility with StudyFilterMode
+      let _ = db::set_setting(&conn, "study_filter_pack", pack_id);
+      if let Some(lesson) = lesson_num {
+        let _ = db::set_setting(&conn, "study_filter_lessons", &lesson.to_string());
+      } else {
+        let _ = db::set_setting(&conn, "study_filter_lessons", "");
+      }
     }
     // If pack doesn't exist, silently ignore (don't store invalid pack_id)
   }
 
+  Redirect::to("/study")
+}
+
+/// Form for toggling focus mode
+#[derive(Deserialize)]
+pub struct FocusModeForm {
+  pub enabled: bool,
+}
+
+/// Toggle focus mode on/off
+pub async fn toggle_focus_mode(
+  auth: AuthContext,
+  Form(form): Form<FocusModeForm>,
+) -> Redirect {
+  if let Ok(conn) = auth.user_db.lock() {
+    let _ = db::set_focus_mode_enabled(&conn, form.enabled);
+  }
   Redirect::to("/study")
 }
