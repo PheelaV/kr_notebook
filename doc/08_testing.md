@@ -147,7 +147,7 @@ def test_authenticated_access(authenticated_client):
 
 ## E2E Tests
 
-**9 Playwright projects** with full browser automation.
+**11 test suites** with full browser automation across Chrome, Firefox, and WebKit.
 
 ### Setup
 
@@ -160,46 +160,64 @@ npx playwright install        # Install browsers (first time)
 ### Running
 
 ```bash
-npm test                      # All projects (parallel)
+# All suites, all browsers (default for CI)
+npm test
+
+# Single browser (recommended for dev)
+BROWSER=chrome npm test
+BROWSER=firefox npm test
+BROWSER=webkit npm test
+
+# Single suite + browser
+npx playwright test --project=auth-chrome
+npx playwright test --project=fresh-install-firefox
+
+# Other modes
 npm run test:headed           # With visible browser
 npm run test:ui               # Interactive Playwright UI
 npm run test:debug            # Step-through debugging
-npx playwright test --project=auth-tests  # Single project
 ```
 
 ### Test Isolation
 
-Each project runs in complete isolation:
+Each suite+browser combination runs in complete isolation with its own server and database:
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│ Project            │ Port  │ Data Directory             │
-├─────────────────────────────────────────────────────────┤
-│ auth-tests         │ 3001  │ data/test/e2e-auth         │
-│ study-tests        │ 3002  │ data/test/e2e-study        │
-│ registration-tests │ 3003  │ data/test/e2e-registration │
-│ admin-tests        │ 3004  │ data/test/e2e-admin        │
-│ groups-tests       │ 3005  │ data/test/e2e-groups       │
-│ pack-permissions   │ 3006  │ data/test/e2e-packs        │
-│ settings-tests     │ 3007  │ data/test/e2e-settings     │
-│ menu-visibility    │ 3008  │ data/test/e2e-menu         │
-│ navbar-dropdown    │ 3009  │ data/test/e2e-navbar       │
-└─────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│ Project              │ Port  │ Data Directory                    │
+├──────────────────────────────────────────────────────────────────┤
+│ auth-chrome          │ 3001  │ data/test/e2e-auth-chrome         │
+│ auth-firefox         │ 3002  │ data/test/e2e-auth-firefox        │
+│ auth-webkit          │ 3003  │ data/test/e2e-auth-webkit         │
+│ study-chrome         │ 3004  │ data/test/e2e-study-chrome        │
+│ study-firefox        │ 3005  │ data/test/e2e-study-firefox       │
+│ ...                  │ ...   │ ...                               │
+│ fresh-install-chrome │ 3031  │ data/test/e2e-fresh-install-chrome│
+│ fresh-install-firefox│ 3032  │ data/test/e2e-fresh-install-firefox│
+│ fresh-install-webkit │ 3033  │ data/test/e2e-fresh-install-webkit│
+└──────────────────────────────────────────────────────────────────┘
+
+Port formula: BASE_PORT (3001) + suite_index * 3 + browser_index
+- browser_index: chrome=0, firefox=1, webkit=2
 ```
 
-### Test Files
+This ensures browsers never interfere with each other's test state.
 
-| File | Coverage |
-|------|----------|
-| `auth.spec.ts` | Login form, credentials, logout, redirects |
-| `study.spec.ts` | Interactive study, classic mode, hints |
-| `registration.spec.ts` | User registration flow |
-| `admin.spec.ts` | Admin access control, role management |
-| `groups.spec.ts` | Group creation, membership, permissions |
-| `pack-permissions.spec.ts` | Pack visibility controls |
-| `settings.spec.ts` | User settings, data export/import |
-| `menu-visibility.spec.ts` | Conditional UI based on roles |
-| `navbar-dropdown.spec.ts` | Navbar dropdown consistency across pages |
+### Test Suites
+
+| Suite | Spec File | Coverage |
+|-------|-----------|----------|
+| auth | `auth.spec.ts` | Login form, credentials, logout, redirects |
+| study | `study.spec.ts` | Interactive study, classic mode, hints |
+| registration | `registration.spec.ts` | User registration flow |
+| admin | `admin.spec.ts` | Admin access control, role management |
+| groups | `groups.spec.ts` | Group creation, membership, permissions |
+| pack-permissions | `pack-permissions.spec.ts` | Pack visibility controls |
+| settings | `settings.spec.ts` | User settings, data export/import |
+| menu-visibility | `menu-visibility.spec.ts` | Conditional UI based on roles |
+| navbar-dropdown | `navbar-dropdown.spec.ts` | Navbar dropdown consistency |
+| offline-study | `offline-study.spec.ts` | Offline study mode (download, study, sync) |
+| fresh-install | `fresh-install.spec.ts` | Fresh installation, default admin creation |
 
 ### Adding E2E Tests
 
@@ -285,8 +303,11 @@ cargo test
 # Integration (requires cargo build first)
 cd tests/integration && ./run_tests.sh
 
-# E2E
+# E2E (all browsers - default)
 cd tests/e2e && npm ci && npx playwright install --with-deps && npm test
+
+# E2E (single browser - faster for quick checks)
+cd tests/e2e && npm ci && npx playwright install chromium && BROWSER=chrome npm test
 ```
 
 ---

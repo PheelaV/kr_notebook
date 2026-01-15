@@ -71,15 +71,25 @@ test.describe('Learning Settings', () => {
     await expect(newSelect).toHaveValue('85');
   });
 
-  test('can change focus tier', async ({ authenticatedPage }) => {
+  test('can toggle focus mode', async ({ authenticatedPage }) => {
     await authenticatedPage.goto('/settings');
 
-    const focusSelect = authenticatedPage.locator('select[name="focus_tier"]');
-    await expect(focusSelect).toBeVisible();
+    // Focus mode is a checkbox that enables faster learning graduation
+    const focusCheckbox = authenticatedPage.locator('input[name="focus_mode"]');
+    await expect(focusCheckbox).toBeVisible();
 
-    // Should have "All tiers" option (check it exists via count, not visibility)
-    const allTiersOption = focusSelect.locator('option[value="none"]');
-    await expect(allTiersOption).toHaveCount(1);
+    // Get initial state and toggle it
+    const wasChecked = await focusCheckbox.isChecked();
+    await focusCheckbox.click();
+
+    // Submit
+    await authenticatedPage.click('[data-testid="settings-submit"]');
+    await authenticatedPage.waitForLoadState('networkidle');
+
+    // Verify it persisted
+    await authenticatedPage.goto('/settings');
+    const newCheckbox = authenticatedPage.locator('input[name="focus_mode"]');
+    await expect(newCheckbox).toBeChecked({ checked: !wasChecked });
   });
 });
 

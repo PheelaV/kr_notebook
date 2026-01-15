@@ -115,6 +115,21 @@ async fn main() {
         }
     }
 
+    // Check for fresh installation: no users exist yet (and no migration happened)
+    {
+        let conn = match auth_db.lock() {
+            Ok(conn) => conn,
+            Err(_) => {
+                tracing::error!("Auth DB lock poisoned during fresh install check");
+                panic!("Fatal: Auth database lock poisoned at startup");
+            }
+        };
+        if auth::db::get_user_count(&conn).unwrap_or(0) == 0 {
+            drop(conn); // Release lock before calling create_default_admin
+            create_default_admin(&auth_db);
+        }
+    }
+
     // Create app state
     let state = AppState::new(auth_db, PathBuf::from(paths::users_dir()));
 
@@ -251,6 +266,71 @@ async fn main() {
         .expect("Server failed to start");
 }
 
+/// Create default admin user on fresh installation
+fn create_default_admin(auth_db: &Arc<Mutex<Connection>>) {
+    use auth::password::hash_password;
+    use sha2::{Digest, Sha256};
+
+    tracing::info!("Fresh installation detected - creating default admin user...");
+
+    // Check for test password (allows E2E tests to know the password)
+    // SECURITY: Only use in test environments, never in production
+    let password: String = if let Ok(test_password) = std::env::var("TEST_ADMIN_PASSWORD") {
+        tracing::warn!("Using TEST_ADMIN_PASSWORD for admin user (test mode)");
+        test_password
+    } else {
+        // Generate a random password for the admin user
+        (0..16)
+            .map(|_| {
+                let idx = rand::random::<u8>() % 62;
+                match idx {
+                    0..=9 => (b'0' + idx) as char,
+                    10..=35 => (b'a' + idx - 10) as char,
+                    _ => (b'A' + idx - 36) as char,
+                }
+            })
+            .collect()
+    };
+
+    // Compute client-side hash: SHA-256(password + ':' + username)
+    // This matches what the browser JavaScript does
+    let client_input = format!("{}:admin", password);
+    let mut hasher = Sha256::new();
+    hasher.update(client_input.as_bytes());
+    let client_hash = hex::encode(hasher.finalize());
+
+    // Hash the client hash with Argon2 for storage
+    let password_hash = hash_password(&client_hash).expect("Failed to hash password");
+
+    // Create admin user with admin role
+    {
+        let conn = match auth_db.lock() {
+            Ok(conn) => conn,
+            Err(_) => {
+                tracing::error!("Auth DB lock poisoned during admin creation");
+                panic!("Fatal: Auth database lock poisoned during fresh install setup");
+            }
+        };
+        auth::db::create_user(&conn, "admin", &password_hash).expect("Failed to create admin user");
+        // Set admin role
+        conn.execute("UPDATE users SET role = 'admin' WHERE username = 'admin'", [])
+            .expect("Failed to set admin role");
+    }
+
+    // Create admin's data directory
+    let users_dir = paths::users_dir();
+    let admin_dir = Path::new(&users_dir).join("admin");
+    std::fs::create_dir_all(&admin_dir).expect("Failed to create admin directory");
+
+    tracing::info!("=======================================================");
+    tracing::info!("FRESH INSTALLATION SETUP");
+    tracing::info!("=======================================================");
+    tracing::info!("Admin user created with temporary password: {}", password);
+    tracing::info!("IMPORTANT: Change this password immediately by running:");
+    tracing::info!("  uv run scripts/reset_pwd.py admin");
+    tracing::info!("=======================================================");
+}
+
 /// Migrate existing single-user database to multi-user setup
 fn migrate_existing_database(auth_db: &Arc<Mutex<Connection>>) {
     use auth::password::hash_password;
@@ -318,6 +398,6 @@ fn migrate_existing_database(auth_db: &Arc<Mutex<Connection>>) {
     tracing::info!("Your existing data has been migrated to user 'admin'");
     tracing::info!("Admin user created with a random password.");
     tracing::info!("To set the admin password, run:");
-    tracing::info!("  uv run scripts/reset_pwd.py admin <new_password>");
+    tracing::info!("  uv run scripts/reset_pwd.py admin");
     tracing::info!("=======================================================");
 }

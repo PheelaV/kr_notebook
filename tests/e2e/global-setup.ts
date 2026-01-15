@@ -98,8 +98,27 @@ function initTestEnv(name: string, dataDir: string): void {
   );
 }
 
+// Initialize fresh install environment (no database, just empty directory)
+function initFreshInstallEnv(name: string, dataDir: string): void {
+  console.log(`  Initializing fresh install environment: ${name}`);
+
+  // Clean up if exists
+  if (fs.existsSync(dataDir)) {
+    fs.rmSync(dataDir, { recursive: true });
+  }
+
+  // Just create empty directory structure - server will create admin on startup
+  fs.mkdirSync(dataDir, { recursive: true });
+  fs.mkdirSync(path.join(dataDir, 'users'), { recursive: true });
+}
+
 // Start server with isolated data directory
-function startServer(projectName: string, dataDir: string, port: number): Promise<number> {
+function startServer(
+  projectName: string,
+  dataDir: string,
+  port: number,
+  extraEnv: Record<string, string> = {}
+): Promise<number> {
   return new Promise((resolve, reject) => {
     console.log(`  Starting server on port ${port} with DATA_DIR=${dataDir}`);
 
@@ -110,6 +129,7 @@ function startServer(projectName: string, dataDir: string, port: number): Promis
         DATA_DIR: dataDir,
         PORT: port.toString(),
         RUST_LOG: 'warn', // Reduce log noise
+        ...extraEnv,
       },
       detached: true,
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -169,30 +189,43 @@ async function globalSetup(config: FullConfig): Promise<void> {
   const setupPorts = new Set<number>();
 
   for (const project of config.projects) {
-    const metadata = project.metadata as { dataDir?: string; port?: number } | undefined;
+    const metadata = project.metadata as {
+      dataDir?: string;
+      port?: number;
+      freshInstall?: boolean;
+      testAdminPassword?: string;
+    } | undefined;
 
     if (!metadata?.dataDir || !metadata?.port) {
       // This project doesn't need its own server (e.g., browser-only variation)
       continue;
     }
 
-    // Skip if we've already set up this port
+    // Skip if we've already set up this port (shouldn't happen with unique ports per browser)
     if (setupPorts.has(metadata.port)) {
       continue;
     }
     setupPorts.add(metadata.port);
 
-    console.log(`Setting up project: ${project.name}`);
+    console.log(`Setting up project: ${project.name} (port ${metadata.port})`);
 
     const dataDir = path.isAbsolute(metadata.dataDir)
       ? metadata.dataDir
       : path.join(PROJECT_ROOT, metadata.dataDir);
 
     // 1. Initialize test environment
-    initTestEnv(project.name, dataDir);
+    if (metadata.freshInstall) {
+      initFreshInstallEnv(project.name, dataDir);
+    } else {
+      initTestEnv(project.name, dataDir);
+    }
 
-    // 2. Start server
-    const pid = await startServer(project.name, dataDir, metadata.port);
+    // 2. Start server (with TEST_ADMIN_PASSWORD for fresh install)
+    const extraEnv: Record<string, string> = {};
+    if (metadata.freshInstall && metadata.testAdminPassword) {
+      extraEnv.TEST_ADMIN_PASSWORD = metadata.testAdminPassword;
+    }
+    const pid = await startServer(project.name, dataDir, metadata.port, extraEnv);
 
     // 3. Save server info
     saveServerInfo(project.name, {

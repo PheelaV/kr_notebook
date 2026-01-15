@@ -7,10 +7,13 @@
 """Reset password for a user in the auth database.
 
 Usage:
-    uv run scripts/reset_pwd.py <username> <new_password>
-    uv run scripts/reset_pwd.py admin mysecretpassword
+    uv run scripts/reset_pwd.py <username>
+    uv run scripts/reset_pwd.py admin
+
+Password will be prompted interactively (hidden from terminal and command history).
 """
 
+import getpass
 import hashlib
 import sqlite3
 import sys
@@ -46,12 +49,11 @@ def reset_password(username: str, password: str, db_path: Path) -> None:
 
 
 def main() -> None:
-    if len(sys.argv) != 3:
-        print("Usage: uv run scripts/reset_pwd.py <username> <new_password>")
+    if len(sys.argv) != 2:
+        print("Usage: uv run scripts/reset_pwd.py <username>")
         sys.exit(1)
 
     username = sys.argv[1]
-    password = sys.argv[2]
 
     # Find the auth database
     script_dir = Path(__file__).parent
@@ -60,6 +62,18 @@ def main() -> None:
 
     if not db_path.exists():
         print(f"Error: Auth database not found at {db_path}")
+        sys.exit(1)
+
+    # Prompt for password interactively (hidden from terminal)
+    password = getpass.getpass(f"Enter new password for '{username}': ")
+    if not password:
+        print("Error: Password cannot be empty")
+        sys.exit(1)
+
+    # Confirm password
+    password_confirm = getpass.getpass("Confirm password: ")
+    if password != password_confirm:
+        print("Error: Passwords do not match")
         sys.exit(1)
 
     reset_password(username, password, db_path)

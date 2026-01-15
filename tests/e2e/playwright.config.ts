@@ -1,16 +1,122 @@
-import { defineConfig, devices } from '@playwright/test';
+import { defineConfig, devices, Project } from '@playwright/test';
 
 /**
- * Playwright configuration with project-based test isolation.
+ * Playwright configuration with project-based test isolation and multi-browser support.
  *
- * Each test group (auth, study) runs in its own isolated environment:
+ * Each test suite runs in its own isolated environment:
  * - Separate DATA_DIR (database isolation)
  * - Separate PORT (no conflicts)
- * - Tests within a group share the environment
- * - Tests across groups are fully isolated
+ * - Tests within a suite share the environment
+ * - Tests across suites are fully isolated
  *
- * Global setup starts servers, global teardown cleans up.
+ * Browser targeting:
+ * - Default: runs on Chrome, Firefox, and WebKit (all 3 browsers)
+ * - Dev mode: use BROWSER=chrome|firefox|webkit to target single browser
+ *
+ * Examples:
+ *   npm test                              # All suites, all browsers
+ *   BROWSER=chrome npm test               # All suites, Chrome only
+ *   npm test -- --project=auth-chrome     # Single suite + browser
+ *   npm test -- --project=fresh-install-firefox  # Single suite + browser
  */
+
+// Browser configurations
+const BROWSERS = {
+  chrome: { name: 'chrome', device: devices['Desktop Chrome'] },
+  firefox: { name: 'firefox', device: devices['Desktop Firefox'] },
+  webkit: { name: 'webkit', device: devices['Desktop Safari'] },
+} as const;
+
+type BrowserName = keyof typeof BROWSERS;
+
+// Determine which browsers to run based on BROWSER env var
+function getTargetBrowsers(): BrowserName[] {
+  const browserEnv = process.env.BROWSER?.toLowerCase();
+
+  if (browserEnv && browserEnv in BROWSERS) {
+    return [browserEnv as BrowserName];
+  }
+
+  // Default: all browsers
+  return ['chrome', 'firefox', 'webkit'];
+}
+
+// Test suite definitions (port and dataDir are computed per browser)
+interface TestSuite {
+  name: string;
+  testMatch: string;
+  freshInstall?: boolean;
+  testAdminPassword?: string;
+}
+
+const TEST_SUITES: TestSuite[] = [
+  { name: 'auth', testMatch: 'auth.spec.ts' },
+  { name: 'study', testMatch: 'study.spec.ts' },
+  { name: 'registration', testMatch: 'registration.spec.ts' },
+  { name: 'admin', testMatch: 'admin.spec.ts' },
+  { name: 'groups', testMatch: 'groups.spec.ts' },
+  { name: 'pack-permissions', testMatch: 'pack-permissions.spec.ts' },
+  { name: 'settings', testMatch: 'settings.spec.ts' },
+  { name: 'menu-visibility', testMatch: 'menu-visibility.spec.ts' },
+  { name: 'navbar-dropdown', testMatch: 'navbar-dropdown.spec.ts' },
+  { name: 'offline-study', testMatch: 'offline-study.spec.ts' },
+  {
+    name: 'fresh-install',
+    testMatch: 'fresh-install.spec.ts',
+    freshInstall: true,
+    testAdminPassword: 'e2e_test_admin_pwd',
+  },
+];
+
+// Base port for test servers (each suite+browser gets unique port)
+const BASE_PORT = 3001;
+
+// Calculate unique port for suite+browser combination
+// Layout: suite0-chrome=3001, suite0-firefox=3002, suite0-webkit=3003,
+//         suite1-chrome=3004, suite1-firefox=3005, suite1-webkit=3006, ...
+function getPort(suiteIndex: number, browserIndex: number): number {
+  return BASE_PORT + suiteIndex * 3 + browserIndex;
+}
+
+// Get data directory for suite+browser combination
+function getDataDir(suiteName: string, browserName: string): string {
+  return `data/test/e2e-${suiteName}-${browserName}`;
+}
+
+// Generate projects: suite × browser combinations (each gets unique port/dataDir)
+function generateProjects(): Project[] {
+  const targetBrowsers = getTargetBrowsers();
+  const browserList = Object.keys(BROWSERS) as BrowserName[];
+  const projects: Project[] = [];
+
+  for (let suiteIndex = 0; suiteIndex < TEST_SUITES.length; suiteIndex++) {
+    const suite = TEST_SUITES[suiteIndex];
+
+    for (const browserName of targetBrowsers) {
+      const browser = BROWSERS[browserName];
+      const browserIndex = browserList.indexOf(browserName);
+      const port = getPort(suiteIndex, browserIndex);
+      const dataDir = getDataDir(suite.name, browser.name);
+
+      projects.push({
+        name: `${suite.name}-${browser.name}`,
+        testMatch: suite.testMatch,
+        use: {
+          ...browser.device,
+          baseURL: `http://localhost:${port}`,
+        },
+        metadata: {
+          dataDir,
+          port,
+          freshInstall: suite.freshInstall,
+          testAdminPassword: suite.testAdminPassword,
+        },
+      });
+    }
+  }
+
+  return projects;
+}
 
 export default defineConfig({
   testDir: './specs',
@@ -29,179 +135,5 @@ export default defineConfig({
     screenshot: 'only-on-failure',
   },
 
-  projects: [
-    // ==================== Auth Tests ====================
-    // Tests for login, registration, session management
-    {
-      name: 'auth-tests',
-      testMatch: 'auth.spec.ts',
-      use: {
-        ...devices['Desktop Chrome'],
-        baseURL: 'http://localhost:3001',
-      },
-      metadata: {
-        dataDir: 'data/test/e2e-auth',
-        port: 3001,
-      },
-    },
-
-    // ==================== Study Tests ====================
-    // Tests for study flow, SRS, card review
-    {
-      name: 'study-tests',
-      testMatch: 'study.spec.ts',
-      use: {
-        ...devices['Desktop Chrome'],
-        baseURL: 'http://localhost:3002',
-      },
-      metadata: {
-        dataDir: 'data/test/e2e-study',
-        port: 3002,
-      },
-    },
-
-    // ==================== Registration Tests ====================
-    // Tests for user registration flow
-    {
-      name: 'registration-tests',
-      testMatch: 'registration.spec.ts',
-      use: {
-        ...devices['Desktop Chrome'],
-        baseURL: 'http://localhost:3003',
-      },
-      metadata: {
-        dataDir: 'data/test/e2e-registration',
-        port: 3003,
-      },
-    },
-
-    // ==================== Admin Tests ====================
-    // Tests for admin access control and user role management
-    {
-      name: 'admin-tests',
-      testMatch: 'admin.spec.ts',
-      use: {
-        ...devices['Desktop Chrome'],
-        baseURL: 'http://localhost:3004',
-      },
-      metadata: {
-        dataDir: 'data/test/e2e-admin',
-        port: 3004,
-      },
-    },
-
-    // ==================== Groups Tests ====================
-    // Tests for group CRUD and membership
-    {
-      name: 'groups-tests',
-      testMatch: 'groups.spec.ts',
-      use: {
-        ...devices['Desktop Chrome'],
-        baseURL: 'http://localhost:3005',
-      },
-      metadata: {
-        dataDir: 'data/test/e2e-groups',
-        port: 3005,
-      },
-    },
-
-    // ==================== Pack Permissions Tests ====================
-    // Tests for pack visibility and permission management
-    {
-      name: 'pack-permissions-tests',
-      testMatch: 'pack-permissions.spec.ts',
-      use: {
-        ...devices['Desktop Chrome'],
-        baseURL: 'http://localhost:3006',
-      },
-      metadata: {
-        dataDir: 'data/test/e2e-packs',
-        port: 3006,
-      },
-    },
-
-    // ==================== Settings Tests ====================
-    // Tests for user settings and data management
-    {
-      name: 'settings-tests',
-      testMatch: 'settings.spec.ts',
-      use: {
-        ...devices['Desktop Chrome'],
-        baseURL: 'http://localhost:3007',
-      },
-      metadata: {
-        dataDir: 'data/test/e2e-settings',
-        port: 3007,
-      },
-    },
-
-    // ==================== Menu Visibility Tests ====================
-    // Tests for conditional menu visibility (admin vs regular user)
-    {
-      name: 'menu-visibility-tests',
-      testMatch: 'menu-visibility.spec.ts',
-      use: {
-        ...devices['Desktop Chrome'],
-        baseURL: 'http://localhost:3008',
-      },
-      metadata: {
-        dataDir: 'data/test/e2e-menu',
-        port: 3008,
-      },
-    },
-
-    // ==================== Navbar Dropdown Tests ====================
-    // Tests for navbar dropdown consistency across pages
-    {
-      name: 'navbar-dropdown-tests',
-      testMatch: 'navbar-dropdown.spec.ts',
-      use: {
-        ...devices['Desktop Chrome'],
-        baseURL: 'http://localhost:3009',
-      },
-      metadata: {
-        dataDir: 'data/test/e2e-navbar',
-        port: 3009,
-      },
-    },
-
-    // ==================== Offline Study Tests ====================
-    // Tests for offline study mode (download, study, sync)
-    {
-      name: 'offline-study-tests',
-      testMatch: 'offline-study.spec.ts',
-      use: {
-        ...devices['Desktop Chrome'],
-        baseURL: 'http://localhost:3010',
-      },
-      metadata: {
-        dataDir: 'data/test/e2e-offline',
-        port: 3010,
-      },
-    },
-
-    // ==================== Cross-Browser (Optional) ====================
-    // Run the same tests on different browsers (shares server with auth-tests)
-    // Uncomment to enable cross-browser testing
-    /*
-    {
-      name: 'auth-firefox',
-      testMatch: 'auth.spec.ts',
-      use: {
-        ...devices['Desktop Firefox'],
-        baseURL: 'http://localhost:3001',
-      },
-      // No metadata - reuses auth-tests server
-    },
-    {
-      name: 'auth-webkit',
-      testMatch: 'auth.spec.ts',
-      use: {
-        ...devices['Desktop Safari'],
-        baseURL: 'http://localhost:3001',
-      },
-      // No metadata - reuses auth-tests server
-    },
-    */
-  ],
+  projects: generateProjects(),
 });
