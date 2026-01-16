@@ -159,15 +159,8 @@ pub fn enable_card_pack(
         )
         .map_err(|e| CardLoadError::IoError("content_packs".to_string(), e.to_string()))?;
 
-    // Global packs are public by default
-    if *pack_scope == super::packs::PackScope::Global {
-        app_conn
-            .execute(
-                "INSERT OR IGNORE INTO pack_permissions (pack_id, group_id, allowed) VALUES (?1, '', 1)",
-                params![pack_id],
-            )
-            .map_err(|e| CardLoadError::IoError("pack_permissions".to_string(), e.to_string()))?;
-    }
+    // Global packs are admin-only by default (no auto-public permission)
+    // Admins can explicitly make packs public via the settings UI
 
     // Load cards from pack
     let cards = load_cards_from_pack(pack_dir, cards_file)?;

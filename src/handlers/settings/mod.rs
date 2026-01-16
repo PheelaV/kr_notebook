@@ -18,7 +18,7 @@ pub use admin::{
   set_user_role, create_group, delete_group, add_to_group, remove_from_group,
   SetRoleForm, CreateGroupForm, GroupMemberForm,
   // Pack permissions (groups and users)
-  restrict_pack_to_group, remove_pack_restriction, make_pack_public, PackPermissionForm,
+  restrict_pack_to_group, remove_pack_restriction, make_pack_public, make_pack_private, PackPermissionForm,
   restrict_pack_to_user, remove_pack_user_restriction, PackUserPermissionForm,
   // External pack paths (admin)
   register_pack_path, unregister_pack_path, toggle_pack_path, browse_directories,

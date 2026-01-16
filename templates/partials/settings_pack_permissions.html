@@ -1,8 +1,22 @@
 <!-- Pack permissions panel - used by HTMX refresh -->
 <div id="pack-permissions-{{ pack.id }}" class="mt-2 p-3 bg-gray-50 dark:bg-gray-700/50 rounded">
-  {% if pack.is_restricted %}
+  {% if pack.is_public %}
+  <!-- Pack is public -->
+  <p class="text-xs text-green-600 dark:text-green-400 mb-2">
+    Available to all users.
+  </p>
+  <button type="button"
+          hx-post="/settings/pack/{{ pack.id }}/make-private"
+          hx-target="#pack-permissions-{{ pack.id }}"
+          hx-swap="outerHTML"
+          hx-confirm="Make {{ pack.name }} admin-only (or restricted to specific users/groups)?"
+          class="text-xs px-2 py-1 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 rounded hover:bg-amber-200 dark:hover:bg-amber-900/50">
+    Make Private
+  </button>
+  {% else if pack.is_restricted %}
+  <!-- Pack has specific user/group restrictions -->
   <p class="text-xs text-amber-600 dark:text-amber-400 mb-2">
-    This pack is restricted to specific groups/users.
+    Restricted to specific groups/users.
   </p>
   <!-- Allowed Groups -->
   {% if !pack.allowed_groups.is_empty() %}
@@ -47,9 +61,18 @@
     Make Public
   </button>
   {% else %}
+  <!-- Pack is admin-only (no permissions set) -->
   <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">
-    Available to all users.
+    Admin-only. Add users/groups below or make public.
   </p>
+  <button type="button"
+          hx-post="/settings/pack/{{ pack.id }}/make-public"
+          hx-target="#pack-permissions-{{ pack.id }}"
+          hx-swap="outerHTML"
+          hx-confirm="Make {{ pack.name }} available to all users?"
+          class="text-xs px-2 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded hover:bg-green-200 dark:hover:bg-green-900/50">
+    Make Public
+  </button>
   {% endif %}
   <!-- Add group restriction -->
   {% if !groups.is_empty() %}

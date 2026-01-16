@@ -237,6 +237,7 @@ async fn main() {
         .route("/settings/pack/permission/add", post(handlers::restrict_pack_to_group))
         .route("/settings/pack/permission/remove", post(handlers::remove_pack_restriction))
         .route("/settings/pack/{pack_id}/make-public", post(handlers::make_pack_public))
+        .route("/settings/pack/{pack_id}/make-private", post(handlers::make_pack_private))
         // Pack permissions (admin) - users
         .route("/settings/pack/user-permission/add", post(handlers::restrict_pack_to_user))
         .route("/settings/pack/user-permission/remove", post(handlers::remove_pack_user_restriction))

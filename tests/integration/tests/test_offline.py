@@ -13,8 +13,8 @@ class TestOfflineDownload:
             "/api/study/download-session",
             json={"duration_minutes": 30, "filter_mode": "all"},
         )
-        # Should redirect to login or return 401
-        assert response.status_code in (302, 401, 403)
+        # Should redirect to login or return 401/403
+        assert response.status_code in (302, 303, 401, 403)
 
     def test_download_requires_offline_mode_enabled(self, authenticated_client):
         """Download fails when offline mode is not enabled."""
@@ -39,7 +39,7 @@ class TestOfflineDownload:
             },
         )
         # Settings POST redirects on success
-        assert response.status_code in (200, 302)
+        assert response.status_code in (200, 302, 303)
 
         # Now download session
         response = authenticated_client.post(
@@ -101,7 +101,7 @@ class TestOfflineSync:
             "/api/study/sync-offline",
             json={"session_id": "test123", "reviews": []},
         )
-        assert response.status_code in (302, 401, 403)
+        assert response.status_code in (302, 303, 401, 403)
 
     def test_sync_requires_valid_session(self, authenticated_client):
         """Sync fails with invalid session ID."""
