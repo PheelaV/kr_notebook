@@ -43,7 +43,7 @@ def create_card(
     """
     if is_reverse:
         # English -> Korean direction
-        return {
+        card = {
             "front": vocab["translation"],
             "main_answer": vocab["term"],
             "description": f"({vocab['romanization']}) - {vocab['word_type']}",
@@ -54,7 +54,7 @@ def create_card(
         }
     else:
         # Korean -> English direction
-        return {
+        card = {
             "front": vocab["term"],
             "main_answer": vocab["translation"],
             "description": f"({vocab['romanization']}) - {vocab['word_type']}",
@@ -63,6 +63,10 @@ def create_card(
             "is_reverse": False,
             "audio_hint": None,
         }
+    # Add lesson if present in vocabulary entry
+    if "lesson" in vocab:
+        card["lesson"] = vocab["lesson"]
+    return card
 
 
 def convert_vocabulary(
