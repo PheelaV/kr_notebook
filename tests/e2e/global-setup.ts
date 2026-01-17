@@ -96,6 +96,15 @@ function initTestEnv(name: string, dataDir: string): void {
       stdio: 'pipe',
     }
   );
+
+  // Copy test lesson pack fixture for lesson filtering tests
+  const testPackSrc = path.join(PROJECT_ROOT, 'tests', 'integration', 'fixtures', 'test_lesson_pack');
+  if (fs.existsSync(testPackSrc)) {
+    const testPackDst = path.join(dataDir, 'content', 'packs', 'test_lesson_pack');
+    fs.mkdirSync(path.dirname(testPackDst), { recursive: true });
+    fs.cpSync(testPackSrc, testPackDst, { recursive: true });
+    console.log(`  Copied test_lesson_pack to ${testPackDst}`);
+  }
 }
 
 // Initialize fresh install environment (no database, just empty directory)

@@ -1937,3 +1937,82 @@ def list_groups(data_dir: str | None) -> None:
             click.echo(f"  Members: {member_str}")
     finally:
         conn.close()
+
+
+# =============================================================================
+# Pack Lesson Queries (for testing)
+# =============================================================================
+
+
+@cli.command("get-pack-lesson-counts")
+@click.argument("pack_id")
+@click.option(
+    "--data-dir",
+    "-d",
+    type=click.Path(),
+    default=None,
+    help="Data directory (for test environments).",
+)
+@click.option(
+    "--json",
+    "as_json",
+    is_flag=True,
+    help="Output as JSON.",
+)
+def get_pack_lesson_counts(pack_id: str, data_dir: str | None, as_json: bool) -> None:
+    """Get card counts per lesson for a pack.
+
+    Queries card_definitions to show how many cards each lesson has.
+    Used by integration tests to verify lesson filtering.
+
+    Outputs lesson:count pairs. Use --json for machine-readable output.
+
+    Example:
+        db-manager get-pack-lesson-counts test_lesson_pack
+        db-manager get-pack-lesson-counts krnb_htsk_voc1_pack --json
+        db-manager get-pack-lesson-counts test_pack --data-dir data/test/e2e
+    """
+    import json
+
+    app_db = get_app_db_path(Path(data_dir) if data_dir else None)
+
+    if not app_db.exists():
+        raise click.ClickException(f"Auth database not found: {app_db}")
+
+    conn = sqlite3.connect(app_db)
+    try:
+        # Query card counts by lesson
+        rows = conn.execute(
+            """SELECT lesson, COUNT(*) as count
+               FROM card_definitions
+               WHERE pack_id = ?
+               GROUP BY lesson
+               ORDER BY lesson""",
+            (pack_id,),
+        ).fetchall()
+
+        if not rows:
+            if as_json:
+                click.echo("{}")
+            else:
+                click.echo(f"No cards found for pack: {pack_id}")
+            return
+
+        # Build result dict (convert None lesson to "null" string for JSON)
+        result = {}
+        for lesson, count in rows:
+            key = lesson if lesson is not None else "null"
+            result[key] = count
+
+        if as_json:
+            click.echo(json.dumps(result))
+        else:
+            click.echo(f"Pack: {pack_id}")
+            total = 0
+            for lesson, count in rows:
+                lesson_str = f"Lesson {lesson}" if lesson is not None else "No lesson"
+                click.echo(f"  {lesson_str}: {count} cards")
+                total += count
+            click.echo(f"  Total: {total} cards")
+    finally:
+        conn.close()

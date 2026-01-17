@@ -103,6 +103,30 @@ class DbManager:
         result = self._run("list-groups", check=False)
         return group_id in result.stdout
 
+    def get_pack_lesson_counts(self, pack_id: str) -> dict[int | None, int]:
+        """Get card counts per lesson for a pack.
+
+        Returns dict mapping lesson number (or None) to card count.
+        """
+        import json
+
+        result = self._run("get-pack-lesson-counts", pack_id, "--json", check=False)
+        if result.returncode != 0:
+            return {}
+        try:
+            data = json.loads(result.stdout.strip())
+            # Convert keys: "null" -> None, "1" -> 1
+            return {
+                (None if k == "null" else int(k)): v
+                for k, v in data.items()
+            }
+        except (json.JSONDecodeError, ValueError):
+            return {}
+
+    def set_user_role(self, username: str, role: str) -> None:
+        """Set a user's role (user or admin)."""
+        self._run("set-role", username, role)
+
 
 class TestClient:
     """HTTP client wrapper with session/cookie management."""
@@ -251,6 +275,13 @@ def test_server(project_root: Path, test_data_dir: Path) -> Generator[str, None,
     if init_result.returncode != 0:
         pytest.fail(f"Failed to initialize test environment: {init_result.stderr}")
 
+    # Copy test lesson pack fixture to test environment for lesson filtering tests
+    test_pack_src = project_root / "tests" / "integration" / "fixtures" / "test_lesson_pack"
+    if test_pack_src.exists():
+        test_pack_dst = test_data_dir / "content" / "packs" / "test_lesson_pack"
+        test_pack_dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(test_pack_src, test_pack_dst)
+
     # Spawn server with isolated data directory
     env = os.environ.copy()
     env["DATA_DIR"] = str(test_data_dir)
@@ -349,20 +380,37 @@ def test_user(db_manager: DbManager) -> Generator[tuple[str, str], None, None]:
 
 @pytest.fixture
 def admin_user(db_manager: DbManager) -> Generator[tuple[str, str], None, None]:
-    """Create an admin user for testing admin functionality.
+    """Create an admin user for testing admin functionality."""
+    import uuid
 
-    Note: This requires manual role assignment or using 'admin' username.
-    """
-    # The app treats 'admin' username as admin by default
-    username = "admin"
+    # Use unique username to avoid conflicts
+    username = f"_test_admin_{uuid.uuid4().hex[:8]}"
     password = "admintest123"
 
-    # Only create if not exists
-    if not db_manager.user_exists(username):
-        password_hash = db_manager.create_user(username, password)
-    else:
-        password_hash = compute_password_hash(password, username)
+    # Clean up if exists from previous failed test
+    if db_manager.user_exists(username):
+        db_manager.delete_user(username)
+
+    password_hash = db_manager.create_user(username, password)
+
+    # Set user as admin
+    db_manager.set_user_role(username, "admin")
 
     yield (username, password_hash)
 
-    # Don't delete admin user - it may be needed by other tests
+    # Cleanup
+    db_manager.delete_user(username)
+
+
+@pytest.fixture
+def admin_client(
+    client: TestClient, db_manager: DbManager, admin_user: tuple[str, str]
+) -> TestClient:
+    """Create an authenticated admin HTTP client."""
+    username, password_hash = admin_user
+    response = client.login(username, password_hash)
+    # Follow redirect after login
+    if response.status_code in (302, 303):
+        client.follow_redirect(response)
+    assert client.is_authenticated(), "Failed to authenticate admin"
+    return client
