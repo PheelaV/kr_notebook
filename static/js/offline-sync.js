@@ -14,11 +14,15 @@ const OfflineSync = (function() {
   let syncInProgress = false;
   let refreshInProgress = false;
   let notificationElement = null;
+  let stabilityTimer = null;
+  let syncPromptModal = null;
 
   // Session is considered stale after 4 hours
   const SESSION_STALE_HOURS = 4;
   // Default session duration in minutes
   const DEFAULT_SESSION_MINUTES = 30;
+  // Wait for connection to be stable before prompting (configurable for tests)
+  let STABILITY_DELAY_MS = 5000;
 
   /**
    * Check if session is stale (older than SESSION_STALE_HOURS).
@@ -366,7 +370,8 @@ const OfflineSync = (function() {
   }
 
   /**
-   * Check for pending sync and auto-sync if online.
+   * Check for pending sync (legacy function, kept for compatibility).
+   * Now shows prompt instead of auto-syncing.
    */
   async function checkAndNotify() {
     // Don't sync if offline
@@ -380,11 +385,157 @@ const OfflineSync = (function() {
       return;
     }
 
-    // Get count and auto-sync
+    // Get count and show prompt (instead of auto-sync)
     var count = await window.OfflineStorage.getPendingCount();
     if (count > 0) {
-      await performAutoSync(count);
+      showSyncPromptModal(count);
     }
+  }
+
+  /**
+   * Create and show the sync prompt modal.
+   * @param {number} pendingCount - Number of reviews pending sync
+   */
+  function showSyncPromptModal(pendingCount) {
+    // Don't show if already showing
+    if (syncPromptModal && document.body.contains(syncPromptModal)) {
+      // Update count if modal already exists
+      var countEl = syncPromptModal.querySelector('#sync-prompt-count');
+      if (countEl) countEl.textContent = pendingCount;
+      return;
+    }
+
+    // Create modal
+    syncPromptModal = document.createElement('div');
+    syncPromptModal.id = 'sync-prompt-modal';
+    syncPromptModal.className = 'fixed inset-0 bg-black/50 flex items-center justify-center z-50';
+    syncPromptModal.setAttribute('role', 'dialog');
+    syncPromptModal.setAttribute('aria-modal', 'true');
+    syncPromptModal.setAttribute('aria-labelledby', 'sync-prompt-title');
+
+    syncPromptModal.innerHTML = `
+      <div class="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-sm mx-4 shadow-xl">
+        <h3 id="sync-prompt-title" class="text-lg font-semibold text-gray-900 dark:text-white mb-2">Back Online</h3>
+        <p class="text-gray-600 dark:text-gray-300 mb-4">
+          You have <span id="sync-prompt-count" class="font-semibold text-indigo-600 dark:text-indigo-400">${pendingCount}</span> pending review${pendingCount === 1 ? '' : 's'}. Sync now?
+        </p>
+        <div class="flex gap-3">
+          <button id="sync-now-btn" class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-2 px-4 rounded-lg font-medium transition-colors">
+            Sync Now
+          </button>
+          <button id="stay-offline-btn" class="flex-1 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 py-2 px-4 rounded-lg font-medium transition-colors">
+            Stay Offline
+          </button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(syncPromptModal);
+
+    // Bind button handlers
+    syncPromptModal.querySelector('#sync-now-btn').addEventListener('click', async function() {
+      hideSyncPromptModal();
+      await performAutoSync(pendingCount);
+      // Refresh session after successful sync
+      checkAndRefreshSession();
+    });
+
+    syncPromptModal.querySelector('#stay-offline-btn').addEventListener('click', function() {
+      hideSyncPromptModal();
+      console.log('[OfflineSync] User chose to stay offline');
+    });
+
+    // Close on backdrop click
+    syncPromptModal.addEventListener('click', function(e) {
+      if (e.target === syncPromptModal) {
+        hideSyncPromptModal();
+      }
+    });
+
+    // Close on Escape key
+    function handleEscape(e) {
+      if (e.key === 'Escape') {
+        hideSyncPromptModal();
+        document.removeEventListener('keydown', handleEscape);
+      }
+    }
+    document.addEventListener('keydown', handleEscape);
+  }
+
+  /**
+   * Hide the sync prompt modal.
+   */
+  function hideSyncPromptModal() {
+    if (syncPromptModal && syncPromptModal.parentNode) {
+      syncPromptModal.parentNode.removeChild(syncPromptModal);
+    }
+    syncPromptModal = null;
+  }
+
+  /**
+   * Check if sync prompt modal is visible.
+   * @returns {boolean}
+   */
+  function isSyncPromptVisible() {
+    return syncPromptModal !== null && document.body.contains(syncPromptModal);
+  }
+
+  /**
+   * Handle coming back online with stability check.
+   * Waits for connection to be stable before prompting.
+   */
+  function handleOnline() {
+    // Check for test API override of stability delay
+    var delay = (window.OfflineSyncTestAPI && window.OfflineSyncTestAPI._stabilityDelayMs !== undefined)
+      ? window.OfflineSyncTestAPI._stabilityDelayMs
+      : STABILITY_DELAY_MS;
+
+    console.log('[OfflineSync] Online event - starting stability timer (' + delay + 'ms)');
+
+    // Cancel any existing timer
+    if (stabilityTimer) {
+      clearTimeout(stabilityTimer);
+    }
+
+    // Update test API state
+    if (window.OfflineSyncTestAPI) {
+      window.OfflineSyncTestAPI._isTimerActive = true;
+    }
+
+    stabilityTimer = setTimeout(async function() {
+      stabilityTimer = null;
+      // Update test API state
+      if (window.OfflineSyncTestAPI) {
+        window.OfflineSyncTestAPI._isTimerActive = false;
+      }
+
+      console.log('[OfflineSync] Connection stable, checking pending...');
+
+      var count = await window.OfflineStorage.getPendingCount();
+      if (count > 0) {
+        showSyncPromptModal(count);
+      } else {
+        // No pending reviews, silently refresh session if stale
+        checkAndRefreshSession();
+      }
+    }, delay);
+  }
+
+  /**
+   * Handle going offline - cancel stability timer.
+   */
+  function handleOffline() {
+    console.log('[OfflineSync] Offline event - canceling stability timer');
+    if (stabilityTimer) {
+      clearTimeout(stabilityTimer);
+      stabilityTimer = null;
+    }
+    // Update test API state
+    if (window.OfflineSyncTestAPI) {
+      window.OfflineSyncTestAPI._isTimerActive = false;
+    }
+    // Also hide sync prompt if showing
+    hideSyncPromptModal();
   }
 
   /**
@@ -392,26 +543,25 @@ const OfflineSync = (function() {
    * Sets up event listeners for online/offline events.
    */
   function init() {
-    // Listen for online event
-    window.addEventListener('online', function() {
-      console.log('[OfflineSync] Back online, checking for pending sync...');
-      // Small delay to let network stabilize
-      setTimeout(checkAndNotify, 1000);
-      // Also refresh session when coming back online
-      setTimeout(checkAndRefreshSession, 2000);
-    });
+    // Listen for online event - use stability timer
+    window.addEventListener('online', handleOnline);
+
+    // Listen for offline event - cancel timer
+    window.addEventListener('offline', handleOffline);
 
     // Check on page load (in case we're already online with pending sync)
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', function() {
-        setTimeout(checkAndNotify, 2000);
-        // Also refresh session on page load
-        setTimeout(checkAndRefreshSession, 3000);
+        if (navigator.onLine) {
+          // Use stability timer on page load too
+          handleOnline();
+        }
       });
     } else {
-      setTimeout(checkAndNotify, 2000);
-      // Also refresh session on page load
-      setTimeout(checkAndRefreshSession, 3000);
+      if (navigator.onLine) {
+        // Use stability timer on page load too
+        handleOnline();
+      }
     }
 
     console.log('[OfflineSync] Initialized');
@@ -425,7 +575,10 @@ const OfflineSync = (function() {
     checkAndNotify: checkAndNotify,
     refreshSession: refreshSession,
     checkAndRefreshSession: checkAndRefreshSession,
-    isSessionStale: isSessionStale
+    isSessionStale: isSessionStale,
+    showSyncPromptModal: showSyncPromptModal,
+    hideSyncPromptModal: hideSyncPromptModal,
+    isSyncPromptVisible: isSyncPromptVisible
   };
 })();
 
@@ -434,3 +587,89 @@ OfflineSync.init();
 
 // Export for use in other modules
 window.OfflineSync = OfflineSync;
+
+/**
+ * Test API for offline sync module.
+ * Allows programmatic control of network state simulation for E2E tests.
+ */
+window.OfflineSyncTestAPI = {
+  /**
+   * Simulate coming online (triggers stability timer → prompt).
+   */
+  simulateOnline: function() {
+    window.dispatchEvent(new Event('online'));
+  },
+
+  /**
+   * Simulate going offline (cancels stability timer).
+   */
+  simulateOffline: function() {
+    window.dispatchEvent(new Event('offline'));
+  },
+
+  /**
+   * Set stability delay for faster tests.
+   * @param {number} ms - Delay in milliseconds
+   */
+  setStabilityDelay: function(ms) {
+    // Access the module's internal variable via closure workaround
+    // We need to re-initialize with new delay
+    window.OfflineSyncTestAPI._stabilityDelayMs = ms;
+  },
+
+  /**
+   * Check if sync prompt modal is visible.
+   * @returns {boolean}
+   */
+  isSyncPromptVisible: function() {
+    return window.OfflineSync.isSyncPromptVisible();
+  },
+
+  /**
+   * Get pending count shown in modal.
+   * @returns {number}
+   */
+  getSyncPromptCount: function() {
+    var el = document.getElementById('sync-prompt-count');
+    return el ? parseInt(el.textContent, 10) : 0;
+  },
+
+  /**
+   * Click sync now button.
+   */
+  clickSyncNow: function() {
+    var btn = document.getElementById('sync-now-btn');
+    if (btn) btn.click();
+  },
+
+  /**
+   * Click stay offline button.
+   */
+  clickStayOffline: function() {
+    var btn = document.getElementById('stay-offline-btn');
+    if (btn) btn.click();
+  },
+
+  /**
+   * Force show sync prompt (bypass stability timer).
+   * @returns {Promise<void>}
+   */
+  forceShowSyncPrompt: async function() {
+    var count = await window.OfflineStorage.getPendingCount();
+    window.OfflineSync.showSyncPromptModal(count > 0 ? count : 1);
+  },
+
+  /**
+   * Check if stability timer is currently active.
+   * @returns {boolean}
+   */
+  isStabilityTimerActive: function() {
+    // Check by trying to read internal state
+    // Since we can't directly access stabilityTimer, we use a workaround
+    return window.OfflineSyncTestAPI._isTimerActive || false;
+  },
+
+  // Internal tracking for test API
+  _stabilityDelayMs: 5000,
+  _isTimerActive: false
+};

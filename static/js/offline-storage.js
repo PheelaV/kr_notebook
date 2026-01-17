@@ -141,6 +141,21 @@ const OfflineStorage = (function() {
   }
 
   /**
+   * Check if an offline session exists and is valid (not stale).
+   * Session is considered stale after 4 hours.
+   * @returns {Promise<boolean>}
+   */
+  async function hasValidSession() {
+    const session = await getSession();
+    if (!session) {
+      return false;
+    }
+    // Check if session is stale (older than 4 hours)
+    const ageHours = await getSessionAgeHours();
+    return ageHours !== null && ageHours < 4;
+  }
+
+  /**
    * Get session age in hours.
    * @returns {Promise<number|null>} Hours since session was created, or null if no session
    */
@@ -373,6 +388,7 @@ const OfflineStorage = (function() {
     saveSession: saveSession,
     getSession: getSession,
     hasSession: hasSession,
+    hasValidSession: hasValidSession,
     getSessionAgeHours: getSessionAgeHours,
     addResponse: addResponse,
     getResponses: getResponses,

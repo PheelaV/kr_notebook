@@ -224,14 +224,13 @@ const OfflineStudy = (function() {
     // Build card HTML
     const hasChoices = card.choices && card.choices.length > 0;
 
-    // Don't show description for choice-based cards (contains romanization that gives away answer)
-    // Show it after answer is revealed instead
-    const showDescription = card.description && !hasChoices;
+    // NEVER show description during question phase - it often contains the answer
+    // (e.g., "Like 's' in 'sun'" when the answer is "s")
+    // Description is shown after answer is revealed in showResult()
 
     let html = `
       <div class="offline-card" data-card-id="${card.card_id}">
         <div class="card-front text-2xl font-bold mb-4 text-center">${escapeHtml(card.front)}</div>
-        ${showDescription ? `<div class="card-description text-sm text-gray-600 dark:text-gray-400 mb-4 text-center">${escapeHtml(card.description)}</div>` : ''}
 
         <div class="answer-section mt-6">
           ${hasChoices ? renderChoices(card.choices) : renderTextInput()}
@@ -439,7 +438,7 @@ const OfflineStudy = (function() {
     const resultIcon = isCorrect ? ICONS.checkCircle : ICONS.closeCircle;
     const resultText = validation.result === 'CloseEnough' ? 'Close enough!' : (isCorrect ? 'Correct!' : 'Incorrect');
 
-    // Show description after answer reveal (was hidden during question for choice-based cards)
+    // Show description after answer reveal (hidden during question to avoid giving away answer)
     const descriptionHtml = currentCard.description
       ? `<div class="text-sm text-gray-500 dark:text-gray-400 mt-1">${escapeHtml(currentCard.description)}</div>`
       : '';
