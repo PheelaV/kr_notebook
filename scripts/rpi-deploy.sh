@@ -1,6 +1,6 @@
 #!/bin/bash
 # Deploy kr_notebook to Raspberry Pi
-# Usage: ./scripts/rpi-deploy.sh [--no-build] [--no-backup] [--debug] [--rollback]
+# Usage: ./scripts/rpi-deploy.sh [--no-tests] [--no-build] [--no-backup] [--debug] [--rollback]
 
 set -e
 
@@ -20,6 +20,7 @@ fi
 DO_BUILD=true
 DO_BACKUP=true
 DO_ROLLBACK=false
+DO_TESTS=true
 PROFILE="--release"
 PROFILE_NAME="release"
 
@@ -27,6 +28,7 @@ for arg in "$@"; do
     case $arg in
         --no-build)  DO_BUILD=false ;;
         --no-backup) DO_BACKUP=false ;;
+        --no-tests)  DO_TESTS=false ;;
         --debug)     PROFILE=""; PROFILE_NAME="debug" ;;
         --rollback)  DO_ROLLBACK=true ;;
     esac
@@ -34,6 +36,45 @@ done
 
 BINARY="$PROJECT_DIR/target/$TARGET/$PROFILE_NAME/kr_notebook"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+
+# Timing helpers
+format_time() {
+    local seconds=$1
+    if [[ $seconds -ge 60 ]]; then
+        local mins=$((seconds / 60))
+        local secs=$((seconds % 60))
+        echo "${mins}m ${secs}s"
+    else
+        echo "${seconds}s"
+    fi
+}
+
+# Track timing for each step
+STEP_TIMES=()
+STEP_NAMES=()
+TOTAL_START_TIME=$SECONDS
+
+step_start() {
+    STEP_START=$SECONDS
+}
+
+step_end() {
+    local name="$1"
+    local elapsed=$((SECONDS - STEP_START))
+    STEP_NAMES+=("$name")
+    STEP_TIMES+=("$elapsed")
+}
+
+print_timing_summary() {
+    local total_time=$((SECONDS - TOTAL_START_TIME))
+    echo ""
+    echo "=== Timing Summary ==="
+    for i in "${!STEP_NAMES[@]}"; do
+        printf "  %-25s %s\n" "${STEP_NAMES[$i]}:" "$(format_time ${STEP_TIMES[$i]})"
+    done
+    echo "  -------------------------"
+    printf "  %-25s %s\n" "Total:" "$(format_time $total_time)"
+}
 
 # =============================================================================
 # ROLLBACK MODE
@@ -181,9 +222,28 @@ fi
 echo "=== Deploying to $RPI_SSH ==="
 echo ""
 
-# Step 1: Build
+# Step 1: Run tests
+if [ "$DO_TESTS" = true ]; then
+    echo "[1/9] Running tests..."
+    echo ""
+    step_start
+    if ! "$SCRIPT_DIR/test.sh" all; then
+        echo ""
+        echo "Error: Tests failed. Deployment aborted."
+        echo "Fix the failing tests or use --no-tests to skip (not recommended)."
+        exit 1
+    fi
+    step_end "Tests"
+    echo ""
+else
+    echo "[1/9] Skipping tests (--no-tests)"
+    echo ""
+fi
+
+# Step 2: Build
 if [ "$DO_BUILD" = true ]; then
-    echo "[1/8] Building for $TARGET ($PROFILE_NAME)..."
+    echo "[2/9] Building for $TARGET ($PROFILE_NAME)..."
+    step_start
 
     # Build features (optional)
     FEATURES_ARG=""
@@ -222,9 +282,10 @@ if [ "$DO_BUILD" = true ]; then
             fi
         fi
     fi
+    step_end "Build"
     echo ""
 else
-    echo "[1/8] Skipping build (--no-build)"
+    echo "[2/9] Skipping build (--no-build)"
 fi
 
 # Check binary exists
@@ -235,7 +296,8 @@ if [ ! -f "$BINARY" ]; then
 fi
 
 # Step 2: Test SSH connection
-echo "[2/8] Testing SSH connection..."
+echo "[3/9] Testing SSH connection..."
+step_start
 if ! ssh -o ConnectTimeout=5 "$RPI_SSH" "echo 'OK'" &>/dev/null; then
     echo "Error: Cannot connect to $RPI_SSH"
     echo "Check RPI_SSH in .rpi-deploy.conf"
@@ -245,7 +307,7 @@ echo "  Connected to $(ssh "$RPI_SSH" 'hostname')"
 
 # Step 2b: Check database schema compatibility
 echo ""
-echo "[2b/8] Checking database schema..."
+echo "[3b/9] Checking database schema..."
 SCHEMA_CHECK=$(ssh "$RPI_SSH" bash -s "$RPI_INSTALL_DIR" << 'SCHEMA_SCRIPT'
     INSTALL_DIR="$1"
     APP_DB="$INSTALL_DIR/data/app.db"
@@ -329,11 +391,13 @@ case "$SCHEMA_CHECK" in
         echo "  Warning: Could not check schema (${SCHEMA_CHECK})"
         ;;
 esac
+step_end "Pre-flight checks"
 
 # Step 3: Backup on RPi
 if [ "$DO_BACKUP" = true ]; then
     echo ""
-    echo "[3/8] Creating backup on RPi..."
+    echo "[4/9] Creating backup on RPi..."
+    step_start
     ssh "$RPI_SSH" bash -s "$RPI_INSTALL_DIR" "$TIMESTAMP" << 'BACKUP_SCRIPT'
         INSTALL_DIR="$1"
         TIMESTAMP="$2"
@@ -365,14 +429,16 @@ if [ "$DO_BACKUP" = true ]; then
             echo "  No data directory found, skipping backup"
         fi
 BACKUP_SCRIPT
+    step_end "Backup"
 else
     echo ""
-    echo "[3/8] Skipping backup (--no-backup)"
+    echo "[4/9] Skipping backup (--no-backup)"
 fi
 
 # Step 4: Stop service
 echo ""
-echo "[4/8] Stopping service..."
+echo "[5/9] Stopping service..."
+step_start
 ssh "$RPI_SSH" bash -s "$RPI_SERVICE" << 'STOP_SCRIPT'
     SERVICE="$1"
     if systemctl is-active --quiet "$SERVICE" 2>/dev/null; then
@@ -382,10 +448,12 @@ ssh "$RPI_SSH" bash -s "$RPI_SERVICE" << 'STOP_SCRIPT'
         echo "  Service not running"
     fi
 STOP_SCRIPT
+step_end "Stop service"
 
 # Step 5: Deploy binary
 echo ""
-echo "[5/8] Deploying binary..."
+echo "[6/9] Deploying binary..."
+step_start
 ssh "$RPI_SSH" "mkdir -p $RPI_INSTALL_DIR/target/release"
 scp "$BINARY" "$RPI_SSH:$RPI_INSTALL_DIR/target/release/kr_notebook.new"
 ssh "$RPI_SSH" bash -s "$RPI_INSTALL_DIR" << 'DEPLOY_SCRIPT'
@@ -402,10 +470,12 @@ ssh "$RPI_SSH" bash -s "$RPI_INSTALL_DIR" << 'DEPLOY_SCRIPT'
     chmod +x "kr_notebook"
     echo "  Binary installed"
 DEPLOY_SCRIPT
+step_end "Deploy binary"
 
 # Step 6: Deploy static assets (backup old first)
 echo ""
-echo "[6/8] Syncing static assets..."
+echo "[7/9] Syncing static assets..."
+step_start
 ssh "$RPI_SSH" bash -s "$RPI_INSTALL_DIR" << 'STATIC_BACKUP_SCRIPT'
     INSTALL_DIR="$1"
     # Backup current static assets (overwrite previous .old)
@@ -416,10 +486,12 @@ ssh "$RPI_SSH" bash -s "$RPI_INSTALL_DIR" << 'STATIC_BACKUP_SCRIPT'
     fi
 STATIC_BACKUP_SCRIPT
 rsync -av --delete --exclude='.DS_Store' "$PROJECT_DIR/static/" "$RPI_SSH:$RPI_INSTALL_DIR/static/"
+step_end "Sync static assets"
 
 # Step 7: Update backup marker
 echo ""
-echo "[7/8] Updating backup marker..."
+echo "[8/9] Updating backup marker..."
+step_start
 ssh "$RPI_SSH" bash -s "$RPI_INSTALL_DIR" "$TIMESTAMP" << 'MARKER_SCRIPT'
     INSTALL_DIR="$1"
     TIMESTAMP="$2"
@@ -427,10 +499,12 @@ ssh "$RPI_SSH" bash -s "$RPI_INSTALL_DIR" "$TIMESTAMP" << 'MARKER_SCRIPT'
     echo "$TIMESTAMP" > "$INSTALL_DIR/backups/latest"
     echo "  Backup marker set to: $TIMESTAMP"
 MARKER_SCRIPT
+step_end "Update backup marker"
 
 # Step 8: Start service
 echo ""
-echo "[8/8] Starting service..."
+echo "[9/9] Starting service..."
+step_start
 ssh "$RPI_SSH" bash -s "$RPI_SERVICE" << 'START_SCRIPT'
     SERVICE="$1"
     if systemctl list-unit-files | grep -q "^$SERVICE"; then
@@ -447,9 +521,11 @@ ssh "$RPI_SSH" bash -s "$RPI_SERVICE" << 'START_SCRIPT'
         echo "  Start manually with: ./target/release/kr_notebook"
     fi
 START_SCRIPT
+step_end "Start service"
 
 echo ""
 echo "=== Deploy Complete ==="
+print_timing_summary
 echo ""
 echo "To rollback (restores binary, static assets, and databases):"
 echo "  ./scripts/rpi-deploy.sh --rollback"

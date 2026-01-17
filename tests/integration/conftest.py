@@ -24,9 +24,37 @@ import pytest
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 PY_SCRIPTS_DIR = PROJECT_ROOT / "py_scripts"
 
-# Isolated test data directory (ephemeral - created fresh for each test session)
-TEST_DATA_DIR = PROJECT_ROOT / "data" / "test" / "integration"
-TEST_PORT = 3100
+# Base test data directory and port (workers get their own isolated subdirectories/ports)
+TEST_DATA_DIR_BASE = PROJECT_ROOT / "data" / "test" / "integration"
+TEST_PORT_BASE = 3100
+
+
+def get_worker_id(request: pytest.FixtureRequest) -> str:
+    """Get the xdist worker ID, or 'master' if not running under xdist."""
+    return getattr(request.config, "workerinput", {}).get("workerid", "master")
+
+
+def get_worker_port(worker_id: str) -> int:
+    """Get the port for a specific worker.
+
+    With pytest-xdist, worker IDs are "gw0", "gw1", etc.
+    Without xdist (serial run), worker_id is "master".
+    """
+    if worker_id == "master":
+        return TEST_PORT_BASE
+    # Extract worker number from "gw0", "gw1", etc.
+    worker_num = int(worker_id.replace("gw", ""))
+    return TEST_PORT_BASE + worker_num
+
+
+def get_worker_data_dir(worker_id: str) -> Path:
+    """Get the data directory for a specific worker.
+
+    Each worker gets an isolated data directory to avoid conflicts.
+    """
+    if worker_id == "master":
+        return TEST_DATA_DIR_BASE
+    return TEST_DATA_DIR_BASE / worker_id
 
 
 def compute_password_hash(password: str, username: str) -> str:
@@ -244,22 +272,30 @@ def project_root() -> Path:
 
 
 @pytest.fixture(scope="session")
-def test_data_dir() -> Path:
-    """Return the isolated test data directory."""
-    return TEST_DATA_DIR
+def test_data_dir(request: pytest.FixtureRequest) -> Path:
+    """Return the isolated test data directory for this worker."""
+    worker_id = get_worker_id(request)
+    return get_worker_data_dir(worker_id)
 
 
 @pytest.fixture(scope="session")
-def test_server(project_root: Path, test_data_dir: Path) -> Generator[str, None, None]:
+def test_server(
+    request: pytest.FixtureRequest, project_root: Path, test_data_dir: Path
+) -> Generator[str, None, None]:
     """Spawn an isolated test server with ephemeral data directory.
 
     This fixture:
     1. Creates a fresh test data directory
     2. Initializes the test environment via db-manager
-    3. Spawns a server with the isolated DATA_DIR
+    3. Spawns a server with the isolated DATA_DIR and worker-specific port
     4. Yields the server URL
     5. Terminates the server and cleans up (unless PRESERVE_TEST_ENV is set)
+
+    With pytest-xdist, each worker gets its own server on a unique port.
     """
+    worker_id = get_worker_id(request)
+    port = get_worker_port(worker_id)
+
     # Clean up any existing test directory
     if test_data_dir.exists():
         shutil.rmtree(test_data_dir)
@@ -282,10 +318,10 @@ def test_server(project_root: Path, test_data_dir: Path) -> Generator[str, None,
         test_pack_dst.parent.mkdir(parents=True, exist_ok=True)
         shutil.copytree(test_pack_src, test_pack_dst)
 
-    # Spawn server with isolated data directory
+    # Spawn server with isolated data directory and worker-specific port
     env = os.environ.copy()
     env["DATA_DIR"] = str(test_data_dir)
-    env["PORT"] = str(TEST_PORT)
+    env["PORT"] = str(port)
 
     process = subprocess.Popen(
         ["cargo", "run", "--quiet"],
@@ -296,7 +332,7 @@ def test_server(project_root: Path, test_data_dir: Path) -> Generator[str, None,
         preexec_fn=os.setsid,  # Create new process group for clean termination
     )
 
-    url = f"http://localhost:{TEST_PORT}"
+    url = f"http://localhost:{port}"
 
     # Wait for server to be ready
     if not wait_for_server(url, timeout=60.0):

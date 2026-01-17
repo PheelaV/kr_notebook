@@ -33,11 +33,17 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 # Test level (default: all)
 LEVEL="${1:-all}"
 
-# Track results
+# Track results and timings
 RUST_UNIT_RESULT=0
 PYTHON_UNIT_RESULT=0
 INTEGRATION_RESULT=0
 E2E_RESULT=0
+
+RUST_UNIT_TIME=0
+PYTHON_UNIT_TIME=0
+INTEGRATION_TIME=0
+E2E_TIME=0
+TOTAL_START_TIME=0
 
 # Logging helpers
 log_header() {
@@ -59,19 +65,33 @@ log_info() {
     echo -e "${YELLOW}→ $1${NC}"
 }
 
+format_time() {
+    local seconds=$1
+    if [[ $seconds -ge 60 ]]; then
+        local mins=$((seconds / 60))
+        local secs=$((seconds % 60))
+        echo "${mins}m ${secs}s"
+    else
+        echo "${seconds}s"
+    fi
+}
+
 # Run Rust unit tests
 run_rust_unit_tests() {
     log_header "Running Rust Unit Tests"
+    local start_time=$SECONDS
 
     cd "$PROJECT_ROOT"
 
     # Run library tests only (--lib skips doctests which have import issues)
     cargo test --lib --all-features 2>&1 || RUST_UNIT_RESULT=1
 
+    RUST_UNIT_TIME=$((SECONDS - start_time))
+
     if [[ $RUST_UNIT_RESULT -eq 0 ]]; then
-        log_success "Rust unit tests passed"
+        log_success "Rust unit tests passed ($(format_time $RUST_UNIT_TIME))"
     else
-        log_error "Rust unit tests failed"
+        log_error "Rust unit tests failed ($(format_time $RUST_UNIT_TIME))"
     fi
 
     return $RUST_UNIT_RESULT
@@ -80,6 +100,7 @@ run_rust_unit_tests() {
 # Run Python unit tests (py_scripts)
 run_python_unit_tests() {
     log_header "Running Python Unit Tests (py_scripts)"
+    local start_time=$SECONDS
 
     cd "$PROJECT_ROOT/py_scripts"
 
@@ -88,10 +109,12 @@ run_python_unit_tests() {
 
     uv run pytest tests/ -v --tb=short 2>&1 || PYTHON_UNIT_RESULT=1
 
+    PYTHON_UNIT_TIME=$((SECONDS - start_time))
+
     if [[ $PYTHON_UNIT_RESULT -eq 0 ]]; then
-        log_success "Python unit tests passed"
+        log_success "Python unit tests passed ($(format_time $PYTHON_UNIT_TIME))"
     else
-        log_error "Python unit tests failed"
+        log_error "Python unit tests failed ($(format_time $PYTHON_UNIT_TIME))"
     fi
 
     return $PYTHON_UNIT_RESULT
@@ -100,20 +123,24 @@ run_python_unit_tests() {
 # Run integration tests (Python)
 run_integration_tests() {
     log_header "Running Integration Tests"
+    local start_time=$SECONDS
 
     cd "$PROJECT_ROOT/tests/integration"
 
-    log_info "Integration tests will spawn an isolated server on port 3100"
+    log_info "Integration tests will spawn isolated servers on ports 3100+"
 
     # Ensure dependencies are installed (--group dev for pytest)
     uv sync --quiet --group dev 2>&1 || true
 
-    uv run pytest tests/ -v --tb=short 2>&1 || INTEGRATION_RESULT=1
+    # Run with parallel workers, grouped by file to reduce fixture setup overhead
+    uv run pytest tests/ -v --tb=short -n auto --dist loadfile 2>&1 || INTEGRATION_RESULT=1
+
+    INTEGRATION_TIME=$((SECONDS - start_time))
 
     if [[ $INTEGRATION_RESULT -eq 0 ]]; then
-        log_success "Integration tests passed"
+        log_success "Integration tests passed ($(format_time $INTEGRATION_TIME))"
     else
-        log_error "Integration tests failed"
+        log_error "Integration tests failed ($(format_time $INTEGRATION_TIME))"
     fi
 
     return $INTEGRATION_RESULT
@@ -122,6 +149,7 @@ run_integration_tests() {
 # Run E2E tests (Playwright)
 run_e2e_tests() {
     log_header "Running E2E Tests (Playwright)"
+    local start_time=$SECONDS
 
     cd "$PROJECT_ROOT/tests/e2e"
 
@@ -135,10 +163,12 @@ run_e2e_tests() {
 
     npx playwright test 2>&1 || E2E_RESULT=1
 
+    E2E_TIME=$((SECONDS - start_time))
+
     if [[ $E2E_RESULT -eq 0 ]]; then
-        log_success "E2E tests passed"
+        log_success "E2E tests passed ($(format_time $E2E_TIME))"
     else
-        log_error "E2E tests failed"
+        log_error "E2E tests failed ($(format_time $E2E_TIME))"
     fi
 
     return $E2E_RESULT
@@ -146,6 +176,8 @@ run_e2e_tests() {
 
 # Print summary
 print_summary() {
+    local total_time=$((SECONDS - TOTAL_START_TIME))
+
     log_header "Test Summary"
 
     local total=0
@@ -156,17 +188,17 @@ print_summary() {
             total=2
             [[ $RUST_UNIT_RESULT -eq 0 ]] && ((passed++))
             [[ $PYTHON_UNIT_RESULT -eq 0 ]] && ((passed++))
-            echo -e "  Rust Unit Tests:   $(result_icon $RUST_UNIT_RESULT)"
-            echo -e "  Python Unit Tests: $(result_icon $PYTHON_UNIT_RESULT)"
+            printf "  %-20s %-10s %s\n" "Rust Unit Tests:" "$(result_icon $RUST_UNIT_RESULT)" "($(format_time $RUST_UNIT_TIME))"
+            printf "  %-20s %-10s %s\n" "Python Unit Tests:" "$(result_icon $PYTHON_UNIT_RESULT)" "($(format_time $PYTHON_UNIT_TIME))"
             ;;
         integration)
             total=3
             [[ $RUST_UNIT_RESULT -eq 0 ]] && ((passed++))
             [[ $PYTHON_UNIT_RESULT -eq 0 ]] && ((passed++))
             [[ $INTEGRATION_RESULT -eq 0 ]] && ((passed++))
-            echo -e "  Rust Unit Tests:   $(result_icon $RUST_UNIT_RESULT)"
-            echo -e "  Python Unit Tests: $(result_icon $PYTHON_UNIT_RESULT)"
-            echo -e "  Integration Tests: $(result_icon $INTEGRATION_RESULT)"
+            printf "  %-20s %-10s %s\n" "Rust Unit Tests:" "$(result_icon $RUST_UNIT_RESULT)" "($(format_time $RUST_UNIT_TIME))"
+            printf "  %-20s %-10s %s\n" "Python Unit Tests:" "$(result_icon $PYTHON_UNIT_RESULT)" "($(format_time $PYTHON_UNIT_TIME))"
+            printf "  %-20s %-10s %s\n" "Integration Tests:" "$(result_icon $INTEGRATION_RESULT)" "($(format_time $INTEGRATION_TIME))"
             ;;
         all)
             total=4
@@ -174,18 +206,20 @@ print_summary() {
             [[ $PYTHON_UNIT_RESULT -eq 0 ]] && ((passed++))
             [[ $INTEGRATION_RESULT -eq 0 ]] && ((passed++))
             [[ $E2E_RESULT -eq 0 ]] && ((passed++))
-            echo -e "  Rust Unit Tests:   $(result_icon $RUST_UNIT_RESULT)"
-            echo -e "  Python Unit Tests: $(result_icon $PYTHON_UNIT_RESULT)"
-            echo -e "  Integration Tests: $(result_icon $INTEGRATION_RESULT)"
-            echo -e "  E2E Tests:         $(result_icon $E2E_RESULT)"
+            printf "  %-20s %-10s %s\n" "Rust Unit Tests:" "$(result_icon $RUST_UNIT_RESULT)" "($(format_time $RUST_UNIT_TIME))"
+            printf "  %-20s %-10s %s\n" "Python Unit Tests:" "$(result_icon $PYTHON_UNIT_RESULT)" "($(format_time $PYTHON_UNIT_TIME))"
+            printf "  %-20s %-10s %s\n" "Integration Tests:" "$(result_icon $INTEGRATION_RESULT)" "($(format_time $INTEGRATION_TIME))"
+            printf "  %-20s %-10s %s\n" "E2E Tests:" "$(result_icon $E2E_RESULT)" "($(format_time $E2E_TIME))"
             ;;
         e2e)
             total=1
             [[ $E2E_RESULT -eq 0 ]] && ((passed++))
-            echo -e "  E2E Tests:         $(result_icon $E2E_RESULT)"
+            printf "  %-20s %-10s %s\n" "E2E Tests:" "$(result_icon $E2E_RESULT)" "($(format_time $E2E_TIME))"
             ;;
     esac
 
+    echo ""
+    echo -e "  ${BLUE}Total time: $(format_time $total_time)${NC}"
     echo ""
     if [[ $passed -eq $total ]]; then
         log_success "All $total test suites passed!"
@@ -206,6 +240,7 @@ result_icon() {
 
 # Main
 main() {
+    TOTAL_START_TIME=$SECONDS
     log_header "Test Runner - Level: $LEVEL"
 
     case "$LEVEL" in
