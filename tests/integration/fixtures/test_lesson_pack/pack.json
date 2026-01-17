@@ -1,0 +1,25 @@
+{
+  "id": "test_lesson_pack",
+  "name": "Test Lesson Pack",
+  "type": "cards",
+  "version": "1.0.0",
+  "description": "Minimal test pack with lessons for testing lesson filtering",
+  "cards": {
+    "file": "cards.json",
+    "tier": 5
+  },
+  "lessons": {
+    "total": 2,
+    "first": 1
+  },
+  "ui": {
+    "display_name": "Test Lessons",
+    "unit_name": "Lessons",
+    "section_prefix": "Lesson",
+    "unlock_threshold": 80,
+    "lesson_labels": {
+      "1": "Lesson 1",
+      "2": "Lesson 2"
+    }
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "cards": [
+    {"front": "L1-A", "main_answer": "l1a", "description": "Lesson 1 card A", "card_type": "Vocabulary", "tier": 5, "is_reverse": false, "lesson": 1},
+    {"front": "L1-B", "main_answer": "l1b", "description": "Lesson 1 card B", "card_type": "Vocabulary", "tier": 5, "is_reverse": false, "lesson": 1},
+    {"front": "L1-C", "main_answer": "l1c", "description": "Lesson 1 card C", "card_type": "Vocabulary", "tier": 5, "is_reverse": false, "lesson": 1},
+    {"front": "L2-A", "main_answer": "l2a", "description": "Lesson 2 card A", "card_type": "Vocabulary", "tier": 5, "is_reverse": false, "lesson": 2},
+    {"front": "L2-B", "main_answer": "l2b", "description": "Lesson 2 card B", "card_type": "Vocabulary", "tier": 5, "is_reverse": false, "lesson": 2}
+  ]
+}

@@ -38,10 +38,16 @@ cross build --release --target aarch64-unknown-linux-gnu
 
 ```bash
 cd tests/integration
-./run_tests.sh              # Runs server + tests + cleanup
-uv run pytest               # Manual (requires running server)
+uv run pytest               # Spawns isolated server automatically (port 3100)
+uv run pytest -v            # Verbose output
 uv run pytest -k auth       # Filter by name
+uv run pytest tests/test_offline_sync.py  # Run specific test file
 ```
+
+The test suite uses a pytest fixture (`test_server`) that automatically:
+1. Creates an ephemeral test data directory
+2. Spawns an isolated server on port 3100
+3. Cleans up after tests complete
 
 ### E2E Tests (Playwright)
 

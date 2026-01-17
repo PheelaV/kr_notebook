@@ -75,6 +75,7 @@ pub struct PackInfo {
   pub is_baseline: bool,             // Baseline pack (always enabled, can't disable)
   pub cards_count: Option<usize>,    // For card packs
   pub is_restricted: bool,           // Has any group or user restrictions
+  pub is_public: bool,               // Available to all users (public flag set)
   pub allowed_groups: Vec<String>,   // Group IDs that can access this pack
   pub allowed_users: Vec<AllowedUser>, // Users that have direct access
   pub can_manage: bool,              // User can enable/disable this pack
@@ -103,9 +104,10 @@ impl PackInfo {
     };
 
     // Get pack permissions and global enabled state from auth_db
-    let (is_restricted, allowed_groups, allowed_users, is_globally_enabled) = auth_conn
+    let (is_restricted, is_public, allowed_groups, allowed_users, is_globally_enabled) = auth_conn
       .map(|conn| {
         let restricted = auth_db::is_pack_restricted_for_ui(conn, &loc.manifest.id).unwrap_or(false);
+        let public = auth_db::is_pack_public(conn, &loc.manifest.id).unwrap_or(false);
         let groups = auth_db::get_pack_allowed_groups(conn, &loc.manifest.id).unwrap_or_default();
         let users = auth_db::get_pack_allowed_users(conn, &loc.manifest.id)
           .unwrap_or_default()
@@ -113,9 +115,9 @@ impl PackInfo {
           .map(|(id, username)| AllowedUser { id, username })
           .collect();
         let globally_enabled = auth_db::is_pack_globally_enabled(conn, &loc.manifest.id).unwrap_or(true);
-        (restricted, groups, users, globally_enabled)
+        (restricted, public, groups, users, globally_enabled)
       })
-      .unwrap_or((false, Vec::new(), Vec::new(), true));
+      .unwrap_or((false, false, Vec::new(), Vec::new(), true));
 
     // Determine if user can manage (enable/disable) this pack:
     // - Only admins can enable/disable packs
@@ -132,6 +134,7 @@ impl PackInfo {
       is_baseline,
       cards_count,
       is_restricted,
+      is_public,
       allowed_groups,
       allowed_users,
       can_manage,

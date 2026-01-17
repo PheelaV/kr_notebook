@@ -754,6 +754,7 @@ fn render_pack_permissions(conn: &rusqlite::Connection, pack_id: &str) -> Option
     .map(|(id, username)| AllowedUser { id, username })
     .collect();
   let is_restricted = !allowed_groups.is_empty() || !allowed_users.is_empty();
+  let is_public = auth_db::is_pack_public(conn, pack_id).unwrap_or(false);
   let is_baseline = pack_loc.manifest.id == "baseline";
 
   let pack = PackInfo {
@@ -770,6 +771,7 @@ fn render_pack_permissions(conn: &rusqlite::Connection, pack_id: &str) -> Option
     is_baseline,
     cards_count: None,
     is_restricted,
+    is_public,
     allowed_groups,
     allowed_users,
     can_manage: !is_baseline, // Admin-only function, so can manage all non-baseline packs
@@ -1236,14 +1238,58 @@ pub async fn make_pack_public(
     }
   };
 
-  // Remove all permissions for this pack (makes it available to all)
-  if let Err(e) = auth_db::clear_pack_permissions(&auth_db, &pack_id) {
-    tracing::warn!("Failed to clear pack permissions: {}", e);
+  // Set the public flag for this pack
+  if let Err(e) = auth_db::set_pack_public(&auth_db, &pack_id, true) {
+    tracing::warn!("Failed to make pack public: {}", e);
     if is_htmx_request(&headers) {
       return Html(error_notification(&format!("Failed to make pack public: {}", e))).into_response();
     }
     return Redirect::to("/settings").into_response();
   }
+
+  tracing::info!("Made pack {} public", pack_id);
+
+  // Return HTMX partial or redirect
+  if is_htmx_request(&headers) {
+    match render_pack_permissions(&auth_db, &pack_id) {
+      Some(html) => return Html(html).into_response(),
+      None => return Html(error_notification("Failed to render permissions.")).into_response(),
+    }
+  }
+  Redirect::to("/settings").into_response()
+}
+
+/// Make a pack private (admin-only unless specific users/groups assigned)
+pub async fn make_pack_private(
+  auth: AuthContext,
+  State(state): State<AppState>,
+  headers: HeaderMap,
+  Path(pack_id): Path<String>,
+) -> Response {
+  if !auth.is_admin {
+    return Redirect::to("/settings").into_response();
+  }
+
+  let auth_db = match state.auth_db.lock() {
+    Ok(conn) => conn,
+    Err(_) => {
+      if is_htmx_request(&headers) {
+        return Html(error_notification("Database error")).into_response();
+      }
+      return Redirect::to("/settings").into_response();
+    }
+  };
+
+  // Remove the public flag for this pack
+  if let Err(e) = auth_db::set_pack_public(&auth_db, &pack_id, false) {
+    tracing::warn!("Failed to make pack private: {}", e);
+    if is_htmx_request(&headers) {
+      return Html(error_notification(&format!("Failed to make pack private: {}", e))).into_response();
+    }
+    return Redirect::to("/settings").into_response();
+  }
+
+  tracing::info!("Made pack {} private", pack_id);
 
   // Return HTMX partial or redirect
   if is_htmx_request(&headers) {

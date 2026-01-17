@@ -9,9 +9,7 @@
  */
 import { test, expect, setupScenario } from '../fixtures/auth';
 
-// Skip offline tests - they have complex async dependencies (WASM, IndexedDB, multiple JS modules)
-// that make them fragile in E2E environments. TODO: Revisit with better test infrastructure.
-test.describe.skip('Offline Study Mode', () => {
+test.describe('Offline Study Mode', () => {
   test('can enable offline mode in settings', async ({ authenticatedPage }) => {
     await authenticatedPage.goto('/settings');
 
@@ -210,17 +208,32 @@ test.describe.skip('Offline Study Mode', () => {
     });
     expect(pendingBefore).toBeGreaterThan(0);
 
-    // Go back to home - this triggers auto-sync after 2s delay
+    // Go back to home - this triggers sync prompt after stability delay
     await authenticatedPage.goto('/');
 
-    // Wait for auto-sync notification to appear (shows "Syncing offline progress...")
-    // The sync happens automatically - no manual button click needed
-    const notification = authenticatedPage.locator('#offline-sync-notification');
-    await expect(notification).toBeVisible({ timeout: 5000 });
+    // Set short stability delay for testing
+    await authenticatedPage.evaluate(() => {
+      window.OfflineSyncTestAPI.setStabilityDelay(100);
+    });
 
-    // Wait for sync to complete and notification to show success then dismiss
-    // The notification shows "Synced X reviews" briefly then auto-dismisses
-    await expect(notification).toContainText(/Sync/, { timeout: 10000 });
+    // Simulate coming online to trigger stability timer
+    await authenticatedPage.evaluate(() => {
+      window.OfflineSyncTestAPI.simulateOnline();
+    });
+
+    // Wait for sync prompt modal to appear
+    const syncPrompt = authenticatedPage.locator('#sync-prompt-modal');
+    await expect(syncPrompt).toBeVisible({ timeout: 5000 });
+
+    // Verify pending count is shown
+    const countEl = authenticatedPage.locator('#sync-prompt-count');
+    await expect(countEl).toBeVisible();
+
+    // Click sync now
+    await authenticatedPage.click('#sync-now-btn');
+
+    // Modal should close and sync notification should appear briefly
+    await expect(syncPrompt).toBeHidden({ timeout: 10000 });
   });
 
   test('auto-sync clears pending reviews from IndexedDB', async ({ authenticatedPage, testUser }) => {
@@ -251,15 +264,31 @@ test.describe.skip('Offline Study Mode', () => {
       await authenticatedPage.locator('.submit-btn').click();
     }
 
-    // Navigate to trigger auto-sync
+    // Navigate to trigger sync flow
     await authenticatedPage.goto('/');
 
-    // Wait for sync to complete (notification appears and then dismisses)
-    const notification = authenticatedPage.locator('#offline-sync-notification');
-    await expect(notification).toBeVisible({ timeout: 5000 });
+    // Set short stability delay for testing
+    await authenticatedPage.evaluate(() => {
+      window.OfflineSyncTestAPI.setStabilityDelay(100);
+    });
 
-    // Wait for notification to disappear (indicates sync completed and auto-dismissed)
-    await expect(notification).not.toBeVisible({ timeout: 10000 });
+    // Simulate coming online to trigger stability timer
+    await authenticatedPage.evaluate(() => {
+      window.OfflineSyncTestAPI.simulateOnline();
+    });
+
+    // Wait for sync prompt modal to appear
+    const syncPrompt = authenticatedPage.locator('#sync-prompt-modal');
+    await expect(syncPrompt).toBeVisible({ timeout: 5000 });
+
+    // Click sync now to trigger the sync
+    await authenticatedPage.click('#sync-now-btn');
+
+    // Wait for modal to close (sync completed)
+    await expect(syncPrompt).toBeHidden({ timeout: 10000 });
+
+    // Wait a bit for IndexedDB to be cleared
+    await authenticatedPage.waitForTimeout(500);
 
     // Verify IndexedDB responses were cleared after sync
     const hasResponses = await authenticatedPage.evaluate(async () => {
@@ -281,7 +310,7 @@ test.describe.skip('Offline Study Mode', () => {
   });
 });
 
-test.describe.skip('Offline Study - No Session', () => {
+test.describe('Offline Study - No Session', () => {
   test('shows no session message when none downloaded', async ({ authenticatedPage }) => {
     // Clear any existing IndexedDB data
     await authenticatedPage.evaluate(async () => {

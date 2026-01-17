@@ -11,7 +11,7 @@
 'use strict';
 
 // Bump version to trigger update
-const CACHE_VERSION = '25';
+const CACHE_VERSION = '26';
 const CACHE_NAMES = {
   static: `kr-static-${CACHE_VERSION}`,
   pages: `kr-pages-${CACHE_VERSION}`,
@@ -44,7 +44,7 @@ const PRECACHE_STATIC = [
 
 // CDN resources to precache
 const PRECACHE_CDN = [
-  'https://unpkg.com/htmx.org@2.0.4',
+  'https://unpkg.com/htmx.org@2.0.4/dist/htmx.min.js',
   'https://code.iconify.design/iconify-icon/2.1.0/iconify-icon.min.js'
 ];
 

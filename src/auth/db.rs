@@ -1083,6 +1083,32 @@ pub fn set_pack_globally_enabled(conn: &Connection, pack_id: &str, enabled: bool
     Ok(())
 }
 
+/// Check if a pack is public (available to all users)
+pub fn is_pack_public(conn: &Connection, pack_id: &str) -> Result<bool> {
+    let count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM pack_permissions WHERE pack_id = ?1 AND group_id = '' AND allowed = 1",
+        params![pack_id],
+        |row| row.get(0),
+    )?;
+    Ok(count > 0)
+}
+
+/// Make a pack public (available to all users)
+pub fn set_pack_public(conn: &Connection, pack_id: &str, public: bool) -> Result<()> {
+    if public {
+        conn.execute(
+            "INSERT OR REPLACE INTO pack_permissions (pack_id, group_id, allowed) VALUES (?1, '', 1)",
+            params![pack_id],
+        )?;
+    } else {
+        conn.execute(
+            "DELETE FROM pack_permissions WHERE pack_id = ?1 AND group_id = ''",
+            params![pack_id],
+        )?;
+    }
+    Ok(())
+}
+
 /// Check if a user can access a pack.
 /// Returns true if any of the following conditions are met:
 /// - Pack is globally enabled AND user is an admin

@@ -18,6 +18,7 @@
 
   var updateNotification = null;
   var registration = null;
+  var precacheTriggered = false;
 
   /**
    * Show update notification toast
@@ -153,11 +154,14 @@
         }
       });
 
-      // Trigger precaching when on home page (after SW is ready)
-      if (window.location.pathname === '/') {
+      // Trigger precaching when on home page (after SW is ready, only once per session)
+      if (window.location.pathname === '/' && !precacheTriggered) {
         navigator.serviceWorker.ready.then(function() {
-          // Small delay to let SW fully initialize
-          setTimeout(triggerPrecache, 1000);
+          if (!precacheTriggered) {
+            precacheTriggered = true;
+            // Small delay to let SW fully initialize
+            setTimeout(triggerPrecache, 1000);
+          }
         });
       }
     }).catch(function(error) {
@@ -167,8 +171,9 @@
     // Handle controller change (new SW took over)
     navigator.serviceWorker.addEventListener('controllerchange', function() {
       console.log('[SW Register] Controller changed');
-      // Trigger precache after controller change if on home page
-      if (window.location.pathname === '/') {
+      // Trigger precache after controller change if on home page (only once per session)
+      if (window.location.pathname === '/' && !precacheTriggered) {
+        precacheTriggered = true;
         setTimeout(triggerPrecache, 500);
       }
     });

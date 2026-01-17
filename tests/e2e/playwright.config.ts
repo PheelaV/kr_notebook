@@ -60,6 +60,8 @@ const TEST_SUITES: TestSuite[] = [
   { name: 'menu-visibility', testMatch: 'menu-visibility.spec.ts' },
   { name: 'navbar-dropdown', testMatch: 'navbar-dropdown.spec.ts' },
   { name: 'offline-study', testMatch: 'offline-study.spec.ts' },
+  { name: 'offline-sync', testMatch: 'offline-sync.spec.ts' },
+  { name: 'lesson-filtering', testMatch: 'lesson-filtering.spec.ts' },
   {
     name: 'fresh-install',
     testMatch: 'fresh-install.spec.ts',

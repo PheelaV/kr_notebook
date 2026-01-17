@@ -95,6 +95,19 @@ class TestPackPermissions:
             f"Expected 403 or redirect (303), got {response.status_code}"
         )
 
+    def test_make_pack_private_requires_admin(self, authenticated_client: TestClient):
+        """POST /settings/pack/{pack_id}/make-private requires admin."""
+        response = authenticated_client.post(
+            "/settings/pack/test-pack/make-private",
+            data={},
+        )
+
+        # Regular users should get 403 or redirect to /settings
+        # 200 is NOT acceptable
+        assert response.status_code in (303, 403), (
+            f"Expected 403 or redirect (303), got {response.status_code}"
+        )
+
 
 class TestUserPackPermissions:
     """Individual user pack permission tests."""
