@@ -64,38 +64,97 @@ pub(crate) fn is_korean(s: &str) -> bool {
   })
 }
 
-/// Generate multiple choice options for a card
-/// For vocabulary cards (with pack_id and lesson), gets distractors from the same lesson
-/// For Hangul cards, gets distractors from the same tier
+/// Generate multiple choice options for a card with fallback expansion.
+///
+/// Uses a 3-phase approach to ensure enough distractors:
+/// 1. Same tier/lesson (most relevant)
+/// 2. Adjacent tiers ±1 (for Hangul cards)
+/// 3. Any Korean answer (last resort)
 pub(crate) fn generate_choices(card: &Card, all_cards: &[Card]) -> Vec<String> {
   let correct = card.main_answer.clone();
+  let needed = config::DISTRACTOR_COUNT; // 3 distractors for 4 total choices
 
-  // For vocabulary cards, filter by lesson; for Hangul, filter by tier
-  let mut distractors: Vec<String> = if card.pack_id.is_some() && card.lesson.is_some() {
+  let mut distractors: Vec<String> = Vec::new();
+  let mut rng = rand::rng();
+
+  // --- Phase 1: Same tier/lesson (most relevant) ---
+  if card.pack_id.is_some() && card.lesson.is_some() {
     // Vocabulary card: get distractors from same pack/lesson
-    all_cards
+    let same_lesson: Vec<String> = all_cards
       .iter()
       .filter(|c| {
         c.id != card.id
           && c.pack_id == card.pack_id
           && c.lesson == card.lesson
           && is_korean(&c.main_answer)
+          && c.main_answer != correct
       })
       .map(|c| c.main_answer.clone())
-      .collect()
+      .collect();
+    distractors.extend(same_lesson);
   } else {
     // Hangul card: get distractors from same tier
-    all_cards
+    let same_tier: Vec<String> = all_cards
       .iter()
-      .filter(|c| c.id != card.id && c.tier == card.tier && is_korean(&c.main_answer))
+      .filter(|c| {
+        c.id != card.id
+          && c.tier == card.tier
+          && is_korean(&c.main_answer)
+          && c.main_answer != correct
+      })
       .map(|c| c.main_answer.clone())
-      .collect()
-  };
+      .collect();
+    distractors.extend(same_tier);
+  }
 
-  // Shuffle and take distractors
-  let mut rng = rand::rng();
+  // Deduplicate and shuffle phase 1 results
+  distractors.sort();
+  distractors.dedup();
   distractors.shuffle(&mut rng);
-  distractors.truncate(config::DISTRACTOR_COUNT);
+
+  // --- Phase 2: Adjacent tiers (if needed, Hangul cards only) ---
+  if distractors.len() < needed && card.pack_id.is_none() {
+    let adjacent: Vec<String> = all_cards
+      .iter()
+      .filter(|c| {
+        c.id != card.id
+          && (c.tier == card.tier.saturating_sub(1) || c.tier == card.tier + 1)
+          && is_korean(&c.main_answer)
+          && c.main_answer != correct
+          && !distractors.contains(&c.main_answer)
+      })
+      .map(|c| c.main_answer.clone())
+      .collect();
+
+    let mut adjacent_unique: Vec<String> = adjacent;
+    adjacent_unique.sort();
+    adjacent_unique.dedup();
+    adjacent_unique.shuffle(&mut rng);
+    distractors.extend(adjacent_unique);
+  }
+
+  // --- Phase 3: Any Korean answer (last resort) ---
+  if distractors.len() < needed {
+    let any_korean: Vec<String> = all_cards
+      .iter()
+      .filter(|c| {
+        c.id != card.id
+          && is_korean(&c.main_answer)
+          && c.main_answer != correct
+          && !distractors.contains(&c.main_answer)
+      })
+      .map(|c| c.main_answer.clone())
+      .collect();
+
+    let mut any_unique: Vec<String> = any_korean;
+    any_unique.sort();
+    any_unique.dedup();
+    any_unique.shuffle(&mut rng);
+    distractors.extend(any_unique);
+  }
+
+  // Take only what we need
+  distractors.truncate(needed);
 
   // Combine correct answer with distractors
   let mut choices = vec![correct];
