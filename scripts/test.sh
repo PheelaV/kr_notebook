@@ -11,10 +11,12 @@
 #   ./scripts/test.sh integration  # Unit + integration
 #   ./scripts/test.sh all          # Everything (default)
 #   ./scripts/test.sh e2e          # E2E tests only (for debugging)
+#   ./scripts/test.sh all --fail-fast  # Exit on first failure
 #
 # Environment:
 #   PRESERVE_TEST_ENV=1  - Keep test data after run (for debugging)
 #   VERBOSE=1            - Show verbose output
+#   FAIL_FAST=1          - Exit on first test suite failure
 #
 
 set -euo pipefail
@@ -30,8 +32,20 @@ NC='\033[0m' # No Color
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-# Test level (default: all)
-LEVEL="${1:-all}"
+# Parse arguments
+LEVEL="all"
+FAIL_FAST="${FAIL_FAST:-0}"
+
+for arg in "$@"; do
+    case "$arg" in
+        --fail-fast|-x)
+            FAIL_FAST=1
+            ;;
+        unit|integration|all|e2e)
+            LEVEL="$arg"
+            ;;
+    esac
+done
 
 # Track results and timings
 RUST_UNIT_RESULT=0
@@ -63,6 +77,16 @@ log_error() {
 
 log_info() {
     echo -e "${YELLOW}→ $1${NC}"
+}
+
+# Exit early if fail-fast is enabled and last result was failure
+check_fail_fast() {
+    local result=$1
+    if [[ $FAIL_FAST -eq 1 ]] && [[ $result -ne 0 ]]; then
+        log_error "Stopping early due to --fail-fast"
+        print_summary
+        exit 1
+    fi
 }
 
 format_time() {
@@ -241,29 +265,41 @@ result_icon() {
 # Main
 main() {
     TOTAL_START_TIME=$SECONDS
-    log_header "Test Runner - Level: $LEVEL"
+    local mode_suffix=""
+    [[ $FAIL_FAST -eq 1 ]] && mode_suffix=" (fail-fast)"
+    log_header "Test Runner - Level: $LEVEL$mode_suffix"
 
     case "$LEVEL" in
         unit)
             run_rust_unit_tests || true
+            check_fail_fast $RUST_UNIT_RESULT
             run_python_unit_tests || true
+            check_fail_fast $PYTHON_UNIT_RESULT
             ;;
         integration)
             run_rust_unit_tests || true
+            check_fail_fast $RUST_UNIT_RESULT
             run_python_unit_tests || true
+            check_fail_fast $PYTHON_UNIT_RESULT
             run_integration_tests || true
+            check_fail_fast $INTEGRATION_RESULT
             ;;
         all)
             run_rust_unit_tests || true
+            check_fail_fast $RUST_UNIT_RESULT
             run_python_unit_tests || true
+            check_fail_fast $PYTHON_UNIT_RESULT
             run_integration_tests || true
+            check_fail_fast $INTEGRATION_RESULT
             run_e2e_tests || true
+            check_fail_fast $E2E_RESULT
             ;;
         e2e)
             run_e2e_tests || true
+            check_fail_fast $E2E_RESULT
             ;;
         *)
-            echo "Usage: $0 {unit|integration|all|e2e}"
+            echo "Usage: $0 {unit|integration|all|e2e} [--fail-fast|-x]"
             echo ""
             echo "Levels:"
             echo "  unit        - Rust + Python unit tests (fast)"
@@ -271,9 +307,13 @@ main() {
             echo "  all         - Unit + Integration + E2E (default)"
             echo "  e2e         - E2E tests only (for debugging)"
             echo ""
+            echo "Options:"
+            echo "  --fail-fast, -x  - Exit on first test suite failure"
+            echo ""
             echo "Environment:"
             echo "  PRESERVE_TEST_ENV=1  - Keep test data after run"
             echo "  VERBOSE=1            - Show verbose output"
+            echo "  FAIL_FAST=1          - Exit on first test suite failure"
             exit 1
             ;;
     esac
