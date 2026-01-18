@@ -43,6 +43,7 @@ pub enum StudyMode {
   Listening,         // Audio recognition
   PracticeFlip,      // Practice mode with flip
   PracticeInteractive, // Practice mode with typing/selection
+  Override,          // User override of previous ruling
 }
 
 impl StudyMode {
@@ -53,6 +54,7 @@ impl StudyMode {
       Self::Listening => "listening",
       Self::PracticeFlip => "practice_flip",
       Self::PracticeInteractive => "practice_interactive",
+      Self::Override => "override",
     }
   }
 
@@ -63,6 +65,7 @@ impl StudyMode {
       "listening" => Some(Self::Listening),
       "practice_flip" => Some(Self::PracticeFlip),
       "practice_interactive" => Some(Self::PracticeInteractive),
+      "override" => Some(Self::Override),
       _ => None,
     }
   }

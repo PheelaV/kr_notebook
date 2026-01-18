@@ -76,6 +76,7 @@ pub struct InteractiveCardTemplate {
   pub is_vocabulary: bool,     // true if this is a vocabulary card (from a pack)
   pub validated: bool,
   pub is_correct: bool,
+  pub is_partial: bool,        // true if PartialMatch (core correct, disambiguation missing)
   pub user_answer: String,
   pub quality: u8,
   pub hints_used: u8,
@@ -109,6 +110,7 @@ pub struct StudyInteractiveTemplate {
   pub is_vocabulary: bool,     // true if this is a vocabulary card (from a pack)
   pub validated: bool,
   pub is_correct: bool,
+  pub is_partial: bool,        // true if PartialMatch (core correct, disambiguation missing)
   pub user_answer: String,
   pub quality: u8,
   pub hints_used: u8,
@@ -151,6 +153,7 @@ pub struct PracticeTemplate {
   // Interactive mode fields
   pub validated: bool,
   pub is_correct: bool,
+  pub is_partial: bool,        // true if PartialMatch (core correct, disambiguation missing)
   pub user_answer: String,
   pub is_multiple_choice: bool,
   pub choices: Vec<String>,

@@ -2,18 +2,21 @@
 
 use askama::Template;
 use axum::extract::State;
+use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum::Form;
+use chrono::Utc;
+use rusqlite::params;
 use serde::Deserialize;
 
 use crate::auth::AuthContext;
 use crate::db::{self, LogOnError};
-use crate::domain::StudyMode;
+use crate::domain::{Card, ReviewDirection, StudyMode};
 use crate::handlers::NavContext;
 use crate::session;
 use crate::srs::{self, select_next_card};
 use crate::state::AppState;
-use crate::validation::{validate_answer, HintGenerator};
+use crate::validation::{validate_answer, AnswerResult, HintGenerator};
 
 #[cfg(feature = "profiling")]
 use crate::profiling::EventType;
@@ -182,6 +185,7 @@ pub async fn study_start_interactive(
         is_vocabulary: card.pack_id.is_some(),
         validated: false,
         is_correct: false,
+        is_partial: false,
         user_answer: String::new(),
         quality: 0,
         hints_used: 0,
@@ -219,6 +223,7 @@ pub async fn study_start_interactive(
     is_vocabulary: false,
     validated: false,
     is_correct: false,
+    is_partial: false,
     user_answer: String::new(),
     quality: 0,
     hints_used: 0,
@@ -274,7 +279,7 @@ pub async fn validate_answer_handler(
 
   if let Ok(Some(card)) = db::get_card_by_id(&conn, form.card_id) {
     // Use strict or fuzzy matching based on input method
-    let (is_correct, quality) = if form.input_method.is_strict() {
+    let (is_correct, is_partial, quality) = if form.input_method.is_strict() {
       // Multiple choice: exact match only
       let correct = form.answer == card.main_answer;
       let q = if correct {
@@ -286,11 +291,12 @@ pub async fn validate_answer_handler(
       } else {
         0 // Again
       };
-      (correct, q)
+      (correct, false, q)
     } else {
       // Text input: fuzzy matching allows typos
       let result = validate_answer(&form.answer, &card.main_answer);
-      (result.is_correct(), result.to_quality(form.hints_used > 0))
+      let is_partial = matches!(result, AnswerResult::PartialMatch);
+      (result.is_correct(), is_partial, result.to_quality(form.hints_used > 0))
     };
 
     #[cfg(feature = "profiling")]
@@ -416,6 +422,7 @@ pub async fn validate_answer_handler(
       is_vocabulary: card.pack_id.is_some(),
       validated: true,
       is_correct,
+      is_partial,
       user_answer: form.answer,
       quality,
       hints_used: form.hints_used,
@@ -524,6 +531,7 @@ pub async fn next_card_interactive(
         is_vocabulary: next_card.pack_id.is_some(),
         validated: false,
         is_correct: false,
+        is_partial: false,
         user_answer: String::new(),
         quality: 0,
         hints_used: 0,
@@ -646,6 +654,7 @@ pub async fn submit_review_interactive(
         is_vocabulary: next_card.pack_id.is_some(),
         validated: false,
         is_correct: false,
+        is_partial: false,
         user_answer: String::new(),
         quality: 0,
         hints_used: 0,
@@ -749,4 +758,197 @@ pub async fn toggle_focus_mode(
     let _ = db::set_focus_mode_enabled(&conn, form.enabled);
   }
   Redirect::to("/study")
+}
+
+// ============================================================================
+// OVERRIDE RULING
+// ============================================================================
+
+/// Form for overriding a card ruling
+#[derive(Deserialize)]
+pub struct OverrideForm {
+  pub card_id: i64,
+  pub quality: u8,
+  #[serde(default)]
+  pub suggested_answer: String,
+  #[serde(default)]
+  pub card_front: String,
+  #[serde(default)]
+  pub expected_answer: String,
+  #[serde(default)]
+  pub user_answer: String,
+  #[serde(default)]
+  pub original_result: String,
+  #[serde(default)]
+  pub pack_id: String,
+}
+
+/// Override the ruling on the last reviewed card
+pub async fn override_ruling_handler(
+  State(state): State<AppState>,
+  auth: AuthContext,
+  Form(form): Form<OverrideForm>,
+) -> StatusCode {
+  // Validate quality is in valid range (security: reject invalid values)
+  if ![0, 2, 4, 5].contains(&form.quality) {
+    tracing::warn!("Invalid quality score {} from user {}", form.quality, auth.username);
+    return StatusCode::BAD_REQUEST;
+  }
+
+  // Validate card_id is positive (security: reject obviously invalid IDs)
+  if form.card_id <= 0 {
+    tracing::warn!("Invalid card_id {} from user {}", form.card_id, auth.username);
+    return StatusCode::BAD_REQUEST;
+  }
+
+  // Get user's learning.db connection
+  let user_conn = match auth.user_db.lock() {
+    Ok(c) => c,
+    Err(_) => return StatusCode::INTERNAL_SERVER_ERROR,
+  };
+
+  // Verify the card exists and belongs to this user (security: prevent spoofed card IDs)
+  let card = match db::get_card_by_id(&user_conn, form.card_id) {
+    Ok(Some(c)) => c,
+    Ok(None) => {
+      tracing::warn!("Card {} not found for user {}", form.card_id, auth.username);
+      return StatusCode::NOT_FOUND;
+    }
+    Err(e) => {
+      tracing::error!("Failed to get card {}: {}", form.card_id, e);
+      return StatusCode::INTERNAL_SERVER_ERROR;
+    }
+  };
+
+  // 1. Record corrective review in user's learning.db
+  let is_correct = form.quality >= 2;
+  if let Err(e) = db::insert_review_log_enhanced(
+    &user_conn,
+    form.card_id,
+    form.quality,
+    is_correct,
+    StudyMode::Override,
+    ReviewDirection::KrToRom, // Default direction for overrides
+    None, // response_time_ms
+    0,    // hints_used
+  ) {
+    tracing::error!("Failed to record override review: {}", e);
+    return StatusCode::INTERNAL_SERVER_ERROR;
+  }
+
+  // 2. Update card SRS state
+  if let Err(e) = update_card_srs_for_override(&user_conn, &card, form.quality) {
+    tracing::error!("Failed to update SRS for override: {}", e);
+    // Continue anyway - review was logged
+  }
+
+  // 3. Save suggestion to app.db for admin review (sanitized)
+  if let Ok(app_conn) = state.auth_db.lock() {
+    if let Err(e) = save_validation_suggestion(&app_conn, &form, &auth.username) {
+      tracing::error!("Failed to save validation suggestion: {}", e);
+      // Don't fail the request - the override still worked
+    }
+  }
+
+  tracing::info!(
+    "User {} overrode ruling for card {} with quality {}",
+    auth.username,
+    form.card_id,
+    form.quality
+  );
+
+  StatusCode::OK
+}
+
+/// Save a validation suggestion to app.db for admin review
+/// Input sanitization: truncate long strings to prevent abuse
+fn save_validation_suggestion(
+  conn: &rusqlite::Connection,
+  form: &OverrideForm,
+  username: &str,
+) -> rusqlite::Result<()> {
+  // Truncate strings to reasonable lengths (security: prevent storage abuse)
+  fn truncate(s: &str, max_len: usize) -> &str {
+    if s.len() <= max_len {
+      s
+    } else {
+      // Find a valid UTF-8 boundary
+      let mut end = max_len;
+      while end > 0 && !s.is_char_boundary(end) {
+        end -= 1;
+      }
+      &s[..end]
+    }
+  }
+
+  let now = Utc::now().to_rfc3339();
+  conn.execute(
+    "INSERT INTO validation_suggestions
+     (card_id, pack_id, card_front, expected_answer, user_answer,
+      suggested_answer, original_result, user_quality, username, created_at)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+    params![
+      form.card_id,
+      truncate(&form.pack_id, 100),
+      truncate(&form.card_front, 500),
+      truncate(&form.expected_answer, 500),
+      truncate(&form.user_answer, 500),
+      truncate(&form.suggested_answer, 500),
+      truncate(&form.original_result, 50),
+      form.quality,
+      truncate(username, 100),
+      now,
+    ],
+  )?;
+  Ok(())
+}
+
+/// Update card SRS state based on override quality
+fn update_card_srs_for_override(
+  conn: &rusqlite::Connection,
+  card: &Card,
+  quality: u8,
+) -> rusqlite::Result<()> {
+  // Use FSRS or SM-2 based on user setting
+  let use_fsrs = db::get_use_fsrs(conn).unwrap_or(true);
+  let focus_mode = db::is_focus_mode_active(conn).unwrap_or(false);
+
+  if use_fsrs {
+    let desired_retention =
+      db::get_desired_retention(conn).log_warn_default("Failed to get desired retention");
+    let result = srs::calculate_fsrs_review(card, quality, desired_retention, focus_mode);
+
+    db::update_card_after_fsrs_review(
+      conn,
+      card.id,
+      result.next_review,
+      result.stability,
+      result.difficulty,
+      result.state,
+      result.learning_step,
+      result.repetitions,
+      quality >= 2,
+    )?;
+  } else {
+    let result = srs::sm2::calculate_review(
+      quality,
+      card.ease_factor,
+      card.interval_days,
+      card.repetitions,
+      card.learning_step,
+    );
+
+    db::update_card_after_review(
+      conn,
+      card.id,
+      result.ease_factor,
+      result.interval_days,
+      result.learning_step,
+      result.next_review,
+      result.repetitions,
+      quality >= 2,
+    )?;
+  }
+
+  Ok(())
 }
