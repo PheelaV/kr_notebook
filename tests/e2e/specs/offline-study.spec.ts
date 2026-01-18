@@ -287,24 +287,26 @@ test.describe('Offline Study Mode', () => {
     // Wait for modal to close (sync completed)
     await expect(syncPrompt).toBeHidden({ timeout: 10000 });
 
-    // Wait a bit for IndexedDB to be cleared
-    await authenticatedPage.waitForTimeout(500);
-
-    // Verify IndexedDB responses were cleared after sync
-    const hasResponses = await authenticatedPage.evaluate(async () => {
-      return new Promise((resolve) => {
-        const request = indexedDB.open('kr-offline-study', 1);
-        request.onsuccess = () => {
-          const db = request.result;
-          const tx = db.transaction('responses', 'readonly');
-          const store = tx.objectStore('responses');
-          const count = store.count();
-          count.onsuccess = () => resolve(count.result > 0);
-          count.onerror = () => resolve(false);
-        };
-        request.onerror = () => resolve(false);
+    // Poll for IndexedDB to be cleared (webkit is slower)
+    let hasResponses = true;
+    for (let i = 0; i < 10; i++) {
+      await authenticatedPage.waitForTimeout(200);
+      hasResponses = await authenticatedPage.evaluate(async () => {
+        return new Promise((resolve) => {
+          const request = indexedDB.open('kr-offline-study', 1);
+          request.onsuccess = () => {
+            const db = request.result;
+            const tx = db.transaction('responses', 'readonly');
+            const store = tx.objectStore('responses');
+            const count = store.count();
+            count.onsuccess = () => resolve(count.result > 0);
+            count.onerror = () => resolve(false);
+          };
+          request.onerror = () => resolve(false);
+        });
       });
-    });
+      if (!hasResponses) break;
+    }
 
     expect(hasResponses).toBe(false);
   });

@@ -41,7 +41,7 @@
           {{ entry.front }}
         </div>
         <div class="char-romanization text-lg font-medium text-indigo-600 dark:text-indigo-400 mb-1">
-          {{ entry.main_answer }}
+          {{ entry.main_answer|filters::format_answer_display|safe }}
         </div>
         {% if let Some(desc) = entry.description %}
         <div class="char-description text-xs text-gray-500 dark:text-gray-400 text-center line-clamp-2">

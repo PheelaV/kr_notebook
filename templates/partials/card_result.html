@@ -3,13 +3,23 @@
 
    Required context variables:
    - is_correct: bool - Whether the answer was correct
+   - is_partial: bool - Whether the answer was a partial match (core correct, disambiguation missing)
    - is_multiple_choice: bool - Whether this was multiple choice (affects text size)
    - user_answer: String - The user's submitted answer
    - main_answer: String - The correct answer
    - description: Option<String> - Optional description/hint about the answer
 #}
 <div class="mb-4">
-  {% if is_correct %}
+  {% if is_partial %}
+  {# Partial match: core correct but disambiguation missing #}
+  <div data-result="partial" class="flex items-center justify-center gap-2 text-amber-600 dark:text-amber-400 mb-2">
+    <iconify-icon icon="heroicons:exclamation-triangle" width="32" height="32"></iconify-icon>
+    <span class="text-2xl font-bold">Close!</span>
+  </div>
+  <div class="text-sm text-amber-600 dark:text-amber-400 mb-3 text-center">
+    You got the core meaning! Add the disambiguation for full credit.
+  </div>
+  {% elif is_correct %}
   <div data-result="correct" class="flex items-center justify-center gap-2 text-green-600 dark:text-green-400 mb-2">
     <iconify-icon icon="heroicons:check" width="32" height="32"></iconify-icon>
     <span class="text-2xl font-bold">Correct!</span>
@@ -22,13 +32,13 @@
   {% endif %}
 
   <div class="text-xl text-gray-600 dark:text-gray-300 mb-2">
-    {% if !is_correct %}
+    {% if !is_correct || is_partial %}
     <span class="text-gray-500 dark:text-gray-400">You answered: </span>
-    <span data-user-answer class="text-red-500 {% if is_multiple_choice %}text-4xl{% endif %}">{{ user_answer }}</span>
+    <span data-user-answer class="{% if is_partial %}text-amber-500 shake{% else %}text-red-500{% endif %} {% if is_multiple_choice %}text-4xl{% endif %}">{{ user_answer }}</span>
     <br>
     {% endif %}
     <span class="text-gray-500 dark:text-gray-400">Correct answer: </span>
-    <span data-correct-answer class="text-indigo-600 dark:text-indigo-400 font-semibold {% if is_multiple_choice %}text-4xl{% endif %}">{{ main_answer }}</span>
+    <span data-correct-answer class="text-indigo-600 dark:text-indigo-400 font-semibold {% if is_multiple_choice %}text-4xl{% endif %}">{{ main_answer|filters::format_answer_display|safe }}</span>
   </div>
 
   {% if let Some(desc) = description %}
