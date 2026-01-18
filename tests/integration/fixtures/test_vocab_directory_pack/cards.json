@@ -1,0 +1,16 @@
+[
+  {
+    "front": "테스트",
+    "main_answer": "test",
+    "card_type": "Vocabulary",
+    "tier": 5,
+    "section": 1
+  },
+  {
+    "front": "단어",
+    "main_answer": "word",
+    "card_type": "Vocabulary",
+    "tier": 5,
+    "section": 2
+  }
+]
