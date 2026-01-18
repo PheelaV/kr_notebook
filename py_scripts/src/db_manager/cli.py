@@ -1968,8 +1968,8 @@ def get_pack_lesson_counts(pack_id: str, data_dir: str | None, as_json: bool) ->
     Outputs lesson:count pairs. Use --json for machine-readable output.
 
     Example:
-        db-manager get-pack-lesson-counts test_lesson_pack
-        db-manager get-pack-lesson-counts krnb_htsk_voc1_pack --json
+        db-manager get-pack-lesson-counts my_vocab_pack
+        db-manager get-pack-lesson-counts my_vocab_pack --json
         db-manager get-pack-lesson-counts test_pack --data-dir data/test/e2e
     """
     import json

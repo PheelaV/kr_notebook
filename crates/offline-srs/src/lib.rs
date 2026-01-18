@@ -2,6 +2,7 @@
 //!
 //! Provides answer validation and FSRS scheduling that can run in the browser.
 
+use std::collections::HashSet;
 use wasm_bindgen::prelude::*;
 use chrono::{DateTime, Utc};
 use rs_fsrs::{FSRS, Card, Rating};
@@ -14,30 +15,218 @@ pub use console_error_panic_hook::set_once as set_panic_hook;
 // Answer Validation (ported from src/validation.rs)
 // ============================================================================
 
+/// British/American spelling equivalences (normalized to American)
+static SPELLING_EQUIVALENCES: &[(&str, &str)] = &[
+    ("colour", "color"),
+    ("behaviour", "behavior"),
+    ("favour", "favor"),
+    ("honour", "honor"),
+    ("centre", "center"),
+    ("fibre", "fiber"),
+    ("grey", "gray"),
+    ("defence", "defense"),
+    ("licence", "license"),
+    ("favourite", "favorite"),
+    ("organise", "organize"),
+    ("realise", "realize"),
+    ("mum", "mom"),
+];
+
+/// Contraction expansions (normalized to expanded form)
+static CONTRACTIONS: &[(&str, &str)] = &[
+    ("i'm", "i am"),
+    ("you're", "you are"),
+    ("he's", "he is"),
+    ("she's", "she is"),
+    ("it's", "it is"),
+    ("we're", "we are"),
+    ("they're", "they are"),
+    ("isn't", "is not"),
+    ("aren't", "are not"),
+    ("don't", "do not"),
+    ("doesn't", "does not"),
+    ("didn't", "did not"),
+    ("can't", "cannot"),
+    ("won't", "will not"),
+    ("wouldn't", "would not"),
+    ("couldn't", "could not"),
+    ("shouldn't", "should not"),
+];
+
 /// Result of answer validation
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum AnswerResult {
+    /// Full match (core + disambiguation if present)
     Correct,
+    /// Core matched but disambiguation missing - knowledge gap
+    PartialMatch,
+    /// Close enough (typo tolerance) - execution error
     CloseEnough,
+    /// Wrong answer
     Incorrect,
 }
 
 impl AnswerResult {
+    pub fn is_correct(&self) -> bool {
+        !matches!(self, Self::Incorrect)
+    }
+
+    /// Convert to quality rating for SRS
     pub fn to_quality(&self, used_hint: bool) -> u8 {
         match (self, used_hint) {
             (Self::Correct, false) => 4,
-            (Self::Correct, true) => 2,
-            (Self::CloseEnough, _) => 2,
+            (Self::Correct, true) => 3,
+            (Self::CloseEnough, false) => 4, // Typo - no penalty
+            (Self::CloseEnough, true) => 3,
+            (Self::PartialMatch, _) => 2,    // Knowledge gap
             (Self::Incorrect, _) => 0,
         }
     }
+
+    /// Whether to trigger shake/retry opportunity
+    pub fn allows_retry(&self) -> bool {
+        matches!(self, Self::PartialMatch)
+    }
+}
+
+/// Parsed answer structure with semantic types
+#[derive(Debug, Clone, Default)]
+pub struct ParsedAnswer {
+    pub core: String,
+    pub variants: Vec<String>,
+    pub suffix: Option<String>,
+    pub disambiguation: Option<String>,
+    pub info: Option<String>,
+    pub is_phonetic_modifier: bool,
+}
+
+/// Parse answer using bracket grammar
+fn parse_answer_grammar(main_answer: &str) -> ParsedAnswer {
+    let mut result = ParsedAnswer::default();
+    let input = main_answer.trim();
+
+    // Check for phonetic modifiers
+    if is_phonetic_modifier_answer(input) {
+        result.is_phonetic_modifier = true;
+        result.core = input.to_string();
+        return result;
+    }
+
+    let mut core_parts: Vec<String> = Vec::new();
+    let mut i = 0;
+    let chars: Vec<char> = input.chars().collect();
+
+    while i < chars.len() {
+        match chars[i] {
+            '[' => {
+                if let Some(end) = find_closing_bracket(&chars, i, '[', ']') {
+                    let content: String = chars[i + 1..end].iter().collect();
+                    for item in content.split(',') {
+                        let trimmed = item.trim();
+                        if !trimmed.is_empty() {
+                            result.variants.push(trimmed.to_string());
+                        }
+                    }
+                    i = end + 1;
+                } else {
+                    core_parts.push(chars[i].to_string());
+                    i += 1;
+                }
+            }
+            '<' => {
+                if let Some(end) = find_closing_bracket(&chars, i, '<', '>') {
+                    let content: String = chars[i + 1..end].iter().collect();
+                    result.disambiguation = Some(content.trim().to_string());
+                    i = end + 1;
+                } else {
+                    core_parts.push(chars[i].to_string());
+                    i += 1;
+                }
+            }
+            '(' => {
+                if let Some(end) = find_closing_bracket(&chars, i, '(', ')') {
+                    let has_space_before = i > 0 && chars[i - 1] == ' ';
+                    let content: String = chars[i + 1..end].iter().collect();
+                    if !has_space_before && i > 0 {
+                        result.suffix = Some(content.trim().to_string());
+                    } else {
+                        result.info = Some(content.trim().to_string());
+                    }
+                    i = end + 1;
+                } else {
+                    core_parts.push(chars[i].to_string());
+                    i += 1;
+                }
+            }
+            _ => {
+                core_parts.push(chars[i].to_string());
+                i += 1;
+            }
+        }
+    }
+
+    result.core = core_parts.join("").trim().to_string();
+    result
+}
+
+fn find_closing_bracket(chars: &[char], start: usize, open: char, close: char) -> Option<usize> {
+    let mut depth = 0;
+    for (i, &ch) in chars.iter().enumerate().skip(start) {
+        if ch == open { depth += 1; }
+        else if ch == close {
+            depth -= 1;
+            if depth == 0 { return Some(i); }
+        }
+    }
+    None
+}
+
+fn is_phonetic_modifier_answer(answer: &str) -> bool {
+    let normalized = answer.to_lowercase();
+    normalized.contains("(tense)") || normalized.contains("(aspirated)")
+}
+
+/// Expand contractions to full form
+fn expand_contractions(input: &str) -> String {
+    input
+        .split_whitespace()
+        .map(|word| {
+            for (contraction, expanded) in CONTRACTIONS {
+                if word == *contraction { return expanded.to_string(); }
+            }
+            word.to_string()
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// Normalize British spellings to American
+fn normalize_spellings(input: &str) -> String {
+    input
+        .split_whitespace()
+        .map(|word| {
+            for (british, american) in SPELLING_EQUIVALENCES {
+                if word == *british { return american.to_string(); }
+            }
+            word.to_string()
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// Normalize an answer for comparison
 fn normalize_answer(input: &str) -> String {
-    input
+    let mut result = input
         .to_lowercase()
         .trim()
+        .chars()
+        .filter(|c| c.is_alphanumeric() || *c == ' ' || *c == '/' || *c == '\'')
+        .collect::<String>();
+
+    result = expand_contractions(&result);
+    result = normalize_spellings(&result);
+
+    result
         .chars()
         .filter(|c| c.is_alphanumeric() || *c == ' ' || *c == '/')
         .collect::<String>()
@@ -46,34 +235,85 @@ fn normalize_answer(input: &str) -> String {
         .join(" ")
 }
 
-/// Extract acceptable answer variants from main answer
-fn extract_variants(main_answer: &str) -> Vec<String> {
-    let mut variants = Vec::new();
-    let normalized = normalize_answer(main_answer);
-    variants.push(normalized.clone());
+/// Generate all valid answer forms from parsed structure
+fn generate_valid_answers(parsed: &ParsedAnswer) -> (Vec<String>, Vec<String>) {
+    let mut partial_answers: Vec<String> = Vec::new();
 
-    if main_answer.contains(" / ") || main_answer.contains("/") {
-        let parts: Vec<&str> = main_answer
-            .split('/')
-            .map(|s| s.trim())
-            .filter(|s| !s.is_empty())
-            .collect();
+    let normalized_core = normalize_answer(&parsed.core);
+    if !normalized_core.is_empty() {
+        partial_answers.push(normalized_core.clone());
+    }
 
-        for part in &parts {
-            let normalized_part = normalize_answer(part);
-            if !normalized_part.is_empty() && !variants.contains(&normalized_part) {
-                variants.push(normalized_part);
-            }
-        }
-
-        let joined = parts.join("/");
-        let normalized_joined = normalize_answer(&joined);
-        if !variants.contains(&normalized_joined) {
-            variants.push(normalized_joined);
+    for variant in &parsed.variants {
+        let normalized = normalize_answer(variant);
+        if !normalized.is_empty() && !partial_answers.contains(&normalized) {
+            partial_answers.push(normalized);
         }
     }
 
-    variants
+    if let Some(ref suffix) = parsed.suffix {
+        let with_suffix = format!("{}{}", parsed.core, suffix);
+        let normalized = normalize_answer(&with_suffix);
+        if !normalized.is_empty() && !partial_answers.contains(&normalized) {
+            partial_answers.push(normalized);
+        }
+    }
+
+    if parsed.core.contains(',') {
+        let parts: Vec<&str> = parsed.core.split(',').map(|s| s.trim()).collect();
+        for part in &parts {
+            let normalized = normalize_answer(part);
+            if !normalized.is_empty() && !partial_answers.contains(&normalized) {
+                partial_answers.push(normalized);
+            }
+        }
+    }
+
+    if parsed.core.contains('/') {
+        let parts: Vec<&str> = parsed.core.split('/').map(|s| s.trim()).collect();
+        for part in &parts {
+            let normalized = normalize_answer(part);
+            if !normalized.is_empty() && !partial_answers.contains(&normalized) {
+                partial_answers.push(normalized);
+            }
+        }
+        let joined = parts.join("/");
+        let normalized = normalize_answer(&joined);
+        if !normalized.is_empty() && !partial_answers.contains(&normalized) {
+            partial_answers.push(normalized);
+        }
+    }
+
+    let full_answers = if let Some(ref disambig) = parsed.disambiguation {
+        let mut full = Vec::new();
+        let normalized_disambig = normalize_answer(disambig);
+        for partial in &partial_answers {
+            let forward = format!("{} {}", partial, normalized_disambig);
+            let backward = format!("{} {}", normalized_disambig, partial);
+            if !full.contains(&forward) { full.push(forward); }
+            if !full.contains(&backward) { full.push(backward); }
+        }
+        full
+    } else {
+        partial_answers.clone()
+    };
+
+    (full_answers, partial_answers)
+}
+
+/// Check if user input matches any permutation/subset of comma-separated terms
+fn matches_permutation(user_input: &str, expected: &str) -> bool {
+    let input_words: HashSet<String> = user_input.split_whitespace().map(|s| s.to_string()).collect();
+    if input_words.is_empty() { return false; }
+
+    let expected_words: HashSet<String> = expected
+        .split(|c| c == ',' || c == ' ')
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .collect();
+
+    input_words.iter().all(|word| expected_words.contains(word))
 }
 
 /// Levenshtein distance between two strings
@@ -126,53 +366,116 @@ fn parse_phonetic_answer(answer: &str) -> (String, Option<String>) {
 
 /// Core validation logic
 fn validate_answer_internal(user_input: &str, correct_answer: &str) -> AnswerResult {
-    let normalized_input = normalize_answer(user_input);
+    // Parse user input to strip any grammar syntax they might have typed
+    // (e.g., if they type "I, me <formal>" exactly as displayed)
+    let input_parsed = parse_answer_grammar(user_input);
+    let normalized_input = normalize_answer(&input_parsed.core);
 
     if normalized_input.is_empty() {
         return AnswerResult::Incorrect;
     }
 
-    let variants = extract_variants(correct_answer);
+    let parsed = parse_answer_grammar(correct_answer);
 
-    if variants.contains(&normalized_input) {
+    // Special handling for phonetic modifiers
+    if parsed.is_phonetic_modifier {
+        return validate_phonetic_answer(&normalized_input, correct_answer);
+    }
+
+    // Check if user provided disambiguation matches expected
+    // Accept both <formal> syntax and (formal) syntax from user input
+    let user_has_correct_disambig = if let Some(expected_disambig) = &parsed.disambiguation {
+        let expected_norm = normalize_answer(expected_disambig);
+        // Check user's <disambiguation> syntax
+        let from_disambig = input_parsed
+            .disambiguation
+            .as_ref()
+            .map(|d| normalize_answer(d) == expected_norm)
+            .unwrap_or(false);
+        // Also check user's (info) syntax - user may type (formal) instead of <formal>
+        let from_info = input_parsed
+            .info
+            .as_ref()
+            .map(|i| normalize_answer(i) == expected_norm)
+            .unwrap_or(false);
+        from_disambig || from_info
+    } else {
+        false
+    };
+
+    let (full_answers, partial_answers) = generate_valid_answers(&parsed);
+
+    // Exact match with full answers
+    if full_answers.contains(&normalized_input) {
         return AnswerResult::Correct;
     }
 
-    let (correct_letter, correct_modifier) = parse_phonetic_answer(correct_answer);
-
-    if correct_modifier.is_some() {
-        let (input_letter, input_modifier) = parse_phonetic_answer(user_input);
-
-        if input_letter != correct_letter {
-            return AnswerResult::Incorrect;
-        }
-
-        if let (Some(correct_mod), Some(input_mod)) = (&correct_modifier, &input_modifier) {
-            let mod_distance = levenshtein_distance(input_mod, correct_mod);
-            if mod_distance == 0 { return AnswerResult::Correct; }
-            if mod_distance == 1 { return AnswerResult::CloseEnough; }
-            return AnswerResult::Incorrect;
-        }
-
-        if input_modifier.is_none() && correct_modifier.is_some() {
-            return AnswerResult::Incorrect;
+    // Permutation matching for comma-separated synonyms
+    if parsed.core.contains(',') {
+        if matches_permutation(&normalized_input, &parsed.core) {
+            // If user also provided correct disambiguation, it's full correct
+            if user_has_correct_disambig {
+                return AnswerResult::Correct;
+            }
+            return if parsed.disambiguation.is_some() {
+                AnswerResult::PartialMatch
+            } else {
+                AnswerResult::Correct
+            };
         }
     }
 
-    for variant in &variants {
-        let distance = levenshtein_distance(&normalized_input, variant);
-        let char_count = variant.chars().count();
+    // Partial answer matches (core without disambiguation)
+    if parsed.disambiguation.is_some() && partial_answers.contains(&normalized_input) {
+        // If user also provided correct disambiguation, it's full correct
+        if user_has_correct_disambig {
+            return AnswerResult::Correct;
+        }
+        return AnswerResult::PartialMatch;
+    }
+
+    // Typo tolerance
+    let all_answers: Vec<&String> = full_answers.iter().chain(partial_answers.iter()).collect();
+
+    for answer in &all_answers {
+        let distance = levenshtein_distance(&normalized_input, answer);
+        let char_count = answer.chars().count();
         let max_distance = match char_count {
             0..=1 => 0,
             2..=4 => 1,
-            _ => 1,
+            _ => 2,
         };
         if distance > 0 && distance <= max_distance {
+            if parsed.disambiguation.is_some() && partial_answers.contains(*answer) {
+                return AnswerResult::PartialMatch;
+            }
             return AnswerResult::CloseEnough;
         }
     }
 
     AnswerResult::Incorrect
+}
+
+/// Validate phonetic answers with modifiers (tense/aspirated)
+fn validate_phonetic_answer(normalized_input: &str, correct_answer: &str) -> AnswerResult {
+    let (correct_letter, correct_modifier) = parse_phonetic_answer(correct_answer);
+    let (input_letter, input_modifier) = parse_phonetic_answer(normalized_input);
+
+    if input_letter != correct_letter {
+        return AnswerResult::Incorrect;
+    }
+
+    if let Some(ref correct_mod) = correct_modifier {
+        if let Some(ref input_mod) = input_modifier {
+            let mod_distance = levenshtein_distance(input_mod, correct_mod);
+            if mod_distance == 0 { return AnswerResult::Correct; }
+            if mod_distance == 1 { return AnswerResult::CloseEnough; }
+            return AnswerResult::Incorrect;
+        }
+        return AnswerResult::Incorrect;
+    }
+
+    AnswerResult::Correct
 }
 
 // ============================================================================
@@ -362,20 +665,22 @@ pub fn init() {
 
 /// Validate a user's answer against the correct answer.
 ///
-/// Returns JSON: {"result": "Correct"|"CloseEnough"|"Incorrect", "quality": 0-4}
+/// Returns JSON: {"result": "Correct"|"PartialMatch"|"CloseEnough"|"Incorrect", "quality": 0-4}
 #[wasm_bindgen]
 pub fn validate_answer(user_input: &str, correct_answer: &str, used_hint: bool) -> String {
     let result = validate_answer_internal(user_input, correct_answer);
     let quality = result.to_quality(used_hint);
 
     let response = serde_json::json!({
-        "result": match result {
+        "result": match &result {
             AnswerResult::Correct => "Correct",
+            AnswerResult::PartialMatch => "PartialMatch",
             AnswerResult::CloseEnough => "CloseEnough",
             AnswerResult::Incorrect => "Incorrect",
         },
         "quality": quality,
-        "is_correct": matches!(result, AnswerResult::Correct | AnswerResult::CloseEnough),
+        "is_correct": result.is_correct(),
+        "allows_retry": result.allows_retry(),
     });
 
     response.to_string()
@@ -476,9 +781,64 @@ mod tests {
 
     #[test]
     fn test_quality_mapping() {
+        // Correct answers
         assert_eq!(AnswerResult::Correct.to_quality(false), 4);
-        assert_eq!(AnswerResult::Correct.to_quality(true), 2);
+        assert_eq!(AnswerResult::Correct.to_quality(true), 3);
+        // CloseEnough (typo) - no penalty
+        assert_eq!(AnswerResult::CloseEnough.to_quality(false), 4);
+        assert_eq!(AnswerResult::CloseEnough.to_quality(true), 3);
+        // PartialMatch - knowledge gap
+        assert_eq!(AnswerResult::PartialMatch.to_quality(false), 2);
+        assert_eq!(AnswerResult::PartialMatch.to_quality(true), 2);
+        // Incorrect
         assert_eq!(AnswerResult::Incorrect.to_quality(false), 0);
+    }
+
+    #[test]
+    fn test_allows_retry() {
+        assert!(!AnswerResult::Correct.allows_retry());
+        assert!(!AnswerResult::CloseEnough.allows_retry());
+        assert!(AnswerResult::PartialMatch.allows_retry());
+        assert!(!AnswerResult::Incorrect.allows_retry());
+    }
+
+    #[test]
+    fn test_bracket_variants() {
+        assert_eq!(validate_answer_internal("to be", "to be [is, am, are]"), AnswerResult::Correct);
+        assert_eq!(validate_answer_internal("is", "to be [is, am, are]"), AnswerResult::Correct);
+        assert_eq!(validate_answer_internal("am", "to be [is, am, are]"), AnswerResult::Correct);
+    }
+
+    #[test]
+    fn test_suffix_syntax() {
+        assert_eq!(validate_answer_internal("eye", "eye(s)"), AnswerResult::Correct);
+        assert_eq!(validate_answer_internal("eyes", "eye(s)"), AnswerResult::Correct);
+    }
+
+    #[test]
+    fn test_disambiguation_partial_match() {
+        assert_eq!(validate_answer_internal("that far", "that <far>"), AnswerResult::Correct);
+        assert_eq!(validate_answer_internal("that", "that <far>"), AnswerResult::PartialMatch);
+    }
+
+    #[test]
+    fn test_permutation_matching() {
+        assert_eq!(validate_answer_internal("sofa", "sofa, couch"), AnswerResult::Correct);
+        assert_eq!(validate_answer_internal("couch", "sofa, couch"), AnswerResult::Correct);
+        assert_eq!(validate_answer_internal("sofa couch", "sofa, couch"), AnswerResult::Correct);
+        assert_eq!(validate_answer_internal("couch sofa", "sofa, couch"), AnswerResult::Correct);
+    }
+
+    #[test]
+    fn test_spelling_normalization() {
+        assert_eq!(validate_answer_internal("color", "colour"), AnswerResult::Correct);
+        assert_eq!(validate_answer_internal("favourite", "favorite"), AnswerResult::Correct);
+    }
+
+    #[test]
+    fn test_contraction_normalization() {
+        assert_eq!(validate_answer_internal("I am", "I'm"), AnswerResult::Correct);
+        assert_eq!(validate_answer_internal("don't", "do not"), AnswerResult::Correct);
     }
 
     #[test]
@@ -501,5 +861,14 @@ mod tests {
         let json = validate_answer("g", "g / k", false);
         assert!(json.contains("\"result\":\"Correct\""));
         assert!(json.contains("\"quality\":4"));
+        assert!(json.contains("\"allows_retry\":false"));
+    }
+
+    #[test]
+    fn test_wasm_validate_partial_match() {
+        let json = validate_answer("that", "that <far>", false);
+        assert!(json.contains("\"result\":\"PartialMatch\""));
+        assert!(json.contains("\"quality\":2"));
+        assert!(json.contains("\"allows_retry\":true"));
     }
 }

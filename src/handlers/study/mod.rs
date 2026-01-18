@@ -15,8 +15,8 @@ use crate::domain::{Card, ReviewDirection};
 // Re-export public items
 pub use classic::{study_start, submit_review};
 pub use interactive::{
-  next_card_interactive, set_study_filter, study_start_interactive, submit_review_interactive,
-  toggle_focus_mode, validate_answer_handler,
+  next_card_interactive, override_ruling_handler, set_study_filter, study_start_interactive,
+  submit_review_interactive, toggle_focus_mode, validate_answer_handler, OverrideForm,
 };
 pub use offline::{download_session, sync_session, DownloadSessionRequest, SyncSessionRequest};
 pub use practice::{practice_next, practice_start, practice_validate};

@@ -163,6 +163,7 @@ pub async fn practice_start(
       mode,
       validated: false,
       is_correct: false,
+      is_partial: false,
       user_answer: String::new(),
       is_multiple_choice: is_korean,
       choices,
@@ -253,6 +254,7 @@ pub async fn practice_next(
         is_vocabulary: next_card.pack_id.is_some(),
         validated: false,
         is_correct: false,
+        is_partial: false,
         user_answer: String::new(),
         quality: 0,
         hints_used: 0,
@@ -361,6 +363,7 @@ pub async fn practice_validate(
     is_vocabulary: card.pack_id.is_some(),
     validated: true,
     is_correct,
+    is_partial: false, // Practice mode doesn't show partial matches
     user_answer: form.answer,
     quality: 0,
     hints_used: 0,

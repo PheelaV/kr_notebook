@@ -78,6 +78,46 @@
         </div>
         <div id="last-card-description" class="text-sm text-gray-500 dark:text-gray-400"></div>
         <div id="last-card-result" class="mt-2 text-sm font-medium"></div>
+
+        <!-- Override section (hidden initially) -->
+        <div id="override-section" class="hidden mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+          <div class="mb-3">
+            <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">
+              Your answer (edit if needed):
+            </label>
+            <input type="text" id="suggested-answer"
+                   class="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded
+                          bg-white dark:bg-gray-700 text-gray-900 dark:text-white
+                          focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                   placeholder="What should be accepted?">
+          </div>
+
+          <p class="text-sm text-gray-600 dark:text-gray-400 mb-2">How would you rate your answer?</p>
+          <div class="flex flex-wrap justify-center gap-2">
+            <button onclick="submitOverride(0)"
+                    class="px-3 py-1.5 text-sm bg-red-100 hover:bg-red-200 dark:bg-red-900/30 dark:hover:bg-red-900/50 text-red-800 dark:text-red-300 rounded">
+              Wrong
+            </button>
+            <button onclick="submitOverride(2)"
+                    class="px-3 py-1.5 text-sm bg-yellow-100 hover:bg-yellow-200 dark:bg-yellow-900/30 dark:hover:bg-yellow-900/50 text-yellow-800 dark:text-yellow-300 rounded">
+              Hard
+            </button>
+            <button onclick="submitOverride(4)"
+                    class="px-3 py-1.5 text-sm bg-green-100 hover:bg-green-200 dark:bg-green-900/30 dark:hover:bg-green-900/50 text-green-800 dark:text-green-300 rounded">
+              Correct
+            </button>
+            <button onclick="submitOverride(5)"
+                    class="px-3 py-1.5 text-sm bg-blue-100 hover:bg-blue-200 dark:bg-blue-900/30 dark:hover:bg-blue-900/50 text-blue-800 dark:text-blue-300 rounded">
+              Easy
+            </button>
+          </div>
+        </div>
+
+        <!-- Toggle button -->
+        <button id="show-override-btn" onclick="showOverrideSection()"
+                class="mt-3 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 underline">
+          Override ruling
+        </button>
       </div>
     </div>
   </div>
@@ -125,13 +165,17 @@
       const descEl = resultPhase.querySelector('[data-description]');
       const resultEl = resultPhase.querySelector('[data-result]');
 
+      const result = resultEl?.dataset.result || 'unknown';
+
       window.lastCardData = {
+        cardId: container.dataset.cardId,
         front: front.textContent.trim(),
         answer: answerEl ? answerEl.textContent.trim() : '',
         userAnswer: userAnswerEl ? userAnswerEl.textContent.trim() : '',
         description: descEl ? descEl.textContent.trim() : '',
-        isCorrect: resultEl?.dataset.result === 'correct',
-        isIncorrect: resultEl?.dataset.result === 'incorrect'
+        result: result,
+        isCorrect: result === 'correct',
+        isIncorrect: result === 'incorrect'
       };
 
       updateLastCardDisplay();
@@ -170,6 +214,74 @@
     } else {
       resultEl.textContent = '';
     }
+
+    // Reset override section when new card is shown
+    document.getElementById('override-section').classList.add('hidden');
+    document.getElementById('show-override-btn').classList.remove('hidden');
+  }
+
+  function showOverrideSection() {
+    document.getElementById('override-section').classList.remove('hidden');
+    document.getElementById('show-override-btn').classList.add('hidden');
+
+    // Prefill the suggestion input with user's original answer
+    const input = document.getElementById('suggested-answer');
+    if (window.lastCardData?.userAnswer) {
+      input.value = window.lastCardData.userAnswer;
+    }
+  }
+
+  async function submitOverride(quality) {
+    if (!window.lastCardData?.cardId) {
+      console.error('No card ID available for override');
+      return;
+    }
+
+    const suggestedAnswer = document.getElementById('suggested-answer').value.trim();
+
+    try {
+      const params = new URLSearchParams({
+        card_id: window.lastCardData.cardId,
+        quality: quality,
+        suggested_answer: suggestedAnswer,
+        card_front: window.lastCardData.front || '',
+        expected_answer: window.lastCardData.answer || '',
+        user_answer: window.lastCardData.userAnswer || '',
+        original_result: window.lastCardData.result || 'unknown'
+      });
+
+      const response = await fetch('/override-ruling', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: params.toString()
+      });
+
+      if (response.ok) {
+        // Update UI to show override was recorded
+        const section = document.getElementById('override-section');
+        section.innerHTML = '<p class="text-sm text-green-600 dark:text-green-400">Rating updated! Suggestion recorded.</p>';
+
+        // Update result display
+        updateOverrideResultDisplay(quality);
+      } else {
+        console.error('Override failed:', response.status);
+      }
+    } catch (err) {
+      console.error('Override failed:', err);
+    }
+  }
+
+  function updateOverrideResultDisplay(quality) {
+    const resultEl = document.getElementById('last-card-result');
+    const labels = { 0: 'Wrong', 2: 'Hard', 4: 'Correct', 5: 'Easy' };
+    const colors = {
+      0: 'text-red-600 dark:text-red-400',
+      2: 'text-yellow-600 dark:text-yellow-400',
+      4: 'text-green-600 dark:text-green-400',
+      5: 'text-blue-600 dark:text-blue-400'
+    };
+    resultEl.textContent = `${labels[quality]} (overridden)`;
+    resultEl.className = `mt-2 text-sm font-medium ${colors[quality]}`;
   }
 
   // Capture card data before HTMX swaps it out

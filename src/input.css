@@ -170,3 +170,103 @@
   opacity: 1;
   transform: translateY(0);
 }
+
+/* ============================================================================
+   Answer Grammar Visual Markers
+   Accessible visual indicators for answer grammar syntax
+   ============================================================================ */
+
+/* Variant marker: [a, b, c] and word(s) suffix
+   Shows ≈ symbol for acceptable alternatives */
+.variant-marker {
+  color: var(--color-blue-600);
+  font-style: normal;
+}
+.variant-marker::before {
+  content: "≈";
+  font-size: 0.75em;
+  margin-right: 0.125em;
+  vertical-align: super;
+  opacity: 0.7;
+}
+
+.dark .variant-marker {
+  color: var(--color-blue-400);
+}
+
+/* Disambiguation marker: <context>
+   Shows △ symbol for partial credit context */
+.disambig-marker {
+  color: var(--color-amber-600);
+  font-style: normal;
+}
+.disambig-marker::before {
+  content: "△";
+  font-size: 0.75em;
+  margin-right: 0.125em;
+  vertical-align: super;
+  opacity: 0.7;
+}
+
+.dark .disambig-marker {
+  color: var(--color-amber-400);
+}
+
+/* Info marker: (grammar info)
+   Shows ℹ symbol for supplementary information */
+.info-marker {
+  color: var(--color-gray-500);
+  font-style: italic;
+}
+.info-marker::before {
+  content: "ℹ";
+  font-size: 0.75em;
+  margin-right: 0.125em;
+  vertical-align: super;
+  opacity: 0.7;
+}
+
+.dark .info-marker {
+  color: var(--color-gray-400);
+}
+
+/* Shake animation for PartialMatch (retry opportunity) */
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  10%, 30%, 50%, 70%, 90% { transform: translateX(-4px); }
+  20%, 40%, 60%, 80% { transform: translateX(4px); }
+}
+
+.shake {
+  animation: shake 0.5s ease-in-out;
+}
+
+/* Answer input state indicators */
+.answer-input-correct {
+  border-color: var(--color-green-500) !important;
+  background-color: color-mix(in srgb, var(--color-green-500) 10%, transparent);
+}
+
+.answer-input-partial {
+  border-color: var(--color-amber-500) !important;
+  background-color: color-mix(in srgb, var(--color-amber-500) 10%, transparent);
+}
+
+.answer-input-incorrect {
+  border-color: var(--color-red-500) !important;
+  background-color: color-mix(in srgb, var(--color-red-500) 10%, transparent);
+}
+
+/* Focus mode: hide all markers for clean display */
+.focus-mode .variant-marker::before,
+.focus-mode .disambig-marker::before,
+.focus-mode .info-marker::before {
+  display: none;
+}
+
+.focus-mode .variant-marker,
+.focus-mode .disambig-marker,
+.focus-mode .info-marker {
+  color: inherit;
+  font-style: inherit;
+}

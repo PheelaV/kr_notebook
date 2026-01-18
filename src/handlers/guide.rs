@@ -27,6 +27,7 @@ pub async fn guide() -> Html<String> {
         TocItem { id: "hints".into(), short_label: "Hints".into(), full_label: "Using Hints".into() },
         TocItem { id: "srs".into(), short_label: "SRS".into(), full_label: "Spaced Repetition".into() },
         TocItem { id: "scoring".into(), short_label: "Scoring".into(), full_label: "Answer Scoring".into() },
+        TocItem { id: "override".into(), short_label: "Override".into(), full_label: "Override Ruling".into() },
         TocItem { id: "tiers".into(), short_label: "Tiers".into(), full_label: "Learning Tiers".into() },
         TocItem { id: "accelerated".into(), short_label: "Accelerated".into(), full_label: "Accelerated Mode".into() },
         TocItem { id: "focus".into(), short_label: "Focus".into(), full_label: "Focus Mode".into() },
@@ -38,6 +39,7 @@ pub async fn guide() -> Html<String> {
         TocItem { id: "content-packs".into(), short_label: "Packs".into(), full_label: "Content Packs".into() },
         TocItem { id: "large-packs".into(), short_label: "Large Packs".into(), full_label: "Learning Large Packs".into() },
         TocItem { id: "shortcuts".into(), short_label: "Shortcuts".into(), full_label: "Keyboard Shortcuts".into() },
+        TocItem { id: "attribution".into(), short_label: "Attribution".into(), full_label: "Content Attribution".into() },
     ];
 
     let template = GuideTemplate {

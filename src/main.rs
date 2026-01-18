@@ -167,6 +167,7 @@ async fn main() {
         .route("/next-card", post(handlers::next_card_interactive))
         .route("/study/filter", post(handlers::set_study_filter))
         .route("/study/focus", post(handlers::toggle_focus_mode))
+        .route("/override-ruling", post(handlers::override_ruling_handler))
         .route("/practice", get(handlers::practice_start))
         .route("/practice-next", post(handlers::practice_next))
         .route("/practice-validate", post(handlers::practice_validate))

@@ -179,8 +179,8 @@ pub use settings::{
   register_pack_path, unregister_pack_path, toggle_pack_path, browse_directories,
 };
 pub use study::{
-  next_card_interactive, practice_next, practice_start, practice_validate, set_study_filter,
-  study_start, submit_review, study_start_interactive, submit_review_interactive,
+  next_card_interactive, override_ruling_handler, practice_next, practice_start, practice_validate,
+  set_study_filter, study_start, submit_review, study_start_interactive, submit_review_interactive,
   toggle_focus_mode, validate_answer_handler,
   download_session, sync_session,
 };

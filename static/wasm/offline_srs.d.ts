@@ -26,7 +26,7 @@ export function init(): void;
 /**
  * Validate a user's answer against the correct answer.
  *
- * Returns JSON: {"result": "Correct"|"CloseEnough"|"Incorrect", "quality": 0-4}
+ * Returns JSON: {"result": "Correct"|"PartialMatch"|"CloseEnough"|"Incorrect", "quality": 0-4}
  */
 export function validate_answer(user_input: string, correct_answer: string, used_hint: boolean): string;
 

@@ -71,9 +71,139 @@ pub fn js_escape(s: impl std::fmt::Display, _: &dyn askama::Values) -> askama::R
     Ok(escape_js_string(&s.to_string()))
 }
 
+// ============================================================================
+// Answer Display Formatting
+// ============================================================================
+
+/// Core logic for formatting answer grammar for display with visual markers.
+///
+/// Transforms grammar syntax to HTML with accessibility markers:
+/// - `[a, b, c]` → `<span class="variant-marker" title="Acceptable variants">[a, b, c]</span>`
+/// - `word(s)` (suffix) → `word<span class="variant-marker" title="Optional suffix">(s)</span>`
+/// - `(info)` (space before) → `<span class="info-marker" title="Additional info">(info)</span>`
+/// - `<context>` → `<span class="disambig-marker" title="Disambiguation">&lt;context&gt;</span>`
+pub fn format_answer_display_core(answer: &str) -> String {
+    let mut result = String::new();
+    let chars: Vec<char> = answer.chars().collect();
+    let mut i = 0;
+
+    while i < chars.len() {
+        match chars[i] {
+            // Variants: [a, b, c]
+            '[' => {
+                if let Some(end) = find_closing(&chars, i, '[', ']') {
+                    let content: String = chars[i..=end].iter().collect();
+                    result.push_str(&format!(
+                        r#"<span class="variant-marker" title="Acceptable variants">{}</span>"#,
+                        html_escape(&content)
+                    ));
+                    i = end + 1;
+                } else {
+                    result.push(chars[i]);
+                    i += 1;
+                }
+            }
+            // Disambiguation: <context>
+            '<' => {
+                if let Some(end) = find_closing(&chars, i, '<', '>') {
+                    let content: String = chars[i + 1..end].iter().collect();
+                    result.push_str(&format!(
+                        r#"<span class="disambig-marker" title="Disambiguation">&lt;{}&gt;</span>"#,
+                        html_escape(&content)
+                    ));
+                    i = end + 1;
+                } else {
+                    result.push_str("&lt;");
+                    i += 1;
+                }
+            }
+            // Parentheses: either suffix or info
+            '(' => {
+                if let Some(end) = find_closing(&chars, i, '(', ')') {
+                    let content: String = chars[i..=end].iter().collect();
+                    let has_space_before = i > 0 && chars[i - 1] == ' ';
+
+                    if has_space_before {
+                        // Info marker (space before paren)
+                        result.push_str(&format!(
+                            r#"<span class="info-marker" title="Additional info">{}</span>"#,
+                            html_escape(&content)
+                        ));
+                    } else if i > 0 {
+                        // Suffix marker (no space before paren)
+                        result.push_str(&format!(
+                            r#"<span class="variant-marker" title="Optional suffix">{}</span>"#,
+                            html_escape(&content)
+                        ));
+                    } else {
+                        // At start of string, treat as info
+                        result.push_str(&format!(
+                            r#"<span class="info-marker" title="Additional info">{}</span>"#,
+                            html_escape(&content)
+                        ));
+                    }
+                    i = end + 1;
+                } else {
+                    result.push(chars[i]);
+                    i += 1;
+                }
+            }
+            '>' => {
+                result.push_str("&gt;");
+                i += 1;
+            }
+            c => {
+                result.push(c);
+                i += 1;
+            }
+        }
+    }
+
+    result
+}
+
+/// Find closing bracket, handling nesting
+fn find_closing(chars: &[char], start: usize, open: char, close: char) -> Option<usize> {
+    let mut depth = 0;
+    for (i, &ch) in chars.iter().enumerate().skip(start) {
+        if ch == open {
+            depth += 1;
+        } else if ch == close {
+            depth -= 1;
+            if depth == 0 {
+                return Some(i);
+            }
+        }
+    }
+    None
+}
+
+/// Basic HTML escaping for user content within markers
+fn html_escape(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+}
+
+/// Format answer for display with visual markers.
+/// This filter converts grammar syntax to HTML with accessibility indicators.
+///
+/// Usage in templates:
+/// ```html
+/// <span class="answer">{{ card.main_answer|format_answer_display|safe }}</span>
+/// ```
+#[askama::filter_fn]
+pub fn format_answer_display(
+    answer: impl std::fmt::Display,
+    _: &dyn askama::Values,
+) -> askama::Result<String> {
+    Ok(format_answer_display_core(&answer.to_string()))
+}
+
 #[cfg(test)]
 mod tests {
-    use super::escape_js_string;
+    use super::{escape_js_string, format_answer_display_core};
 
     // Note: We cannot easily test asset_url() as it depends on compile-time
     // generated hashes. We focus on testing escape_js_string() which is critical
@@ -218,5 +348,73 @@ mod tests {
         let input = "\\";
         let result = escape_js_string(input);
         assert!(result.len() > input.len());
+    }
+
+    // ============================================================================
+    // format_answer_display tests
+    // ============================================================================
+
+    #[test]
+    fn test_format_plain_text() {
+        let result = format_answer_display_core("hello world");
+        assert_eq!(result, "hello world");
+    }
+
+    #[test]
+    fn test_format_variants() {
+        let result = format_answer_display_core("to be [is, am, are]");
+        assert!(result.contains("variant-marker"));
+        assert!(result.contains("Acceptable variants"));
+        assert!(result.contains("[is, am, are]"));
+    }
+
+    #[test]
+    fn test_format_suffix() {
+        let result = format_answer_display_core("eye(s)");
+        assert!(result.contains("variant-marker"));
+        assert!(result.contains("Optional suffix"));
+        assert!(result.contains("(s)"));
+        // Should start with "eye" followed by the span
+        assert!(result.starts_with("eye<span"));
+    }
+
+    #[test]
+    fn test_format_info_marker() {
+        let result = format_answer_display_core("that (far)");
+        assert!(result.contains("info-marker"));
+        assert!(result.contains("Additional info"));
+        assert!(result.contains("(far)"));
+    }
+
+    #[test]
+    fn test_format_disambiguation() {
+        let result = format_answer_display_core("that <far>");
+        assert!(result.contains("disambig-marker"));
+        assert!(result.contains("Disambiguation"));
+        assert!(result.contains("&lt;far&gt;"));
+    }
+
+    #[test]
+    fn test_format_korean_with_romanization() {
+        let result = format_answer_display_core("소파 (so-pa)");
+        assert!(result.contains("소파"));
+        assert!(result.contains("info-marker"));
+        assert!(result.contains("(so-pa)"));
+    }
+
+    #[test]
+    fn test_format_complex() {
+        // Multiple elements
+        let result = format_answer_display_core("to be [is, am] (verb)");
+        assert!(result.contains("variant-marker"));
+        assert!(result.contains("info-marker"));
+    }
+
+    #[test]
+    fn test_format_escapes_html() {
+        // Make sure HTML in content is escaped
+        let result = format_answer_display_core("[<script>]");
+        assert!(result.contains("&lt;script&gt;"));
+        assert!(!result.contains("<script>"));
     }
 }

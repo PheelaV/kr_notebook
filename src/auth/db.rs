@@ -62,6 +62,9 @@ pub fn init_auth_schema(conn: &Connection) -> Result<()> {
     if current_version < 9 {
         migrate_v8_to_v9(conn)?;
     }
+    if current_version < 10 {
+        migrate_v9_to_v10(conn)?;
+    }
 
     // Seed baseline cards if card_definitions is empty (idempotent)
     seed_baseline_cards(conn)?;
@@ -318,6 +321,39 @@ fn migrate_v8_to_v9(conn: &Connection) -> Result<()> {
     )?;
 
     record_version(conn, 9, "Register baseline pack and add public permissions")?;
+    Ok(())
+}
+
+/// v9→v10: Add validation_suggestions table for user feedback on answer validation
+fn migrate_v9_to_v10(conn: &Connection) -> Result<()> {
+    tracing::info!("Running migration v9→v10: Add validation_suggestions table");
+
+    conn.execute_batch(
+        r#"
+        CREATE TABLE IF NOT EXISTS validation_suggestions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            card_id INTEGER NOT NULL,
+            pack_id TEXT,
+            card_front TEXT NOT NULL,
+            expected_answer TEXT NOT NULL,
+            user_answer TEXT NOT NULL,
+            suggested_answer TEXT NOT NULL,
+            original_result TEXT NOT NULL,
+            user_quality INTEGER NOT NULL,
+            username TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            reviewed_at TEXT,
+            admin_action TEXT
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_validation_suggestions_reviewed
+            ON validation_suggestions(reviewed_at);
+        CREATE INDEX IF NOT EXISTS idx_validation_suggestions_username
+            ON validation_suggestions(username);
+        "#,
+    )?;
+
+    record_version(conn, 10, "Add validation_suggestions table for user feedback")?;
     Ok(())
 }
 

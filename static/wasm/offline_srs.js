@@ -148,7 +148,7 @@ export function init() {
 /**
  * Validate a user's answer against the correct answer.
  *
- * Returns JSON: {"result": "Correct"|"CloseEnough"|"Incorrect", "quality": 0-4}
+ * Returns JSON: {"result": "Correct"|"PartialMatch"|"CloseEnough"|"Incorrect", "quality": 0-4}
  * @param {string} user_input
  * @param {string} correct_answer
  * @param {boolean} used_hint
