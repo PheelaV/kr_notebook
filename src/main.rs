@@ -184,6 +184,7 @@ async fn main() {
         // Reference pack routes (dynamic grammar content)
         .route("/reference/pack/{pack_id}", get(handlers::reference_pack_overview))
         .route("/reference/pack/{pack_id}/lesson/{lesson}", get(handlers::reference_lesson))
+        .route("/reference/pack/{pack_id}/quick-reference", get(handlers::quick_reference))
         // API endpoint for service worker to get dynamic precache URLs
         .route("/api/precache-urls", get(handlers::precache_urls))
         // Offline study mode API

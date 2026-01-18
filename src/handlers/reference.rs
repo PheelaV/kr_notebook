@@ -4,6 +4,7 @@ use axum::response::{Html, IntoResponse, Redirect, Response};
 
 use super::NavContext;
 use crate::auth::{AuthContext, OptionalAuth};
+use crate::content::reference::{ReferenceSection, SectionType};
 use crate::content::{load_reference, ReferenceLesson};
 use crate::filters;
 use crate::services::pack_manager;
@@ -15,6 +16,13 @@ pub struct GrammarPackSummary {
     pub pack_name: String,
     pub description: Option<String>,
     pub lesson_count: usize,
+}
+
+/// TOC item for navigation (reuses same structure as guide, settings)
+pub struct TocItem {
+    pub id: String,
+    pub short_label: String,
+    pub full_label: String,
 }
 
 #[derive(Template)]
@@ -164,6 +172,27 @@ pub struct ReferenceLessonTemplate {
     pub lesson: ReferenceLesson,
     pub prev_lesson: Option<u8>,
     pub next_lesson: Option<u8>,
+    pub toc_items: Vec<TocItem>,
+    pub toc_title: String,
+}
+
+/// A quick reference item extracted from a lesson.
+pub struct QuickReferenceItem {
+    pub lesson_number: u8,
+    pub lesson_title: String,
+    pub section: ReferenceSection,
+}
+
+/// Template for compiled quick reference page (all QuickReference sections from all lessons).
+#[derive(Template)]
+#[template(path = "reference/quick_reference.html")]
+pub struct QuickReferenceTemplate {
+    pub nav: NavContext,
+    pub pack_id: String,
+    pub pack_name: String,
+    pub items: Vec<QuickReferenceItem>,
+    pub toc_items: Vec<TocItem>,
+    pub toc_title: String,
 }
 
 /// Pack overview handler - list lessons in a grammar pack.
@@ -269,6 +298,25 @@ pub async fn reference_lesson(
         current_idx.and_then(|i| if i > 0 { lesson_nums.get(i - 1).copied() } else { None });
     let next_lesson = current_idx.and_then(|i| lesson_nums.get(i + 1).copied());
 
+    // Build TOC items from lesson sections
+    let toc_items: Vec<TocItem> = lesson
+        .sections
+        .iter()
+        .map(|s| {
+            // Truncate title for short_label (mobile chips)
+            let short_label = if s.title.chars().count() > 15 {
+                format!("{}…", s.title.chars().take(14).collect::<String>())
+            } else {
+                s.title.clone()
+            };
+            TocItem {
+                id: s.id.clone(),
+                short_label,
+                full_label: s.title.clone(),
+            }
+        })
+        .collect();
+
     let template = ReferenceLessonTemplate {
         nav: NavContext::from_auth(&auth),
         pack_id: pack.manifest.id.clone(),
@@ -276,6 +324,91 @@ pub async fn reference_lesson(
         lesson,
         prev_lesson,
         next_lesson,
+        toc_items,
+        toc_title: "Sections".to_string(),
+    };
+
+    Html(template.render().unwrap_or_default()).into_response()
+}
+
+/// Quick reference compilation handler - shows all QuickReference sections from all lessons.
+/// Only available for packs with more than one lesson.
+pub async fn quick_reference(
+    State(state): State<AppState>,
+    auth: AuthContext,
+    Path(pack_id): Path<String>,
+) -> Response {
+    let app_conn = match state.auth_db.lock() {
+        Ok(conn) => conn,
+        Err(_) => return Html(super::DB_ERROR_HTML.to_string()).into_response(),
+    };
+
+    // Find pack
+    let accessible_packs = pack_manager::get_accessible_packs(&app_conn, auth.user_id, None);
+    let pack = match accessible_packs.iter().find(|p| p.manifest.id == pack_id) {
+        Some(p) => p,
+        None => return Redirect::to("/reference").into_response(),
+    };
+
+    // Check for reference config
+    let ref_config = match pack.manifest.reference.as_ref() {
+        Some(c) => c,
+        None => return Redirect::to("/reference").into_response(),
+    };
+
+    // Load reference content
+    let data = match load_reference(&pack.path, ref_config) {
+        Ok(d) => d,
+        Err(e) => {
+            tracing::warn!("Failed to load reference pack {}: {}", pack_id, e);
+            return Html("<h1>Error loading reference content</h1>".to_string()).into_response();
+        }
+    };
+
+    // Redirect to pack overview if only 1 lesson (quick reference not useful)
+    if data.lessons.len() <= 1 {
+        return Redirect::to(&format!("/reference/pack/{}", pack_id)).into_response();
+    }
+
+    // Extract all QuickReference sections from all lessons
+    let mut items: Vec<QuickReferenceItem> = Vec::new();
+    for lesson in &data.lessons {
+        for section in &lesson.sections {
+            if section.section_type == SectionType::QuickReference {
+                items.push(QuickReferenceItem {
+                    lesson_number: lesson.number,
+                    lesson_title: lesson.title.clone(),
+                    section: section.clone(),
+                });
+            }
+        }
+    }
+
+    // Build TOC items from quick reference items
+    let toc_items: Vec<TocItem> = items
+        .iter()
+        .map(|item| {
+            let label = format!("L{}: {}", item.lesson_number, item.section.title);
+            let short_label = if label.chars().count() > 15 {
+                format!("{}…", label.chars().take(14).collect::<String>())
+            } else {
+                label.clone()
+            };
+            TocItem {
+                id: format!("lesson-{}-{}", item.lesson_number, item.section.id),
+                short_label,
+                full_label: label,
+            }
+        })
+        .collect();
+
+    let template = QuickReferenceTemplate {
+        nav: NavContext::from_auth(&auth),
+        pack_id: pack.manifest.id.clone(),
+        pack_name: pack.manifest.name.clone(),
+        items,
+        toc_items,
+        toc_title: "Quick Reference".to_string(),
     };
 
     Html(template.render().unwrap_or_default()).into_response()
@@ -321,6 +454,11 @@ pub async fn precache_urls(
 
                 // Try to load reference content to get lesson numbers
                 if let Ok(data) = load_reference(&pack.path, ref_config) {
+                    // Add quick reference URL if pack has more than 1 lesson
+                    if data.lessons.len() > 1 {
+                        urls.push(format!("/reference/pack/{}/quick-reference", pack_id));
+                    }
+
                     for lesson in &data.lessons {
                         urls.push(format!("/reference/pack/{}/lesson/{}", pack_id, lesson.number));
                     }
