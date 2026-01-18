@@ -325,6 +325,13 @@ def test_server(
         vocab_dir_pack_dst.parent.mkdir(parents=True, exist_ok=True)
         shutil.copytree(vocab_dir_pack_src, vocab_dir_pack_dst)
 
+    # Copy test vocabulary pack fixture (single-file format)
+    vocab_pack_src = project_root / "tests" / "integration" / "fixtures" / "test_vocabulary_pack"
+    if vocab_pack_src.exists():
+        vocab_pack_dst = test_data_dir / "content" / "packs" / "test_vocabulary_pack"
+        vocab_pack_dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(vocab_pack_src, vocab_pack_dst)
+
     # Spawn server with isolated data directory and worker-specific port
     env = os.environ.copy()
     env["DATA_DIR"] = str(test_data_dir)
