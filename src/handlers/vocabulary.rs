@@ -6,7 +6,7 @@
 use askama::Template;
 use axum::extract::State;
 use axum::response::{Html, IntoResponse, Redirect, Response};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
@@ -18,7 +18,7 @@ use crate::services::pack_manager::{self, PackFilter};
 use crate::state::AppState;
 
 /// Vocabulary entry with full metadata from vocabulary.json
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct VocabularyEntry {
     pub term: String,
     pub romanization: String,
@@ -36,13 +36,13 @@ pub struct VocabularyEntry {
     pub examples: Vec<Example>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Usage {
     pub korean: String,
     pub english: String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Example {
     pub korean: String,
     pub english: String,
@@ -52,6 +52,21 @@ pub struct Example {
 pub struct LessonGroup {
     pub lesson: u8,
     pub entries: Vec<VocabularyEntry>,
+}
+
+/// Flattened, searchable entry for Fuse.js (includes all text fields)
+#[derive(Debug, Clone, Serialize)]
+pub struct SearchableEntry {
+    pub id: String,
+    pub term: String,
+    pub romanization: String,
+    pub translation: String,
+    pub notes: String,
+    pub word_type: String,
+    pub lesson: u8,
+    pub pack_id: String,
+    pub usages_text: String,
+    pub examples_text: String,
 }
 
 /// A pack with its vocabulary content grouped by lesson
@@ -87,6 +102,8 @@ pub struct VocabularyTemplate {
     pub toc_items: Vec<PackTocItem>,
     pub total_count: usize,
     pub nav: NavContext,
+    /// JSON array of searchable entries for client-side Fuse.js search
+    pub vocabulary_json: String,
 }
 
 /// Load vocabulary from a pack's vocabulary.json file
@@ -94,6 +111,49 @@ fn load_vocabulary_from_path(pack_path: &Path) -> Option<Vec<VocabularyEntry>> {
     let vocab_path = pack_path.join("vocabulary.json");
     let content = fs::read_to_string(&vocab_path).ok()?;
     serde_json::from_str(&content).ok()
+}
+
+/// Build searchable entries from pack groups for Fuse.js client-side search
+fn build_searchable_entries(packs: &[PackGroup]) -> Vec<SearchableEntry> {
+    let mut entries = Vec::new();
+
+    for pack in packs {
+        for lesson_group in &pack.lessons {
+            for (entry_idx, entry) in lesson_group.entries.iter().enumerate() {
+                // Flatten common_usages to searchable text
+                let usages_text: String = entry
+                    .common_usages
+                    .iter()
+                    .map(|u| format!("{} {}", u.korean, u.english))
+                    .collect::<Vec<_>>()
+                    .join(" ");
+
+                // Flatten examples to searchable text
+                let examples_text: String = entry
+                    .examples
+                    .iter()
+                    .map(|e| format!("{} {}", e.korean, e.english))
+                    .collect::<Vec<_>>()
+                    .join(" ");
+
+                // ID format matches template: pack_id-lesson-entry_index (0-based within lesson)
+                entries.push(SearchableEntry {
+                    id: format!("{}-{}-{}", pack.pack_id, lesson_group.lesson, entry_idx),
+                    term: entry.term.clone(),
+                    romanization: entry.romanization.clone(),
+                    translation: entry.translation.clone(),
+                    notes: entry.notes.clone().unwrap_or_default(),
+                    word_type: entry.word_type.clone(),
+                    lesson: lesson_group.lesson,
+                    pack_id: pack.pack_id.clone(),
+                    usages_text,
+                    examples_text,
+                });
+            }
+        }
+    }
+
+    entries
 }
 
 /// Vocabulary library page handler
@@ -129,6 +189,7 @@ pub async fn vocabulary_library(
             toc_items: vec![],
             total_count: 0,
             nav: NavContext::from_auth(&auth),
+            vocabulary_json: "[]".to_string(),
         };
         return Html(template.render().unwrap_or_default()).into_response();
     }
@@ -194,12 +255,17 @@ pub async fn vocabulary_library(
         }
     }
 
+    // Build searchable entries for client-side search
+    let searchable_entries = build_searchable_entries(&pack_groups);
+    let vocabulary_json = serde_json::to_string(&searchable_entries).unwrap_or_else(|_| "[]".to_string());
+
     let template = VocabularyTemplate {
         pack_enabled: !pack_groups.is_empty(),
         packs: pack_groups,
         toc_items,
         total_count,
         nav: NavContext::from_auth(&auth),
+        vocabulary_json,
     };
 
     Html(template.render().unwrap_or_default()).into_response()

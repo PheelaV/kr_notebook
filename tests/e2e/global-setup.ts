@@ -105,6 +105,15 @@ function initTestEnv(name: string, dataDir: string): void {
     fs.cpSync(testPackSrc, testPackDst, { recursive: true });
     console.log(`  Copied test_lesson_pack to ${testPackDst}`);
   }
+
+  // Copy test vocabulary pack fixture for vocabulary search tests
+  const vocabPackSrc = path.join(PROJECT_ROOT, 'tests', 'integration', 'fixtures', 'test_vocabulary_pack');
+  if (fs.existsSync(vocabPackSrc)) {
+    const vocabPackDst = path.join(dataDir, 'content', 'packs', 'test_vocabulary_pack');
+    fs.mkdirSync(path.dirname(vocabPackDst), { recursive: true });
+    fs.cpSync(vocabPackSrc, vocabPackDst, { recursive: true });
+    console.log(`  Copied test_vocabulary_pack to ${vocabPackDst}`);
+  }
 }
 
 // Initialize fresh install environment (no database, just empty directory)

@@ -1,0 +1,14 @@
+{
+  "cards": [
+    {"front": "한국", "main_answer": "Korea", "description": "Country name", "card_type": "Vocabulary", "tier": 5, "is_reverse": false, "lesson": 1},
+    {"front": "사람", "main_answer": "person", "description": "Common noun", "card_type": "Vocabulary", "tier": 5, "is_reverse": false, "lesson": 1},
+    {"front": "음식", "main_answer": "food", "description": "Common noun", "card_type": "Vocabulary", "tier": 5, "is_reverse": false, "lesson": 1},
+    {"front": "물", "main_answer": "water", "description": "Common noun", "card_type": "Vocabulary", "tier": 5, "is_reverse": false, "lesson": 1},
+    {"front": "집", "main_answer": "house", "description": "Common noun", "card_type": "Vocabulary", "tier": 5, "is_reverse": false, "lesson": 1},
+    {"front": "먹다", "main_answer": "to eat", "description": "Action verb", "card_type": "Vocabulary", "tier": 5, "is_reverse": false, "lesson": 2},
+    {"front": "마시다", "main_answer": "to drink", "description": "Action verb", "card_type": "Vocabulary", "tier": 5, "is_reverse": false, "lesson": 2},
+    {"front": "가다", "main_answer": "to go", "description": "Action verb", "card_type": "Vocabulary", "tier": 5, "is_reverse": false, "lesson": 2},
+    {"front": "오다", "main_answer": "to come", "description": "Action verb", "card_type": "Vocabulary", "tier": 5, "is_reverse": false, "lesson": 2},
+    {"front": "보다", "main_answer": "to see", "description": "Action verb", "card_type": "Vocabulary", "tier": 5, "is_reverse": false, "lesson": 2}
+  ]
+}

@@ -270,3 +270,47 @@
   color: inherit;
   font-style: inherit;
 }
+
+/* Vocabulary search highlight flash
+   Accessible: uses outline + scale + shadow (not color-only) */
+@keyframes vocab-highlight-flash {
+  0% {
+    outline: 3px solid #6366f1;
+    outline-offset: 2px;
+    box-shadow: 0 0 20px rgba(99, 102, 241, 0.4);
+    transform: scale(1.02);
+  }
+  15% {
+    transform: scale(1);
+  }
+  30% {
+    transform: scale(1.01);
+  }
+  45% {
+    transform: scale(1);
+  }
+  100% {
+    outline: 3px solid #6366f1;
+    outline-offset: 2px;
+    box-shadow: 0 0 20px rgba(99, 102, 241, 0.4);
+    transform: scale(1);
+  }
+}
+
+.vocab-highlight {
+  animation: vocab-highlight-flash 0.5s ease-out forwards;
+  outline: 3px solid #6366f1;
+  outline-offset: 2px;
+  box-shadow: 0 0 20px rgba(99, 102, 241, 0.4);
+}
+
+/* Vocabulary search result focus state */
+.vocab-result:focus {
+  background-color: #eef2ff; /* indigo-50 */
+  outline: none;
+  box-shadow: inset 0 0 0 2px #6366f1; /* indigo-500 */
+}
+
+.dark .vocab-result:focus {
+  background-color: rgba(49, 46, 129, 0.3); /* indigo-900/30 */
+}

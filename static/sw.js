@@ -11,7 +11,7 @@
 'use strict';
 
 // Bump version to trigger update
-const CACHE_VERSION = '26';
+const CACHE_VERSION = '27';
 const CACHE_NAMES = {
   static: `kr-static-${CACHE_VERSION}`,
   pages: `kr-pages-${CACHE_VERSION}`,
@@ -28,6 +28,7 @@ const PRECACHE_STATIC = [
   '/static/js/offline-storage.js',
   '/static/js/offline-study.js',
   '/static/js/offline-sync.js',
+  '/static/js/vocabulary-search.js',
   '/static/wasm/offline_srs.js',
   '/static/wasm/offline_srs_bg.wasm',
   '/static/favicon.svg',
@@ -45,7 +46,8 @@ const PRECACHE_STATIC = [
 // CDN resources to precache
 const PRECACHE_CDN = [
   'https://unpkg.com/htmx.org@2.0.4/dist/htmx.min.js',
-  'https://code.iconify.design/iconify-icon/2.1.0/iconify-icon.min.js'
+  'https://code.iconify.design/iconify-icon/2.1.0/iconify-icon.min.js',
+  'https://cdn.jsdelivr.net/npm/fuse.js@7.0.0/dist/fuse.min.js'
 ];
 
 // Fallback pages to precache if dynamic fetch fails (static pages only)

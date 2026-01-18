@@ -1,0 +1,157 @@
+[
+  {
+    "term": "한국",
+    "romanization": "han-guk",
+    "translation": "Korea",
+    "word_type": "noun",
+    "lesson": 1,
+    "page": 1,
+    "common_usages": [
+      {
+        "korean": "한국 사람",
+        "english": "Korean person"
+      },
+      {
+        "korean": "한국어",
+        "english": "Korean language"
+      }
+    ],
+    "examples": [
+      {
+        "korean": "저는 한국에서 살아요",
+        "english": "I live in Korea"
+      }
+    ]
+  },
+  {
+    "term": "사람",
+    "romanization": "sa-ram",
+    "translation": "person",
+    "word_type": "noun",
+    "lesson": 1,
+    "page": 1,
+    "notes": "Can be combined with nationality to describe a person from that country",
+    "common_usages": [
+      {
+        "korean": "한국 사람",
+        "english": "Korean person"
+      },
+      {
+        "korean": "좋은 사람",
+        "english": "good person"
+      }
+    ]
+  },
+  {
+    "term": "음식",
+    "romanization": "eum-sik",
+    "translation": "food",
+    "word_type": "noun",
+    "lesson": 1,
+    "page": 1,
+    "common_usages": [
+      {
+        "korean": "한국 음식",
+        "english": "Korean food"
+      }
+    ],
+    "examples": [
+      {
+        "korean": "음식이 맛있어요",
+        "english": "The food is delicious"
+      }
+    ]
+  },
+  {
+    "term": "물",
+    "romanization": "mul",
+    "translation": "water",
+    "word_type": "noun",
+    "lesson": 1,
+    "page": 1
+  },
+  {
+    "term": "집",
+    "romanization": "jip",
+    "translation": "house, home",
+    "word_type": "noun",
+    "lesson": 1,
+    "page": 1,
+    "notes": "Also means home in the sense of where one lives"
+  },
+  {
+    "term": "먹다",
+    "romanization": "meok-da",
+    "translation": "to eat",
+    "word_type": "verb",
+    "lesson": 2,
+    "page": 1,
+    "examples": [
+      {
+        "korean": "밥을 먹어요",
+        "english": "I eat rice"
+      }
+    ]
+  },
+  {
+    "term": "마시다",
+    "romanization": "ma-si-da",
+    "translation": "to drink",
+    "word_type": "verb",
+    "lesson": 2,
+    "page": 1,
+    "examples": [
+      {
+        "korean": "물을 마셔요",
+        "english": "I drink water"
+      }
+    ]
+  },
+  {
+    "term": "가다",
+    "romanization": "ga-da",
+    "translation": "to go",
+    "word_type": "verb",
+    "lesson": 2,
+    "page": 1,
+    "common_usages": [
+      {
+        "korean": "학교에 가다",
+        "english": "to go to school"
+      },
+      {
+        "korean": "집에 가다",
+        "english": "to go home"
+      }
+    ]
+  },
+  {
+    "term": "오다",
+    "romanization": "o-da",
+    "translation": "to come",
+    "word_type": "verb",
+    "lesson": 2,
+    "page": 1,
+    "examples": [
+      {
+        "korean": "여기로 오세요",
+        "english": "Please come here"
+      }
+    ]
+  },
+  {
+    "term": "보다",
+    "romanization": "bo-da",
+    "translation": "to see, to watch",
+    "word_type": "verb",
+    "lesson": 2,
+    "page": 1,
+    "notes": "Can mean both to see and to watch depending on context",
+    "examples": [
+      {
+        "korean": "영화를 봐요",
+        "english": "I watch a movie"
+      }
+    ]
+  }
+]
