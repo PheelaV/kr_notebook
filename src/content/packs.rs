@@ -194,8 +194,16 @@ fn default_tier() -> u8 {
 /// A pack can have reference content alongside cards (e.g., vocabulary + grammar).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ReferenceConfig {
-    /// Path to reference content JSON file (relative to pack directory)
-    pub file: String,
+    /// Path to reference content JSON file (relative to pack directory).
+    /// Use this OR `directory`, not both.
+    #[serde(default)]
+    pub file: Option<String>,
+
+    /// Path to directory containing per-lesson JSON files (e.g., "reference").
+    /// Files should be named `lesson_01.json`, `lesson_02.json`, etc.
+    /// Use this OR `file`, not both.
+    #[serde(default)]
+    pub directory: Option<String>,
 
     /// Whether this pack contains pattern cards (for future SRS integration)
     #[serde(default)]
@@ -626,7 +634,7 @@ mod tests {
         assert!(manifest.validate().is_ok());
 
         let reference = manifest.reference.unwrap();
-        assert_eq!(reference.file, "reference.json");
+        assert_eq!(reference.file, Some("reference.json".to_string()));
         assert!(reference.has_patterns);
     }
 
@@ -646,7 +654,29 @@ mod tests {
 
         let manifest: PackManifest = serde_json::from_str(json).unwrap();
         let reference = manifest.reference.unwrap();
-        assert_eq!(reference.file, "grammar.json");
+        assert_eq!(reference.file, Some("grammar.json".to_string()));
         assert!(!reference.has_patterns); // default false
+    }
+
+    #[test]
+    fn test_reference_config_directory() {
+        let json = r#"{
+            "id": "ref-dir",
+            "name": "Reference Directory",
+            "type": "cards",
+            "cards": {
+                "file": "cards.json"
+            },
+            "reference": {
+                "directory": "reference",
+                "has_patterns": true
+            }
+        }"#;
+
+        let manifest: PackManifest = serde_json::from_str(json).unwrap();
+        let reference = manifest.reference.unwrap();
+        assert_eq!(reference.file, None);
+        assert_eq!(reference.directory, Some("reference".to_string()));
+        assert!(reference.has_patterns);
     }
 }

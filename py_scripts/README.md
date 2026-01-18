@@ -13,14 +13,38 @@ uv sync
 
 ### kr-scraper
 
-Scrapes pronunciation audio from howtostudykorean.com.
+Content generation tools for kr_notebook.
 
 ```bash
 uv run kr-scraper --help
+```
+
+#### Audio Scraping
+
+```bash
 uv run kr-scraper lesson1    # Scrape lesson 1 audio
 uv run kr-scraper lesson2    # Scrape lesson 2 audio
 uv run kr-scraper lesson3    # Scrape lesson 3 audio
 ```
+
+#### Vocabulary to Cards
+
+Convert vocabulary JSON to flashcard format:
+
+```bash
+# From a single vocabulary.json file
+uv run kr-scraper vocabulary path/to/vocabulary.json
+
+# From a directory of per-lesson files (lesson_01.json, lesson_02.json, etc.)
+uv run kr-scraper vocabulary path/to/vocabulary/
+
+# Options
+uv run kr-scraper vocabulary path/to/vocabulary.json --tier 5      # Set card tier
+uv run kr-scraper vocabulary path/to/vocabulary.json --no-reverse  # Skip reverse cards
+uv run kr-scraper vocabulary path/to/vocabulary.json -o cards.json # Custom output path
+```
+
+When using a directory, files must be named `lesson_*.json` (e.g., `lesson_01.json`). Lesson numbers are auto-populated from filenames if not present in the JSON.
 
 ### db-manager
 

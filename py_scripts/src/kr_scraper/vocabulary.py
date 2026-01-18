@@ -26,6 +26,36 @@ def load_vocabulary(vocab_path: Path) -> list[dict[str, Any]]:
         return json.load(f)
 
 
+def load_vocabulary_directory(dir_path: Path) -> list[dict[str, Any]]:
+    """Load and merge all lesson_*.json files from a directory.
+
+    Files are processed in sorted order (lesson_01.json, lesson_02.json, etc.).
+    If an entry doesn't have a 'lesson' field, it's auto-populated from the filename.
+
+    Args:
+        dir_path: Path to directory containing lesson_*.json files
+
+    Returns:
+        Merged list of all vocabulary entries
+    """
+    all_vocab: list[dict[str, Any]] = []
+
+    lesson_files = sorted(dir_path.glob("lesson_*.json"))
+    if not lesson_files:
+        raise ValueError(f"No lesson_*.json files found in {dir_path}")
+
+    for lesson_file in lesson_files:
+        vocab = load_vocabulary(lesson_file)
+        # Extract lesson number from filename (e.g., lesson_01.json -> 1)
+        lesson_num = int(lesson_file.stem.split("_")[1])
+        for entry in vocab:
+            if "lesson" not in entry:
+                entry["lesson"] = lesson_num
+        all_vocab.extend(vocab)
+
+    return all_vocab
+
+
 def create_card(
     vocab: dict[str, Any],
     tier: int,
@@ -75,10 +105,10 @@ def convert_vocabulary(
     tier: int = 5,
     create_reverse: bool = True,
 ) -> dict[str, Any]:
-    """Convert vocabulary.json to cards.json format.
+    """Convert vocabulary JSON to cards.json format.
 
     Args:
-        vocab_path: Path to vocabulary.json source file
+        vocab_path: Path to vocabulary.json file OR directory containing lesson_*.json files
         output_path: Path to write cards.json output
         tier: Card tier (default 5)
         create_reverse: Whether to create reverse cards (default True)
@@ -86,7 +116,11 @@ def convert_vocabulary(
     Returns:
         Dict with conversion stats: vocabulary_count, cards_created, output
     """
-    vocabulary = load_vocabulary(vocab_path)
+    if vocab_path.is_dir():
+        vocabulary = load_vocabulary_directory(vocab_path)
+    else:
+        vocabulary = load_vocabulary(vocab_path)
+
     cards: list[dict[str, Any]] = []
 
     for vocab in vocabulary:

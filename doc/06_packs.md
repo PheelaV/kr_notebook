@@ -177,8 +177,10 @@ data/
 │   │   │   └── cards.json
 │   │   ├── my-vocabulary/          # Custom vocabulary pack
 │   │   │   ├── pack.json
-│   │   │   ├── vocabulary.json     # Source data (optional)
-│   │   │   └── cards.json          # Card definitions
+│   │   │   ├── vocabulary/         # Source data (optional, per-lesson)
+│   │   │   │   ├── lesson_01.json
+│   │   │   │   └── lesson_02.json
+│   │   │   └── cards.json          # Card definitions (generated)
 │   │   └── htsk-scraper/           # Pronunciation audio scraper
 │   │       └── pack.json
 │   └── generated/                  # Scraper output
@@ -419,7 +421,26 @@ mkdir -p data/content/packs/my-pack
 }
 ```
 
-Note: Add `"provides": ["vocabulary"]` if your pack includes a `vocabulary.json` file for the vocabulary library.
+Note: Add `"provides": ["vocabulary"]` if your pack includes vocabulary content for the library.
+
+### Vocabulary Source Files
+
+You can organize vocabulary source data in two ways:
+
+1. **Single file**: `vocabulary.json` - all entries in one file
+2. **Per-lesson directory**: `vocabulary/lesson_01.json`, `vocabulary/lesson_02.json`, etc.
+
+Generate `cards.json` from either format using:
+
+```bash
+# From single file
+uv run kr-scraper vocabulary path/to/vocabulary.json
+
+# From directory
+uv run kr-scraper vocabulary path/to/vocabulary/
+```
+
+When using a directory, lesson numbers are auto-populated from filenames if not present in entries.
 
 ### 3. Create cards.json
 

@@ -7,6 +7,8 @@ use serde::Deserialize;
 use std::fs;
 use std::path::Path;
 
+use super::packs::ReferenceConfig;
+
 /// Root structure for reference.json files.
 #[derive(Debug, Clone, Deserialize)]
 pub struct ReferencePackData {
@@ -175,8 +177,26 @@ fn default_tier() -> u8 {
     5
 }
 
-/// Load reference content from a pack's reference.json file.
-pub fn load_reference_from_pack(
+/// Load reference content using the pack's configuration.
+/// Supports both single-file and directory-based reference content.
+pub fn load_reference(
+    pack_dir: &Path,
+    config: &ReferenceConfig,
+) -> Result<ReferencePackData, ReferenceLoadError> {
+    // Directory takes precedence over file
+    if let Some(ref dir) = config.directory {
+        load_reference_from_directory(pack_dir, dir)
+    } else if let Some(ref file) = config.file {
+        load_reference_from_file(pack_dir, file)
+    } else {
+        Err(ReferenceLoadError::FileNotFound(
+            "No file or directory specified in reference config".to_string(),
+        ))
+    }
+}
+
+/// Load reference content from a single JSON file.
+pub fn load_reference_from_file(
     pack_dir: &Path,
     ref_file: &str,
 ) -> Result<ReferencePackData, ReferenceLoadError> {
@@ -197,6 +217,76 @@ pub fn load_reference_from_pack(
     })?;
 
     Ok(data)
+}
+
+/// Load reference content from a directory of per-lesson JSON files.
+/// Files should be named `lesson_01.json`, `lesson_02.json`, etc.
+pub fn load_reference_from_directory(
+    pack_dir: &Path,
+    ref_dir: &str,
+) -> Result<ReferencePackData, ReferenceLoadError> {
+    let dir_path = pack_dir.join(ref_dir);
+
+    if !dir_path.exists() || !dir_path.is_dir() {
+        return Err(ReferenceLoadError::FileNotFound(
+            dir_path.display().to_string(),
+        ));
+    }
+
+    // Read all lesson_*.json files from the directory
+    let entries = fs::read_dir(&dir_path).map_err(|e| {
+        ReferenceLoadError::IoError(dir_path.display().to_string(), e.to_string())
+    })?;
+
+    let mut all_lessons = Vec::new();
+
+    for entry in entries {
+        let entry = entry.map_err(|e| {
+            ReferenceLoadError::IoError(dir_path.display().to_string(), e.to_string())
+        })?;
+
+        let path = entry.path();
+        let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+
+        // Only process lesson_*.json files
+        if !file_name.starts_with("lesson_") || !file_name.ends_with(".json") {
+            continue;
+        }
+
+        let content = fs::read_to_string(&path).map_err(|e| {
+            ReferenceLoadError::IoError(path.display().to_string(), e.to_string())
+        })?;
+
+        let data: ReferencePackData = serde_json::from_str(&content).map_err(|e| {
+            ReferenceLoadError::ParseError(path.display().to_string(), e.to_string())
+        })?;
+
+        // Add all lessons from this file
+        all_lessons.extend(data.lessons);
+    }
+
+    if all_lessons.is_empty() {
+        return Err(ReferenceLoadError::FileNotFound(format!(
+            "No lesson_*.json files found in {}",
+            dir_path.display()
+        )));
+    }
+
+    // Sort lessons by number
+    all_lessons.sort_by_key(|l| l.number);
+
+    Ok(ReferencePackData {
+        lessons: all_lessons,
+    })
+}
+
+/// Load reference content from a pack's reference.json file.
+/// DEPRECATED: Use `load_reference` with ReferenceConfig instead.
+pub fn load_reference_from_pack(
+    pack_dir: &Path,
+    ref_file: &str,
+) -> Result<ReferencePackData, ReferenceLoadError> {
+    load_reference_from_file(pack_dir, ref_file)
 }
 
 /// Find a specific lesson by number.

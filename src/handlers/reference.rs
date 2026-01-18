@@ -4,7 +4,7 @@ use axum::response::{Html, IntoResponse, Redirect, Response};
 
 use super::NavContext;
 use crate::auth::{AuthContext, OptionalAuth};
-use crate::content::{load_reference_from_pack, ReferenceLesson};
+use crate::content::{load_reference, ReferenceLesson};
 use crate::filters;
 use crate::services::pack_manager;
 use crate::state::AppState;
@@ -89,7 +89,7 @@ fn get_grammar_packs(
             let ref_config = pack.manifest.reference.as_ref()?;
 
             // Try to load reference content to get lesson count
-            let data = load_reference_from_pack(&pack.path, &ref_config.file).ok()?;
+            let data = load_reference(&pack.path, ref_config).ok()?;
 
             Some(GrammarPackSummary {
                 pack_id: pack.manifest.id,
@@ -191,7 +191,7 @@ pub async fn reference_pack_overview(
     };
 
     // Load reference content
-    let data = match load_reference_from_pack(&pack.path, &ref_config.file) {
+    let data = match load_reference(&pack.path, ref_config) {
         Ok(d) => d,
         Err(e) => {
             tracing::warn!("Failed to load reference pack {}: {}", pack_id, e);
@@ -246,7 +246,7 @@ pub async fn reference_lesson(
     };
 
     // Load reference content
-    let data = match load_reference_from_pack(&pack.path, &ref_config.file) {
+    let data = match load_reference(&pack.path, ref_config) {
         Ok(d) => d,
         Err(e) => {
             tracing::warn!("Failed to load reference pack {}: {}", pack_id, e);
@@ -320,7 +320,7 @@ pub async fn precache_urls(
                 urls.push(format!("/reference/pack/{}", pack_id));
 
                 // Try to load reference content to get lesson numbers
-                if let Ok(data) = load_reference_from_pack(&pack.path, &ref_config.file) {
+                if let Ok(data) = load_reference(&pack.path, ref_config) {
                     for lesson in &data.lessons {
                         urls.push(format!("/reference/pack/{}/lesson/{}", pack_id, lesson.number));
                     }

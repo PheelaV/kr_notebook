@@ -9,7 +9,11 @@ import json
 import tempfile
 from pathlib import Path
 
-from kr_scraper.vocabulary import convert_vocabulary, create_card
+from kr_scraper.vocabulary import (
+    convert_vocabulary,
+    create_card,
+    load_vocabulary_directory,
+)
 
 
 class TestCreateCard:
@@ -164,3 +168,128 @@ class TestConvertVocabulary:
 
             assert card_a.get("lesson") == 1
             assert "lesson" not in card_b or card_b.get("lesson") is None
+
+
+class TestLoadVocabularyDirectory:
+    """Tests for load_vocabulary_directory function."""
+
+    def test_loads_multiple_lesson_files(self):
+        """Load and merge vocabulary from multiple lesson files."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            vocab_dir = Path(tmpdir) / "vocabulary"
+            vocab_dir.mkdir()
+
+            # Create lesson_01.json
+            lesson1 = [
+                {"term": "A", "romanization": "a", "translation": "a", "word_type": "Noun", "lesson": 1},
+            ]
+            (vocab_dir / "lesson_01.json").write_text(json.dumps(lesson1))
+
+            # Create lesson_02.json
+            lesson2 = [
+                {"term": "B", "romanization": "b", "translation": "b", "word_type": "Noun", "lesson": 2},
+            ]
+            (vocab_dir / "lesson_02.json").write_text(json.dumps(lesson2))
+
+            result = load_vocabulary_directory(vocab_dir)
+
+            assert len(result) == 2
+            terms = {v["term"] for v in result}
+            assert terms == {"A", "B"}
+
+    def test_auto_populates_lesson_from_filename(self):
+        """When lesson field is missing, infer from filename."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            vocab_dir = Path(tmpdir) / "vocabulary"
+            vocab_dir.mkdir()
+
+            # Create lesson without lesson field
+            lesson3 = [
+                {"term": "C", "romanization": "c", "translation": "c", "word_type": "Noun"},
+            ]
+            (vocab_dir / "lesson_03.json").write_text(json.dumps(lesson3))
+
+            result = load_vocabulary_directory(vocab_dir)
+
+            assert len(result) == 1
+            assert result[0]["lesson"] == 3
+
+    def test_preserves_existing_lesson_field(self):
+        """When lesson field exists, don't override it."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            vocab_dir = Path(tmpdir) / "vocabulary"
+            vocab_dir.mkdir()
+
+            # File is lesson_05 but entry says lesson 99
+            lesson5 = [
+                {"term": "D", "romanization": "d", "translation": "d", "word_type": "Noun", "lesson": 99},
+            ]
+            (vocab_dir / "lesson_05.json").write_text(json.dumps(lesson5))
+
+            result = load_vocabulary_directory(vocab_dir)
+
+            assert result[0]["lesson"] == 99  # Preserve existing value
+
+    def test_sorted_file_order(self):
+        """Files should be processed in sorted order."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            vocab_dir = Path(tmpdir) / "vocabulary"
+            vocab_dir.mkdir()
+
+            # Create files out of order
+            (vocab_dir / "lesson_03.json").write_text(json.dumps([
+                {"term": "C", "romanization": "c", "translation": "c", "word_type": "Noun"}
+            ]))
+            (vocab_dir / "lesson_01.json").write_text(json.dumps([
+                {"term": "A", "romanization": "a", "translation": "a", "word_type": "Noun"}
+            ]))
+            (vocab_dir / "lesson_02.json").write_text(json.dumps([
+                {"term": "B", "romanization": "b", "translation": "b", "word_type": "Noun"}
+            ]))
+
+            result = load_vocabulary_directory(vocab_dir)
+
+            terms = [v["term"] for v in result]
+            assert terms == ["A", "B", "C"]  # Sorted order
+
+    def test_raises_error_for_empty_directory(self):
+        """Raise error when no lesson files found."""
+        import pytest
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            vocab_dir = Path(tmpdir) / "vocabulary"
+            vocab_dir.mkdir()
+
+            with pytest.raises(ValueError, match="No lesson_\\*\\.json files found"):
+                load_vocabulary_directory(vocab_dir)
+
+
+class TestConvertVocabularyDirectory:
+    """Tests for convert_vocabulary with directory input."""
+
+    def test_converts_directory_to_cards(self):
+        """Full pipeline: directory of lesson files → cards.json."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            vocab_dir = Path(tmpdir) / "vocabulary"
+            vocab_dir.mkdir()
+            output_path = Path(tmpdir) / "cards.json"
+
+            # Create two lesson files
+            (vocab_dir / "lesson_01.json").write_text(json.dumps([
+                {"term": "A", "romanization": "a", "translation": "a", "word_type": "Noun"}
+            ]))
+            (vocab_dir / "lesson_02.json").write_text(json.dumps([
+                {"term": "B", "romanization": "b", "translation": "b", "word_type": "Noun"}
+            ]))
+
+            result = convert_vocabulary(vocab_dir, output_path, create_reverse=False)
+
+            assert result["vocabulary_count"] == 2
+            assert result["cards_created"] == 2
+
+            cards = json.loads(output_path.read_text())["cards"]
+            assert len(cards) == 2
+
+            # Verify lessons were auto-populated
+            lessons = {c["lesson"] for c in cards}
+            assert lessons == {1, 2}
