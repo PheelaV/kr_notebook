@@ -92,9 +92,36 @@
       </label>
     </div>
 
+    <!-- Search Input -->
+    <div id="vocab-search-container" class="mb-6 relative">
+      <div class="relative">
+        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+          <iconify-icon icon="heroicons:magnifying-glass" width="20" height="20" class="text-gray-400"></iconify-icon>
+        </div>
+        <input type="text"
+               id="vocab-search-input"
+               class="block w-full pl-10 pr-10 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors"
+               placeholder="Search vocabulary... (romanization, meaning, notes)"
+               autocomplete="off">
+        <button type="button"
+                id="vocab-search-clear"
+                class="hidden absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+          <iconify-icon icon="heroicons:x-mark" width="20" height="20"></iconify-icon>
+        </button>
+      </div>
+      <!-- Search Results Dropdown -->
+      <div id="vocab-search-results"
+           class="hidden absolute z-50 left-0 right-0 mt-1 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 max-h-96 overflow-y-auto">
+      </div>
+      <div class="mt-2 flex items-center justify-between text-sm text-gray-500 dark:text-gray-400">
+        <span id="vocab-result-count">{{ total_count }} words</span>
+        <span class="text-xs">Press <kbd class="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-700 rounded text-gray-600 dark:text-gray-300 font-mono">/</kbd> to search, <kbd class="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-700 rounded text-gray-600 dark:text-gray-300 font-mono">Esc</kbd> to clear</span>
+      </div>
+    </div>
+
     {% for pack in packs %}
     <!-- Pack Section -->
-    <section id="{{ pack.pack_id }}" class="mb-12 scroll-mt-16">
+    <section id="{{ pack.pack_id }}" class="mb-12 scroll-mt-16" data-pack-section="{{ pack.pack_id }}">
       <div class="mb-6">
         <h2 class="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-3">
           <span class="bg-indigo-600 text-white px-3 py-1 rounded-lg text-sm font-medium">
@@ -108,7 +135,7 @@
       </div>
 
       {% for group in pack.lessons %}
-      <details id="{{ pack.pack_id }}-lesson-{{ group.lesson }}" class="mb-8 scroll-mt-16 group">
+      <details id="{{ pack.pack_id }}-lesson-{{ group.lesson }}" class="mb-8 scroll-mt-16 group" data-lesson-section="{{ pack.pack_id }}-lesson-{{ group.lesson }}">
         <summary class="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-4 flex items-center gap-2 cursor-pointer list-none select-none">
           <iconify-icon icon="heroicons:chevron-down" width="20" height="20" class="transition-transform duration-200 group-open:rotate-180 text-gray-400"></iconify-icon>
           <span class="bg-indigo-100 dark:bg-indigo-900 text-indigo-800 dark:text-indigo-200 px-2 py-1 rounded text-sm">
@@ -119,7 +146,7 @@
 
       <div class="flex flex-col sm:flex-row sm:flex-wrap gap-3">
         {% for entry in group.entries %}
-        <details class="bg-white dark:bg-gray-800 rounded-lg shadow group sm:w-[calc(50%-0.375rem)] open:sm:w-full">
+        <details class="bg-white dark:bg-gray-800 rounded-lg shadow group sm:w-[calc(50%-0.375rem)] open:sm:w-full hover:ring-2 hover:ring-indigo-300 dark:hover:ring-indigo-700 transition-shadow" data-vocab-id="{{ pack.pack_id }}-{{ group.lesson }}-{{ loop.index0 }}">
           <summary class="p-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 group-open:bg-indigo-50 dark:group-open:bg-indigo-950 rounded-t-lg group-open:rounded-b-none rounded-b-lg list-none transition-colors">
             <div class="flex flex-wrap items-center gap-x-4 gap-y-1">
               <span class="text-2xl font-bold text-gray-900 dark:text-white">{{ entry.term }}</span>
@@ -274,4 +301,24 @@
   }
 })();
 </script>
+
+{% if pack_enabled %}
+<!-- Floating "Back to Search" button - appears after navigating to a result -->
+<!-- Positioned above Haetae mascot (bottom-24) -->
+<button type="button"
+        id="vocab-back-to-search"
+        class="hidden fixed bottom-24 right-6 z-50 flex items-center justify-center gap-2 p-3 sm:px-4 sm:py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-full shadow-lg hover:shadow-xl transition-all active:scale-95"
+        aria-label="Back to search">
+  <iconify-icon icon="heroicons:magnifying-glass" width="20" height="20" class="shrink-0"></iconify-icon>
+  <span class="hidden sm:inline whitespace-nowrap">Back to Search</span>
+  <kbd class="hidden sm:inline-flex items-center px-1.5 py-0.5 bg-indigo-500 rounded text-xs font-mono">/</kbd>
+</button>
+
+<!-- Vocabulary search data and scripts -->
+<script>
+window.VocabularyData = {{ vocabulary_json|safe }};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/fuse.js@7.0.0/dist/fuse.min.js"></script>
+<script src="{{ "/static/js/vocabulary-search.js"|asset_url }}"></script>
+{% endif %}
 {% endblock %}

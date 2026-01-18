@@ -34,6 +34,9 @@ pub fn asset_url(path: impl std::fmt::Display, _: &dyn askama::Values) -> askama
         "/static/js/offline-study.js" => {
             format!("{}?v={}", path_str, OFFLINE_STUDY_JS_HASH)
         }
+        "/static/js/vocabulary-search.js" => {
+            format!("{}?v={}", path_str, VOCABULARY_SEARCH_JS_HASH)
+        }
         _ => path_str,
     })
 }

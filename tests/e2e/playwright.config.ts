@@ -62,6 +62,7 @@ const TEST_SUITES: TestSuite[] = [
   { name: 'offline-study', testMatch: 'offline-study.spec.ts' },
   { name: 'offline-sync', testMatch: 'offline-sync.spec.ts' },
   { name: 'lesson-filtering', testMatch: 'lesson-filtering.spec.ts' },
+  { name: 'vocabulary-search', testMatch: 'vocabulary-search.spec.ts' },
   {
     name: 'fresh-install',
     testMatch: 'fresh-install.spec.ts',

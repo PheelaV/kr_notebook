@@ -1,0 +1,26 @@
+{
+  "id": "test_vocabulary_pack",
+  "name": "Test Vocabulary Pack",
+  "type": "cards",
+  "version": "1.0.0",
+  "description": "Test vocabulary pack for E2E search testing",
+  "provides": ["vocabulary"],
+  "cards": {
+    "file": "cards.json",
+    "tier": 5
+  },
+  "lessons": {
+    "total": 2,
+    "first": 1
+  },
+  "ui": {
+    "display_name": "Test Vocabulary",
+    "unit_name": "Lessons",
+    "section_prefix": "Lesson",
+    "unlock_threshold": 80,
+    "lesson_labels": {
+      "1": "Basic Nouns",
+      "2": "Verbs"
+    }
+  }
+}
