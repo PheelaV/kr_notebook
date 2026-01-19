@@ -8,6 +8,7 @@ use axum::extract::State;
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+use std::env;
 use std::fs;
 use std::path::Path;
 
@@ -104,6 +105,8 @@ pub struct VocabularyTemplate {
     pub nav: NavContext,
     /// JSON array of searchable entries for client-side Fuse.js search
     pub vocabulary_json: String,
+    /// Use local Fuse.js instead of CDN (set via USE_LOCAL_FUSE env var for tests)
+    pub use_local_fuse: bool,
 }
 
 /// Load vocabulary from a pack's vocabulary source.
@@ -228,6 +231,7 @@ pub async fn vocabulary_library(
             total_count: 0,
             nav: NavContext::from_auth(&auth),
             vocabulary_json: "[]".to_string(),
+            use_local_fuse: env::var("USE_LOCAL_FUSE").is_ok(),
         };
         return Html(template.render().unwrap_or_default()).into_response();
     }
@@ -304,6 +308,7 @@ pub async fn vocabulary_library(
         total_count,
         nav: NavContext::from_auth(&auth),
         vocabulary_json,
+        use_local_fuse: env::var("USE_LOCAL_FUSE").is_ok(),
     };
 
     Html(template.render().unwrap_or_default()).into_response()

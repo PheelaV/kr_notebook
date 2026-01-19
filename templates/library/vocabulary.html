@@ -318,7 +318,11 @@
 <script>
 window.VocabularyData = {{ vocabulary_json|safe }};
 </script>
+{% if use_local_fuse %}
+<script src="{{ "/static/js/fuse.min.js"|asset_url }}"></script>
+{% else %}
 <script src="https://cdn.jsdelivr.net/npm/fuse.js@7.0.0/dist/fuse.min.js"></script>
+{% endif %}
 <script src="{{ "/static/js/vocabulary-search.js"|asset_url }}"></script>
 {% endif %}
 {% endblock %}

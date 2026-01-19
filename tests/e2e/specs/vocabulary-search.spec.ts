@@ -39,10 +39,11 @@ test.describe('Vocabulary Library Search', () => {
       if (!isEnabled) {
         const enableBtn = testPackCard.locator('button:has-text("Enable")');
         await enableBtn.click();
-        await adminPage.waitForTimeout(500);
+        // Wait for HTMX response - "Disable" button appears when pack is enabled
+        await expect(testPackCard.locator('button:has-text("Disable")')).toBeVisible({ timeout: 15000 });
       }
 
-      // Verify pack is now enabled
+      // Verify pack is now enabled (green background)
       await expect(testPackCard).toHaveClass(/bg-green/);
 
       // Accept the confirmation dialog when Make Public is clicked
