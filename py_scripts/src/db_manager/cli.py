@@ -2016,3 +2016,223 @@ def get_pack_lesson_counts(pack_id: str, data_dir: str | None, as_json: bool) ->
             click.echo(f"  Total: {total} cards")
     finally:
         conn.close()
+
+
+# ==================== Validation Feedback ====================
+
+
+@cli.command("list-feedback")
+@click.option("--user", "-u", type=str, default=None, help="Filter by username.")
+@click.option("--pending", is_flag=True, help="Show only unreviewed feedback.")
+@click.option(
+    "--data-dir",
+    "-d",
+    type=click.Path(),
+    default=None,
+    help="Data directory (for test environments).",
+)
+@click.option("--json", "as_json", is_flag=True, help="Output as JSON.")
+def list_feedback(
+    user: str | None, pending: bool, data_dir: str | None, as_json: bool
+) -> None:
+    """List validation feedback from user overrides.
+
+    Shows feedback submitted when users override answer validation rulings
+    during study. Useful for reviewing and improving validation rules.
+
+    Examples:
+        db-manager list-feedback
+        db-manager list-feedback --user alice
+        db-manager list-feedback --pending
+        db-manager list-feedback --json
+    """
+    import json
+
+    app_db = get_app_db_path(Path(data_dir) if data_dir else None)
+
+    if not app_db.exists():
+        raise click.ClickException(f"Auth database not found: {app_db}")
+
+    conn = sqlite3.connect(app_db)
+    try:
+        # Check if table exists (requires schema v10+)
+        table_exists = conn.execute(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='validation_suggestions'"
+        ).fetchone()[0]
+
+        if not table_exists:
+            if as_json:
+                click.echo("[]")
+            else:
+                click.echo("No validation_suggestions table (requires schema v10+)")
+            return
+
+        # Build query with optional filters
+        query = """SELECT id, username, card_front, expected_answer, user_answer,
+                          suggested_answer, user_quality, created_at, reviewed_at, pack_id
+                   FROM validation_suggestions"""
+        conditions = []
+        params: list = []
+
+        if user:
+            conditions.append("username = ?")
+            params.append(user)
+
+        if pending:
+            conditions.append("reviewed_at IS NULL")
+
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+
+        query += " ORDER BY created_at DESC"
+
+        rows = conn.execute(query, params).fetchall()
+
+        if as_json:
+            results = []
+            for row in rows:
+                results.append(
+                    {
+                        "id": row[0],
+                        "username": row[1],
+                        "card_front": row[2],
+                        "expected_answer": row[3],
+                        "user_answer": row[4],
+                        "suggested_answer": row[5],
+                        "quality": row[6],
+                        "created_at": row[7],
+                        "reviewed_at": row[8],
+                        "pack_id": row[9],
+                    }
+                )
+            click.echo(json.dumps(results, indent=2))
+        else:
+            if not rows:
+                click.echo("No feedback entries found.")
+                return
+
+            click.echo(f"Found {len(rows)} feedback entries:\n")
+            for row in rows:
+                status = "pending" if row[8] is None else f"reviewed ({row[8]})"
+                quality_map = {0: "Wrong", 2: "Hard", 4: "Correct", 5: "Easy"}
+                quality_str = quality_map.get(row[6], str(row[6]))
+                click.echo(f"[{row[0]}] {row[1]} - {row[7]} ({status})")
+                click.echo(f"  Card: {row[2]}")
+                click.echo(f"  Expected: {row[3]}")
+                click.echo(f"  User answered: {row[4]}")
+                click.echo(f"  Suggested: {row[5]}")
+                click.echo(f"  Rating: {quality_str}")
+                if row[9]:
+                    click.echo(f"  Pack: {row[9]}")
+                click.echo()
+    finally:
+        conn.close()
+
+
+@cli.command("clear-feedback")
+@click.option("--reviewed", is_flag=True, help="Clear only reviewed feedback.")
+@click.option("--all", "clear_all", is_flag=True, help="Clear all feedback.")
+@click.option(
+    "--id", "feedback_id", type=int, default=None, help="Clear specific feedback by ID."
+)
+@click.option(
+    "--data-dir",
+    "-d",
+    type=click.Path(),
+    default=None,
+    help="Data directory (for test environments).",
+)
+def clear_feedback(
+    reviewed: bool, clear_all: bool, feedback_id: int | None, data_dir: str | None
+) -> None:
+    """Clear validation feedback entries.
+
+    Requires one of: --reviewed, --all, or --id
+
+    Examples:
+        db-manager clear-feedback --reviewed    # Clear reviewed entries
+        db-manager clear-feedback --all         # Clear all entries
+        db-manager clear-feedback --id 42       # Clear specific entry
+    """
+    # Validate options
+    options_count = sum([reviewed, clear_all, feedback_id is not None])
+    if options_count == 0:
+        raise click.ClickException("Specify one of: --reviewed, --all, or --id")
+    if options_count > 1:
+        raise click.ClickException("Specify only one of: --reviewed, --all, or --id")
+
+    app_db = get_app_db_path(Path(data_dir) if data_dir else None)
+
+    if not app_db.exists():
+        raise click.ClickException(f"Auth database not found: {app_db}")
+
+    conn = sqlite3.connect(app_db)
+    try:
+        # Check if table exists
+        table_exists = conn.execute(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='validation_suggestions'"
+        ).fetchone()[0]
+
+        if not table_exists:
+            click.echo("No validation_suggestions table (requires schema v10+)")
+            return
+
+        # Build delete query
+        if feedback_id is not None:
+            # Check if entry exists
+            count = conn.execute(
+                "SELECT COUNT(*) FROM validation_suggestions WHERE id = ?",
+                (feedback_id,),
+            ).fetchone()[0]
+            if count == 0:
+                raise click.ClickException(f"Feedback entry not found: {feedback_id}")
+
+            if not click.confirm(f"Delete feedback entry {feedback_id}?"):
+                click.echo("Aborted.")
+                return
+
+            conn.execute(
+                "DELETE FROM validation_suggestions WHERE id = ?", (feedback_id,)
+            )
+            conn.commit()
+            click.echo(click.style(f"Deleted feedback entry {feedback_id}", fg="green"))
+
+        elif reviewed:
+            count = conn.execute(
+                "SELECT COUNT(*) FROM validation_suggestions WHERE reviewed_at IS NOT NULL"
+            ).fetchone()[0]
+
+            if count == 0:
+                click.echo("No reviewed feedback entries to delete.")
+                return
+
+            if not click.confirm(f"Delete {count} reviewed feedback entries?"):
+                click.echo("Aborted.")
+                return
+
+            conn.execute(
+                "DELETE FROM validation_suggestions WHERE reviewed_at IS NOT NULL"
+            )
+            conn.commit()
+            click.echo(
+                click.style(f"Deleted {count} reviewed feedback entries", fg="green")
+            )
+
+        elif clear_all:
+            count = conn.execute(
+                "SELECT COUNT(*) FROM validation_suggestions"
+            ).fetchone()[0]
+
+            if count == 0:
+                click.echo("No feedback entries to delete.")
+                return
+
+            if not click.confirm(f"Delete ALL {count} feedback entries?"):
+                click.echo("Aborted.")
+                return
+
+            conn.execute("DELETE FROM validation_suggestions")
+            conn.commit()
+            click.echo(click.style(f"Deleted all {count} feedback entries", fg="green"))
+    finally:
+        conn.close()
