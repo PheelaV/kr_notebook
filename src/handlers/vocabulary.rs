@@ -8,6 +8,7 @@ use axum::extract::State;
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+use std::env;
 use std::fs;
 use std::path::Path;
 
@@ -104,13 +105,53 @@ pub struct VocabularyTemplate {
     pub nav: NavContext,
     /// JSON array of searchable entries for client-side Fuse.js search
     pub vocabulary_json: String,
+    /// Use local Fuse.js instead of CDN (set via USE_LOCAL_FUSE env var for tests)
+    pub use_local_fuse: bool,
 }
 
-/// Load vocabulary from a pack's vocabulary.json file
+/// Load vocabulary from a pack's vocabulary source.
+///
+/// Supports two formats:
+/// 1. Single `vocabulary.json` file at pack root (legacy format)
+/// 2. `vocabulary/` directory with `lesson_*.json` files (directory format)
 fn load_vocabulary_from_path(pack_path: &Path) -> Option<Vec<VocabularyEntry>> {
-    let vocab_path = pack_path.join("vocabulary.json");
-    let content = fs::read_to_string(&vocab_path).ok()?;
-    serde_json::from_str(&content).ok()
+    // Try single vocabulary.json first (backward compatible)
+    let vocab_file = pack_path.join("vocabulary.json");
+    if vocab_file.exists() {
+        let content = fs::read_to_string(&vocab_file).ok()?;
+        return serde_json::from_str(&content).ok();
+    }
+
+    // Try vocabulary directory with lesson_*.json files
+    let vocab_dir = pack_path.join("vocabulary");
+    if vocab_dir.is_dir() {
+        let mut all_entries = Vec::new();
+
+        if let Ok(dir_entries) = fs::read_dir(&vocab_dir) {
+            for entry in dir_entries.flatten() {
+                let path = entry.path();
+                if path.extension().map(|e| e == "json").unwrap_or(false) {
+                    if let Some(name) = path.file_stem().and_then(|n| n.to_str()) {
+                        if name.starts_with("lesson_") {
+                            if let Ok(content) = fs::read_to_string(&path) {
+                                if let Ok(entries) =
+                                    serde_json::from_str::<Vec<VocabularyEntry>>(&content)
+                                {
+                                    all_entries.extend(entries);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if !all_entries.is_empty() {
+            return Some(all_entries);
+        }
+    }
+
+    None
 }
 
 /// Build searchable entries from pack groups for Fuse.js client-side search
@@ -190,6 +231,7 @@ pub async fn vocabulary_library(
             total_count: 0,
             nav: NavContext::from_auth(&auth),
             vocabulary_json: "[]".to_string(),
+            use_local_fuse: env::var("USE_LOCAL_FUSE").is_ok(),
         };
         return Html(template.render().unwrap_or_default()).into_response();
     }
@@ -266,6 +308,7 @@ pub async fn vocabulary_library(
         total_count,
         nav: NavContext::from_auth(&auth),
         vocabulary_json,
+        use_local_fuse: env::var("USE_LOCAL_FUSE").is_ok(),
     };
 
     Html(template.render().unwrap_or_default()).into_response()

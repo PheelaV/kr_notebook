@@ -36,9 +36,9 @@ pub use discovery::{
 };
 pub use packs::{AudioConfig, CardConfig, GeneratorConfig, PackManifest, PackType, ReferenceConfig};
 pub use reference::{
-    find_lesson, load_reference_from_pack, GrammarRule, PatternCard, ReferenceExample,
-    ReferenceLesson, ReferenceLoadError, ReferencePackData, ReferenceSection, SectionType,
-    WordBreakdown,
+    find_lesson, load_reference, load_reference_from_pack, GrammarRule, PatternCard,
+    ReferenceExample, ReferenceLesson, ReferenceLoadError, ReferencePackData, ReferenceSection,
+    SectionType, WordBreakdown,
 };
 
 use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ToSql, ToSqlOutput, ValueRef};

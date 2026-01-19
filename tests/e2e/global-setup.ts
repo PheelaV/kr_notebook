@@ -239,7 +239,9 @@ async function globalSetup(config: FullConfig): Promise<void> {
     }
 
     // 2. Start server (with TEST_ADMIN_PASSWORD for fresh install)
-    const extraEnv: Record<string, string> = {};
+    const extraEnv: Record<string, string> = {
+      USE_LOCAL_FUSE: '1', // Use local Fuse.js for reliable tests
+    };
     if (metadata.freshInstall && metadata.testAdminPassword) {
       extraEnv.TEST_ADMIN_PASSWORD = metadata.testAdminPassword;
     }

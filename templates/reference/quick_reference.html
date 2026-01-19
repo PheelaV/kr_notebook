@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+
+{% block title %}Quick Reference - {{ pack_name }}{% endblock %}
+
+{% block content %}
+<div class="lg:flex lg:gap-8">
+  <!-- TOC Component -->
+  {% include "partials/toc.html" %}
+
+  <!-- Main Content -->
+  <div class="flex-1 max-w-4xl">
+    <nav class="mb-6 text-sm">
+      <a href="/reference/pack/{{ pack_id }}" class="text-indigo-600 dark:text-indigo-400 hover:underline">&larr; {{ pack_name }}</a>
+    </nav>
+
+    <div class="flex flex-wrap items-center gap-2 sm:gap-3 mb-6">
+      <span class="bg-gray-500 text-white text-sm font-bold px-3 py-1 rounded-full">Cheatsheet</span>
+      <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">Quick Reference</h1>
+    </div>
+
+    <p class="text-gray-600 dark:text-gray-400 mb-8">All quick reference sections from {{ pack_name }}.</p>
+
+    {% if items.is_empty() %}
+    <div class="bg-yellow-50 dark:bg-yellow-900/20 rounded-lg p-6 text-center">
+      <p class="text-yellow-800 dark:text-yellow-200">No quick reference sections found in this pack.</p>
+    </div>
+    {% else %}
+    <!-- Quick Reference Sections -->
+    {% for item in items %}
+    <section id="lesson-{{ item.lesson_number }}-{{ item.section.id }}" class="scroll-mt-16 bg-gray-100 dark:bg-gray-700 shadow rounded-lg p-6 mb-6 border-2 border-gray-300 dark:border-gray-600">
+      <div class="flex flex-wrap items-center gap-2 mb-4">
+        <a href="/reference/pack/{{ pack_id }}/lesson/{{ item.lesson_number }}"
+           class="bg-purple-100 dark:bg-purple-900 text-purple-800 dark:text-purple-200 text-xs font-bold px-2 py-0.5 rounded-full hover:bg-purple-200 dark:hover:bg-purple-800 transition-colors">
+          Lesson {{ item.lesson_number }}
+        </a>
+        <h2 class="text-xl font-bold text-gray-900 dark:text-white group flex items-center gap-2">
+          {{ item.section.title }}
+          <a href="#lesson-{{ item.lesson_number }}-{{ item.section.id }}" class="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 text-sm transition-opacity">#</a>
+        </h2>
+      </div>
+
+      {% if let Some(content) = item.section.content %}
+      <div class="prose dark:prose-invert max-w-none mb-4">
+        <p class="text-gray-700 dark:text-gray-300">{{ content }}</p>
+      </div>
+      {% endif %}
+
+      <!-- Grammar Rules Table -->
+      {% if !item.section.rules.is_empty() %}
+      <div class="overflow-x-auto mb-4">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-gray-200 dark:border-gray-700">
+              <th class="text-left py-2 text-gray-600 dark:text-gray-400">Condition</th>
+              <th class="text-left py-2 text-gray-600 dark:text-gray-400">Form</th>
+              <th class="text-left py-2 text-gray-600 dark:text-gray-400">Example</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for rule in item.section.rules %}
+            <tr class="border-b border-gray-100 dark:border-gray-700">
+              <td class="py-2 text-gray-900 dark:text-white">{{ rule.condition }}</td>
+              <td class="py-2 text-2xl">{{ rule.form }}</td>
+              <td class="py-2 text-gray-600 dark:text-gray-400">{% if let Some(ex) = rule.example %}{{ ex }}{% endif %}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% endif %}
+
+      <!-- Examples -->
+      {% if !item.section.examples.is_empty() %}
+      <div class="space-y-3">
+        {% for example in item.section.examples %}
+        <div class="bg-gray-50 dark:bg-gray-600 rounded-lg p-4">
+          <p class="text-xl text-gray-900 dark:text-white">{{ example.korean }}</p>
+          {% if let Some(rom) = example.romanization %}
+          <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">{{ rom }}</p>
+          {% endif %}
+          <p class="text-indigo-600 dark:text-indigo-400 mt-2">{{ example.english }}</p>
+
+          <!-- Word breakdown -->
+          {% if !example.breakdown.is_empty() %}
+          <div class="flex flex-wrap gap-2 mt-3 pt-3 border-t border-gray-200 dark:border-gray-500">
+            {% for word in example.breakdown %}
+            <span class="inline-flex items-center gap-1 text-xs bg-white dark:bg-gray-700 px-2 py-1 rounded">
+              <span class="font-bold">{{ word.text }}</span>
+              <span class="text-gray-400">({{ word.role }}{% if let Some(m) = word.meaning %}: {{ m }}{% endif %})</span>
+            </span>
+            {% endfor %}
+          </div>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+
+      <!-- Note -->
+      {% if let Some(note) = item.section.note %}
+      <div class="mt-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg">
+        <p class="text-sm text-yellow-800 dark:text-yellow-200">
+          <strong>Note:</strong> {{ note }}
+        </p>
+      </div>
+      {% endif %}
+    </section>
+    {% endfor %}
+    {% endif %}
+
+    <!-- Back to pack overview -->
+    <div class="mt-8">
+      <a href="/reference/pack/{{ pack_id }}" class="text-indigo-600 dark:text-indigo-400 hover:underline">
+        &larr; Back to {{ pack_name }}
+      </a>
+    </div>
+  </div>
+</div>
+{% endblock %}

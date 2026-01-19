@@ -1,6 +1,6 @@
 #!/bin/bash
 # Deploy kr_notebook to Raspberry Pi
-# Usage: ./scripts/rpi-deploy.sh [--no-tests] [--no-build] [--no-backup] [--debug] [--rollback]
+# Usage: ./scripts/rpi-deploy.sh [--no-tests] [--test-fail-fast] [--no-build] [--no-backup] [--debug] [--rollback]
 
 set -e
 
@@ -21,16 +21,18 @@ DO_BUILD=true
 DO_BACKUP=true
 DO_ROLLBACK=false
 DO_TESTS=true
+TEST_FAIL_FAST=false
 PROFILE="--release"
 PROFILE_NAME="release"
 
 for arg in "$@"; do
     case $arg in
-        --no-build)  DO_BUILD=false ;;
-        --no-backup) DO_BACKUP=false ;;
-        --no-tests)  DO_TESTS=false ;;
-        --debug)     PROFILE=""; PROFILE_NAME="debug" ;;
-        --rollback)  DO_ROLLBACK=true ;;
+        --no-build)       DO_BUILD=false ;;
+        --no-backup)      DO_BACKUP=false ;;
+        --no-tests)       DO_TESTS=false ;;
+        --test-fail-fast) TEST_FAIL_FAST=true ;;
+        --debug)          PROFILE=""; PROFILE_NAME="debug" ;;
+        --rollback)       DO_ROLLBACK=true ;;
     esac
 done
 
@@ -227,7 +229,11 @@ if [ "$DO_TESTS" = true ]; then
     echo "[1/9] Running tests..."
     echo ""
     step_start
-    if ! "$SCRIPT_DIR/test.sh" all; then
+    TEST_ARGS="all"
+    if [ "$TEST_FAIL_FAST" = true ]; then
+        TEST_ARGS="all --fail-fast"
+    fi
+    if ! "$SCRIPT_DIR/test.sh" $TEST_ARGS; then
         echo ""
         echo "Error: Tests failed. Deployment aborted."
         echo "Fix the failing tests or use --no-tests to skip (not recommended)."

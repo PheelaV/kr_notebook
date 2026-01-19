@@ -554,6 +554,20 @@ pub fn validate_answer(user_input: &str, correct_answer: &str) -> AnswerResult {
     return AnswerResult::Correct;
   }
 
+  // Check if user typed "core + info" (e.g., "this thing" for "this (thing)")
+  // Only exact match, not typo tolerance - info is supplementary
+  if let Some(ref info) = parsed.info {
+    let normalized_info = normalize_answer(info);
+    if !normalized_info.is_empty() {
+      for partial in &partial_answers {
+        let with_info = format!("{} {}", partial, normalized_info);
+        if normalized_input == with_info {
+          return AnswerResult::Correct;
+        }
+      }
+    }
+  }
+
   // Check permutation matching for comma-separated synonyms
   if parsed.core.contains(',') && matches_permutation(&normalized_input, &parsed.core) {
     // If user also provided correct disambiguation, it's full correct
@@ -587,10 +601,10 @@ pub fn validate_answer(user_input: &str, correct_answer: &str) -> AnswerResult {
     let distance = levenshtein_distance(&normalized_input, answer);
     let char_count = answer.chars().count();
 
-    // Allow 1 char tolerance for 2+ char answers
+    // Typo tolerance based on answer length
     let max_distance = match char_count {
-      0..=1 => 0, // Single char must be exact
-      2..=4 => 1, // Short answers: 1 char tolerance
+      0..=2 => 0, // 1-2 chars must be exact (e.g., "I", "me")
+      3..=4 => 1, // Short answers: 1 char tolerance
       _ => 2,     // Longer answers: 2 char tolerance
     };
 
@@ -711,9 +725,13 @@ mod tests {
 
   #[test]
   fn test_close_match() {
-    // One character typo
-    assert_eq!(validate_answer("yaa", "ya"), AnswerResult::CloseEnough);
-    assert_eq!(validate_answer("yo", "ya"), AnswerResult::CloseEnough); // 1 char diff is close enough
+    // Typo tolerance for 3+ char answers
+    assert_eq!(validate_answer("helllo", "hello"), AnswerResult::CloseEnough);
+    assert_eq!(validate_answer("helo", "hello"), AnswerResult::CloseEnough);
+
+    // 1-2 char answers require exact match (no typo tolerance)
+    assert_eq!(validate_answer("yaa", "ya"), AnswerResult::Incorrect);
+    assert_eq!(validate_answer("yo", "ya"), AnswerResult::Incorrect);
   }
 
   #[test]
@@ -1049,5 +1067,21 @@ mod tests {
     assert_eq!(validate_answer("soffa", "sofa, couch"), AnswerResult::CloseEnough);
     // But completely wrong is still incorrect
     assert_eq!(validate_answer("xyz", "sofa, couch"), AnswerResult::Incorrect);
+  }
+
+  #[test]
+  fn test_info_tag_with_user_included() {
+    // User types the info tag content - should be accepted
+    assert_eq!(validate_answer("this thing", "this (thing)"), AnswerResult::Correct);
+    assert_eq!(validate_answer("me formal", "I, me (formal)"), AnswerResult::Correct);
+    assert_eq!(validate_answer("I formal", "I, me (formal)"), AnswerResult::Correct);
+
+    // Core alone is still correct (info is optional)
+    assert_eq!(validate_answer("this", "this (thing)"), AnswerResult::Correct);
+    assert_eq!(validate_answer("I", "I, me (formal)"), AnswerResult::Correct);
+
+    // Info alone should NOT match
+    assert_eq!(validate_answer("thing", "this (thing)"), AnswerResult::Incorrect);
+    assert_eq!(validate_answer("formal", "I, me (formal)"), AnswerResult::Incorrect);
   }
 }

@@ -735,22 +735,36 @@ def vocabulary(
     tier: int,
     no_reverse: bool,
 ) -> None:
-    """Convert vocabulary.json to cards.json format.
+    """Convert vocabulary JSON to cards.json format.
 
-    INPUT_PATH is a vocabulary.json file with entries containing:
-    term, romanization, translation, word_type.
+    INPUT_PATH can be either:
+
+    \b
+    - A vocabulary.json file with entries containing:
+      term, romanization, translation, word_type
+
+    \b
+    - A directory containing lesson_*.json files
+      (e.g., lesson_01.json, lesson_02.json, etc.)
 
     Creates flashcards in the format expected by kr_notebook packs.
     By default, creates both forward (Korean -> English) and reverse
     (English -> Korean) cards.
 
-    Example:
+    Examples:
+
+    \b
         kr-scraper vocabulary path/to/vocabulary.json
+        kr-scraper vocabulary path/to/vocabulary/
     """
     from .vocabulary import convert_vocabulary
 
     vocab_path = input_path
-    cards_path = output_path or vocab_path.parent / "cards.json"
+    # For directory input, output to parent directory's cards.json
+    if vocab_path.is_dir():
+        cards_path = output_path or vocab_path.parent / "cards.json"
+    else:
+        cards_path = output_path or vocab_path.parent / "cards.json"
 
     click.echo("Converting vocabulary to cards...")
     click.echo(f"  Input: {vocab_path}")

@@ -42,11 +42,22 @@
   var searchContainer = null;
   var totalCount = 0;
   var debounceTimer = null;
+  var initRetries = 0;
+  var MAX_INIT_RETRIES = 50; // 5 seconds max wait for Fuse.js
 
   /**
    * Initialize the search functionality
    */
   function init() {
+    // Check Fuse.js is loaded (from CDN)
+    if (typeof Fuse === 'undefined') {
+      if (initRetries < MAX_INIT_RETRIES) {
+        initRetries++;
+        setTimeout(init, 100);
+      }
+      return;
+    }
+
     if (typeof window.VocabularyData === 'undefined' || !window.VocabularyData.length) {
       return;
     }
@@ -89,6 +100,9 @@
 
     // Update initial count display
     updateResultCount(totalCount, totalCount);
+
+    // Mark search as ready (for E2E tests)
+    searchInput.dataset.searchReady = 'true';
   }
 
   /**
@@ -162,8 +176,22 @@
   function handleGlobalKeydown(e) {
     if (e.key === '/' && !isInputFocused()) {
       e.preventDefault();
-      backToSearch();
+      // Focus immediately, scroll only if needed
+      searchInput.focus();
+      // Scroll into view if search is off-screen
+      if (searchContainer && !isElementInViewport(searchContainer)) {
+        searchContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+      hideBackToSearchButton();
     }
+  }
+
+  /**
+   * Check if an element is visible in the viewport
+   */
+  function isElementInViewport(el) {
+    var rect = el.getBoundingClientRect();
+    return rect.top >= 0 && rect.top < window.innerHeight;
   }
 
   /**
@@ -341,10 +369,8 @@
     if (searchContainer) {
       searchContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
-    // Focus after scroll animation
-    setTimeout(function() {
-      searchInput.focus();
-    }, 300);
+    // Focus immediately - scrollIntoView handles scroll asynchronously
+    searchInput.focus();
     hideBackToSearchButton();
   }
 

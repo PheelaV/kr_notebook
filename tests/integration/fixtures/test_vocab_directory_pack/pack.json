@@ -1,0 +1,9 @@
+{
+  "id": "test_vocab_directory_pack",
+  "name": "Test Vocabulary Directory Pack",
+  "type": "cards",
+  "version": "1.0.0",
+  "provides": ["vocabulary"],
+  "cards": { "file": "cards.json", "tier": 5 },
+  "lessons": { "total": 2, "first": 1 }
+}

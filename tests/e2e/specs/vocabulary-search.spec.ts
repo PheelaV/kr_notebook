@@ -1,4 +1,4 @@
-import { test, expect } from '../fixtures/auth';
+import { test, expect, Page } from '../fixtures/auth';
 
 /**
  * Vocabulary Library Search E2E Tests
@@ -6,6 +6,16 @@ import { test, expect } from '../fixtures/auth';
  * Uses test_vocabulary_pack fixture with Korean vocabulary entries
  * including romanization, translation, notes, usages, and examples.
  */
+
+/**
+ * Wait for search to be fully initialized (Fuse.js loaded and event handlers attached)
+ */
+async function waitForSearchReady(page: Page, timeout = 10000): Promise<void> {
+  await page.locator('#vocab-search-input[data-search-ready="true"]').waitFor({
+    state: 'attached',
+    timeout,
+  });
+}
 
 test.describe('Vocabulary Library Search', () => {
   // Run tests serially to ensure setup completes before other tests
@@ -29,10 +39,11 @@ test.describe('Vocabulary Library Search', () => {
       if (!isEnabled) {
         const enableBtn = testPackCard.locator('button:has-text("Enable")');
         await enableBtn.click();
-        await adminPage.waitForTimeout(500);
+        // Wait for HTMX response - "Disable" button appears when pack is enabled
+        await expect(testPackCard.locator('button:has-text("Disable")')).toBeVisible({ timeout: 15000 });
       }
 
-      // Verify pack is now enabled
+      // Verify pack is now enabled (green background)
       await expect(testPackCard).toHaveClass(/bg-green/);
 
       // Accept the confirmation dialog when Make Public is clicked
@@ -82,6 +93,7 @@ test.describe('Vocabulary Library Search', () => {
       const hasSearch = await searchInput.isVisible().catch(() => false);
       const isDisabled = await notEnabled.isVisible().catch(() => false);
       test.skip(!hasSearch || isDisabled, 'Vocabulary pack not enabled or accessible');
+      await waitForSearchReady(authenticatedPage);
 
       const resultCount = authenticatedPage.locator('#vocab-result-count');
       await expect(resultCount).toBeVisible();
@@ -112,6 +124,9 @@ test.describe('Vocabulary Library Search', () => {
       const isDisabled = await notEnabled.isVisible().catch(() => false);
       test.skip(!hasSearch || isDisabled, 'Vocabulary pack not enabled or accessible');
 
+      // Wait for search to be initialized (Fuse.js loaded)
+      await waitForSearchReady(authenticatedPage);
+
       const resultsDropdown = authenticatedPage.locator('#vocab-search-results');
 
       await expect(resultsDropdown).toBeHidden();
@@ -127,6 +142,7 @@ test.describe('Vocabulary Library Search', () => {
       const hasSearch = await searchInput.isVisible().catch(() => false);
       const isDisabled = await notEnabled.isVisible().catch(() => false);
       test.skip(!hasSearch || isDisabled, 'Vocabulary pack not enabled or accessible');
+      await waitForSearchReady(authenticatedPage);
 
       await searchInput.fill('han');
 
@@ -150,6 +166,7 @@ test.describe('Vocabulary Library Search', () => {
       const hasSearch = await searchInput.isVisible().catch(() => false);
       const isDisabled = await notEnabled.isVisible().catch(() => false);
       test.skip(!hasSearch || isDisabled, 'Vocabulary pack not enabled or accessible');
+      await waitForSearchReady(authenticatedPage);
 
       const resultCount = authenticatedPage.locator('#vocab-result-count');
 
@@ -168,6 +185,7 @@ test.describe('Vocabulary Library Search', () => {
       const hasSearch = await searchInput.isVisible().catch(() => false);
       const isDisabled = await notEnabled.isVisible().catch(() => false);
       test.skip(!hasSearch || isDisabled, 'Vocabulary pack not enabled or accessible');
+      await waitForSearchReady(authenticatedPage);
 
       await searchInput.fill('xyznonexistent123');
       await authenticatedPage.waitForTimeout(300);
@@ -205,6 +223,7 @@ test.describe('Vocabulary Library Search', () => {
       const hasSearch = await searchInput.isVisible().catch(() => false);
       const isDisabled = await notEnabled.isVisible().catch(() => false);
       test.skip(!hasSearch || isDisabled, 'Vocabulary pack not enabled or accessible');
+      await waitForSearchReady(authenticatedPage);
 
       const clearButton = authenticatedPage.locator('#vocab-search-clear');
 
@@ -221,6 +240,7 @@ test.describe('Vocabulary Library Search', () => {
       const hasSearch = await searchInput.isVisible().catch(() => false);
       const isDisabled = await notEnabled.isVisible().catch(() => false);
       test.skip(!hasSearch || isDisabled, 'Vocabulary pack not enabled or accessible');
+      await waitForSearchReady(authenticatedPage);
 
       const clearButton = authenticatedPage.locator('#vocab-search-clear');
 
@@ -243,6 +263,7 @@ test.describe('Vocabulary Library Search', () => {
       const hasSearch = await searchInput.isVisible().catch(() => false);
       const isDisabled = await notEnabled.isVisible().catch(() => false);
       test.skip(!hasSearch || isDisabled, 'Vocabulary pack not enabled or accessible');
+      await waitForSearchReady(authenticatedPage);
 
       await searchInput.fill('han');
 
@@ -293,6 +314,7 @@ test.describe('Vocabulary Library Search', () => {
       const hasSearch = await searchInput.isVisible().catch(() => false);
       const isDisabled = await notEnabled.isVisible().catch(() => false);
       test.skip(!hasSearch || isDisabled, 'Vocabulary pack not enabled or accessible');
+      await waitForSearchReady(authenticatedPage);
 
       const backButton = authenticatedPage.locator('#vocab-back-to-search');
 
@@ -319,6 +341,7 @@ test.describe('Vocabulary Library Search', () => {
       const hasSearch = await searchInput.isVisible().catch(() => false);
       const isDisabled = await notEnabled.isVisible().catch(() => false);
       test.skip(!hasSearch || isDisabled, 'Vocabulary pack not enabled or accessible');
+      await waitForSearchReady(authenticatedPage);
 
       const backButton = authenticatedPage.locator('#vocab-back-to-search');
 
@@ -352,6 +375,7 @@ test.describe('Vocabulary Library Search', () => {
       const hasSearch = await searchInput.isVisible().catch(() => false);
       const isDisabled = await notEnabled.isVisible().catch(() => false);
       test.skip(!hasSearch || isDisabled, 'Vocabulary pack not enabled or accessible');
+      await waitForSearchReady(authenticatedPage);
 
       const backButton = authenticatedPage.locator('#vocab-back-to-search');
 
@@ -381,6 +405,7 @@ test.describe('Vocabulary Library Search', () => {
       const hasSearch = await searchInput.isVisible().catch(() => false);
       const isDisabled = await notEnabled.isVisible().catch(() => false);
       test.skip(!hasSearch || isDisabled, 'Vocabulary pack not enabled or accessible');
+      await waitForSearchReady(authenticatedPage);
 
       await searchInput.fill('han-guk');
 
@@ -400,6 +425,7 @@ test.describe('Vocabulary Library Search', () => {
       const hasSearch = await searchInput.isVisible().catch(() => false);
       const isDisabled = await notEnabled.isVisible().catch(() => false);
       test.skip(!hasSearch || isDisabled, 'Vocabulary pack not enabled or accessible');
+      await waitForSearchReady(authenticatedPage);
 
       await searchInput.fill('Korea');
 
@@ -419,6 +445,7 @@ test.describe('Vocabulary Library Search', () => {
       const hasSearch = await searchInput.isVisible().catch(() => false);
       const isDisabled = await notEnabled.isVisible().catch(() => false);
       test.skip(!hasSearch || isDisabled, 'Vocabulary pack not enabled or accessible');
+      await waitForSearchReady(authenticatedPage);
 
       await searchInput.fill('hanguc'); // typo for han-guk
 

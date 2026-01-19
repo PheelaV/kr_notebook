@@ -160,8 +160,8 @@ pub use guide::guide;
 pub use library::{library_characters, library_index};
 pub use progress::{progress, unlock_tier};
 pub use reference::{
-  precache_urls, reference_basics, reference_index, reference_lesson, reference_pack_overview,
-  reference_tier1, reference_tier2, reference_tier3, reference_tier4,
+  precache_urls, quick_reference, reference_basics, reference_index, reference_lesson,
+  reference_pack_overview, reference_tier1, reference_tier2, reference_tier3, reference_tier4,
 };
 pub use listen::{listen_index, listen_start, listen_answer, listen_answer_htmx, listen_skip};
 pub use pronunciation::{has_scraped_content, pronunciation_page};

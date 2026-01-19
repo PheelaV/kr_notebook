@@ -3,146 +3,167 @@
 {% block title %}Lesson {{ lesson.number }}: {{ lesson.title }} - Reference{% endblock %}
 
 {% block content %}
-<div class="max-w-4xl mx-auto">
-  <nav class="mb-6 text-sm">
-    <a href="/reference/pack/{{ pack_id }}" class="text-indigo-600 dark:text-indigo-400 hover:underline">&larr; {{ pack_name }}</a>
-  </nav>
+<div class="lg:flex lg:gap-8">
+  <!-- TOC Component -->
+  {% include "partials/toc.html" %}
 
-  <div class="flex flex-wrap items-center gap-2 sm:gap-3 mb-6">
-    <span class="bg-purple-500 text-white text-sm font-bold px-3 py-1 rounded-full">Lesson {{ lesson.number }}</span>
-    <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">{{ lesson.title }}</h1>
-  </div>
+  <!-- Main Content -->
+  <div class="flex-1 max-w-4xl">
+    <nav class="mb-6 text-sm">
+      <a href="/reference/pack/{{ pack_id }}" class="text-indigo-600 dark:text-indigo-400 hover:underline">&larr; {{ pack_name }}</a>
+    </nav>
 
-  {% if let Some(desc) = lesson.description %}
-  <p class="text-gray-600 dark:text-gray-400 mb-8">{{ desc }}</p>
-  {% endif %}
-
-  <!-- Sections -->
-  {% for section in lesson.sections %}
-  {% match section.section_type %}
-  {% when crate::content::reference::SectionType::Comparison %}
-  <section id="{{ section.id }}" class="bg-blue-50 dark:bg-blue-900/20 shadow rounded-lg p-6 mb-6 border-l-4 border-blue-500">
-    <h2 class="text-xl font-bold text-blue-900 dark:text-blue-100 mb-4">{{ section.title }}</h2>
-  {% when crate::content::reference::SectionType::CommonMistake %}
-  <section id="{{ section.id }}" class="bg-orange-50 dark:bg-orange-900/20 shadow rounded-lg p-6 mb-6 border-l-4 border-orange-500">
-    <p class="text-xs text-orange-600 dark:text-orange-400 uppercase font-semibold mb-2">Common Mistake</p>
-    <h2 class="text-xl font-bold text-orange-900 dark:text-orange-100 mb-4">{{ section.title }}</h2>
-  {% when crate::content::reference::SectionType::SetExpression %}
-  <section id="{{ section.id }}" class="bg-teal-50 dark:bg-teal-900/20 shadow rounded-lg p-6 mb-6 border-l-4 border-teal-500">
-    <p class="text-xs text-teal-600 dark:text-teal-400 uppercase font-semibold mb-2">Set Expression</p>
-    <h2 class="text-xl font-bold text-teal-900 dark:text-teal-100 mb-4">{{ section.title }}</h2>
-  {% when crate::content::reference::SectionType::QuickReference %}
-  <section id="{{ section.id }}" class="bg-gray-100 dark:bg-gray-700 shadow rounded-lg p-6 mb-6 border-2 border-gray-300 dark:border-gray-600">
-    <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-4">{{ section.title }}</h2>
-  {% when _ %}
-  <section id="{{ section.id }}" class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6">
-    <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-4">{{ section.title }}</h2>
-  {% endmatch %}
-
-    {% if let Some(content) = section.content %}
-    <div class="prose dark:prose-invert max-w-none mb-4">
-      <p class="text-gray-700 dark:text-gray-300">{{ content }}</p>
+    <div class="flex flex-wrap items-center gap-2 sm:gap-3 mb-6">
+      <span class="bg-purple-500 text-white text-sm font-bold px-3 py-1 rounded-full">Lesson {{ lesson.number }}</span>
+      <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">{{ lesson.title }}</h1>
     </div>
+
+    {% if let Some(desc) = lesson.description %}
+    <p class="text-gray-600 dark:text-gray-400 mb-8">{{ desc }}</p>
     {% endif %}
 
-    <!-- Grammar Rules Table -->
-    {% if !section.rules.is_empty() %}
-    <div class="overflow-x-auto mb-4">
-      <table class="w-full text-sm">
-        <thead>
-          <tr class="border-b border-gray-200 dark:border-gray-700">
-            <th class="text-left py-2 text-gray-600 dark:text-gray-400">Condition</th>
-            <th class="text-left py-2 text-gray-600 dark:text-gray-400">Form</th>
-            <th class="text-left py-2 text-gray-600 dark:text-gray-400">Example</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for rule in section.rules %}
-          <tr class="border-b border-gray-100 dark:border-gray-700">
-            <td class="py-2 text-gray-900 dark:text-white">{{ rule.condition }}</td>
-            <td class="py-2 text-2xl">{{ rule.form }}</td>
-            <td class="py-2 text-gray-600 dark:text-gray-400">{% if let Some(ex) = rule.example %}{{ ex }}{% endif %}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-    {% endif %}
+    <!-- Sections -->
+    {% for section in lesson.sections %}
+    {% match section.section_type %}
+    {% when crate::content::reference::SectionType::Comparison %}
+    <section id="{{ section.id }}" class="scroll-mt-16 bg-blue-50 dark:bg-blue-900/20 shadow rounded-lg p-6 mb-6 border-l-4 border-blue-500">
+      <h2 class="text-xl font-bold text-blue-900 dark:text-blue-100 mb-4 group flex items-center gap-2">
+        {{ section.title }}
+        <a href="#{{ section.id }}" class="opacity-0 group-hover:opacity-100 text-blue-400 hover:text-blue-600 dark:text-blue-500 dark:hover:text-blue-300 text-sm transition-opacity">#</a>
+      </h2>
+    {% when crate::content::reference::SectionType::CommonMistake %}
+    <section id="{{ section.id }}" class="scroll-mt-16 bg-orange-50 dark:bg-orange-900/20 shadow rounded-lg p-6 mb-6 border-l-4 border-orange-500">
+      <p class="text-xs text-orange-600 dark:text-orange-400 uppercase font-semibold mb-2">Common Mistake</p>
+      <h2 class="text-xl font-bold text-orange-900 dark:text-orange-100 mb-4 group flex items-center gap-2">
+        {{ section.title }}
+        <a href="#{{ section.id }}" class="opacity-0 group-hover:opacity-100 text-orange-400 hover:text-orange-600 dark:text-orange-500 dark:hover:text-orange-300 text-sm transition-opacity">#</a>
+      </h2>
+    {% when crate::content::reference::SectionType::SetExpression %}
+    <section id="{{ section.id }}" class="scroll-mt-16 bg-teal-50 dark:bg-teal-900/20 shadow rounded-lg p-6 mb-6 border-l-4 border-teal-500">
+      <p class="text-xs text-teal-600 dark:text-teal-400 uppercase font-semibold mb-2">Set Expression</p>
+      <h2 class="text-xl font-bold text-teal-900 dark:text-teal-100 mb-4 group flex items-center gap-2">
+        {{ section.title }}
+        <a href="#{{ section.id }}" class="opacity-0 group-hover:opacity-100 text-teal-400 hover:text-teal-600 dark:text-teal-500 dark:hover:text-teal-300 text-sm transition-opacity">#</a>
+      </h2>
+    {% when crate::content::reference::SectionType::QuickReference %}
+    <section id="{{ section.id }}" class="scroll-mt-16 bg-gray-100 dark:bg-gray-700 shadow rounded-lg p-6 mb-6 border-2 border-gray-300 dark:border-gray-600">
+      <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-4 group flex items-center gap-2">
+        {{ section.title }}
+        <a href="#{{ section.id }}" class="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 text-sm transition-opacity">#</a>
+      </h2>
+    {% when _ %}
+    <section id="{{ section.id }}" class="scroll-mt-16 bg-white dark:bg-gray-800 shadow rounded-lg p-6 mb-6">
+      <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-4 group flex items-center gap-2">
+        {{ section.title }}
+        <a href="#{{ section.id }}" class="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-indigo-500 dark:text-gray-500 dark:hover:text-indigo-400 text-sm transition-opacity">#</a>
+      </h2>
+    {% endmatch %}
 
-    <!-- Examples -->
-    {% if !section.examples.is_empty() %}
-    <div class="space-y-3">
-      {% for example in section.examples %}
-      <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
-        <p class="text-xl text-gray-900 dark:text-white">{{ example.korean }}</p>
-        {% if let Some(rom) = example.romanization %}
-        <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">{{ rom }}</p>
-        {% endif %}
-        <p class="text-indigo-600 dark:text-indigo-400 mt-2">{{ example.english }}</p>
-
-        <!-- Word breakdown -->
-        {% if !example.breakdown.is_empty() %}
-        <div class="flex flex-wrap gap-2 mt-3 pt-3 border-t border-gray-200 dark:border-gray-600">
-          {% for word in example.breakdown %}
-          <span class="inline-flex items-center gap-1 text-xs bg-white dark:bg-gray-800 px-2 py-1 rounded">
-            <span class="font-bold">{{ word.text }}</span>
-            <span class="text-gray-400">({{ word.role }}{% if let Some(m) = word.meaning %}: {{ m }}{% endif %})</span>
-          </span>
-          {% endfor %}
-        </div>
-        {% endif %}
+      {% if let Some(content) = section.content %}
+      <div class="prose dark:prose-invert max-w-none mb-4">
+        <p class="text-gray-700 dark:text-gray-300">{{ content }}</p>
       </div>
-      {% endfor %}
+      {% endif %}
+
+      <!-- Grammar Rules Table -->
+      {% if !section.rules.is_empty() %}
+      <div class="overflow-x-auto mb-4">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-gray-200 dark:border-gray-700">
+              <th class="text-left py-2 text-gray-600 dark:text-gray-400">Condition</th>
+              <th class="text-left py-2 text-gray-600 dark:text-gray-400">Form</th>
+              <th class="text-left py-2 text-gray-600 dark:text-gray-400">Example</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for rule in section.rules %}
+            <tr class="border-b border-gray-100 dark:border-gray-700">
+              <td class="py-2 text-gray-900 dark:text-white">{{ rule.condition }}</td>
+              <td class="py-2 text-2xl">{{ rule.form }}</td>
+              <td class="py-2 text-gray-600 dark:text-gray-400">{% if let Some(ex) = rule.example %}{{ ex }}{% endif %}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% endif %}
+
+      <!-- Examples -->
+      {% if !section.examples.is_empty() %}
+      <div class="space-y-3">
+        {% for example in section.examples %}
+        <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+          <p class="text-xl text-gray-900 dark:text-white">{{ example.korean }}</p>
+          {% if let Some(rom) = example.romanization %}
+          <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">{{ rom }}</p>
+          {% endif %}
+          <p class="text-indigo-600 dark:text-indigo-400 mt-2">{{ example.english }}</p>
+
+          <!-- Word breakdown -->
+          {% if !example.breakdown.is_empty() %}
+          <div class="flex flex-wrap gap-2 mt-3 pt-3 border-t border-gray-200 dark:border-gray-600">
+            {% for word in example.breakdown %}
+            <span class="inline-flex items-center gap-1 text-xs bg-white dark:bg-gray-800 px-2 py-1 rounded">
+              <span class="font-bold">{{ word.text }}</span>
+              <span class="text-gray-400">({{ word.role }}{% if let Some(m) = word.meaning %}: {{ m }}{% endif %})</span>
+            </span>
+            {% endfor %}
+          </div>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+
+      <!-- Note -->
+      {% if let Some(note) = section.note %}
+      <div class="mt-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg">
+        <p class="text-sm text-yellow-800 dark:text-yellow-200">
+          <strong>Note:</strong> {{ note }}
+        </p>
+      </div>
+      {% endif %}
+
+      <!-- Pattern Card Preview (future SRS) -->
+      {% if let Some(pattern) = section.pattern_card %}
+      <div class="mt-4 p-3 bg-purple-50 dark:bg-purple-900/20 rounded-lg border-l-4 border-purple-500">
+        <p class="text-xs text-purple-600 dark:text-purple-400 uppercase font-semibold mb-1">Pattern Card (Coming Soon)</p>
+        <p class="text-gray-900 dark:text-white"><strong>{{ pattern.front }}</strong></p>
+        <p class="text-purple-700 dark:text-purple-300">{{ pattern.answer }}</p>
+      </div>
+      {% endif %}
+    </section>
+    {% endfor %}
+
+    <!-- Practice Tips -->
+    {% if !lesson.practice_tips.is_empty() %}
+    <section id="practice-tips" class="scroll-mt-16 bg-green-50 dark:bg-green-900/20 rounded-lg p-6 mb-6">
+      <h2 class="text-lg font-bold text-green-800 dark:text-green-200 mb-3">Practice Tips</h2>
+      <ul class="list-disc list-inside space-y-2 text-green-700 dark:text-green-300">
+        {% for tip in lesson.practice_tips %}
+        <li>{{ tip }}</li>
+        {% endfor %}
+      </ul>
+    </section>
+    {% endif %}
+
+    <!-- Navigation -->
+    <div class="flex justify-between mt-8">
+      {% if let Some(prev) = prev_lesson %}
+      <a href="/reference/pack/{{ pack_id }}/lesson/{{ prev }}" class="text-indigo-600 dark:text-indigo-400 hover:underline">
+        &larr; Lesson {{ prev }}
+      </a>
+      {% else %}
+      <span></span>
+      {% endif %}
+
+      {% if let Some(next) = next_lesson %}
+      <a href="/reference/pack/{{ pack_id }}/lesson/{{ next }}" class="text-indigo-600 dark:text-indigo-400 hover:underline">
+        Lesson {{ next }} &rarr;
+      </a>
+      {% endif %}
     </div>
-    {% endif %}
-
-    <!-- Note -->
-    {% if let Some(note) = section.note %}
-    <div class="mt-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg">
-      <p class="text-sm text-yellow-800 dark:text-yellow-200">
-        <strong>Note:</strong> {{ note }}
-      </p>
-    </div>
-    {% endif %}
-
-    <!-- Pattern Card Preview (future SRS) -->
-    {% if let Some(pattern) = section.pattern_card %}
-    <div class="mt-4 p-3 bg-purple-50 dark:bg-purple-900/20 rounded-lg border-l-4 border-purple-500">
-      <p class="text-xs text-purple-600 dark:text-purple-400 uppercase font-semibold mb-1">Pattern Card (Coming Soon)</p>
-      <p class="text-gray-900 dark:text-white"><strong>{{ pattern.front }}</strong></p>
-      <p class="text-purple-700 dark:text-purple-300">{{ pattern.answer }}</p>
-    </div>
-    {% endif %}
-  </section>
-  {% endfor %}
-
-  <!-- Practice Tips -->
-  {% if !lesson.practice_tips.is_empty() %}
-  <section class="bg-green-50 dark:bg-green-900/20 rounded-lg p-6 mb-6">
-    <h2 class="text-lg font-bold text-green-800 dark:text-green-200 mb-3">Practice Tips</h2>
-    <ul class="list-disc list-inside space-y-2 text-green-700 dark:text-green-300">
-      {% for tip in lesson.practice_tips %}
-      <li>{{ tip }}</li>
-      {% endfor %}
-    </ul>
-  </section>
-  {% endif %}
-
-  <!-- Navigation -->
-  <div class="flex justify-between mt-8">
-    {% if let Some(prev) = prev_lesson %}
-    <a href="/reference/pack/{{ pack_id }}/lesson/{{ prev }}" class="text-indigo-600 dark:text-indigo-400 hover:underline">
-      &larr; Lesson {{ prev }}
-    </a>
-    {% else %}
-    <span></span>
-    {% endif %}
-
-    {% if let Some(next) = next_lesson %}
-    <a href="/reference/pack/{{ pack_id }}/lesson/{{ next }}" class="text-indigo-600 dark:text-indigo-400 hover:underline">
-      Lesson {{ next }} &rarr;
-    </a>
-    {% endif %}
   </div>
 </div>
 {% endblock %}

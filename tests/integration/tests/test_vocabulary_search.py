@@ -16,6 +16,44 @@ import pytest
 from conftest import DbManager, TestClient
 
 
+@pytest.fixture(scope="module")
+def vocab_pack_enabled(test_server: str, project_root, test_data_dir):
+    """Enable and make public the test_vocabulary_pack for vocabulary tests.
+
+    This fixture runs once per module and ensures vocabulary data is available.
+    """
+    import hashlib
+    import httpx
+
+    # Create a temporary admin to enable the pack (unique name to avoid conflicts)
+    from conftest import DbManager
+    db = DbManager(project_root, test_data_dir)
+
+    admin_name = f"_vocab_admin_{uuid.uuid4().hex[:8]}"
+    password = "admin123"
+
+    # Create admin user
+    combined = f"{password}:{admin_name}"
+    password_hash = hashlib.sha256(combined.encode()).hexdigest()
+    db.create_user(admin_name, password)
+    db.set_user_role(admin_name, "admin")
+
+    # Login and enable pack
+    with httpx.Client(base_url=test_server, follow_redirects=False) as client:
+        response = client.post("/login", data={"username": admin_name, "password_hash": password_hash})
+        cookies = dict(response.cookies)
+
+        # Enable and make public the test_vocabulary_pack
+        client.cookies.update(cookies)
+        client.post("/settings/pack/test_vocabulary_pack/enable")
+        client.post("/settings/pack/test_vocabulary_pack/make-public")
+
+    yield True
+
+    # Cleanup admin user
+    db.delete_user(admin_name)
+
+
 class TestVocabularyLibraryPage:
     """Vocabulary library page rendering tests."""
 
@@ -65,12 +103,12 @@ class TestVocabularySearchData:
 class TestSearchDataIdConsistency:
     """Test that search data IDs match DOM element IDs."""
 
-    def test_vocab_ids_match_dom_elements(self, authenticated_client: TestClient):
+    def test_vocab_ids_match_dom_elements(self, authenticated_client: TestClient, vocab_pack_enabled):
         """Each search entry ID has a corresponding DOM element with data-vocab-id."""
         response = authenticated_client.get("/library/vocabulary")
 
         if response.status_code != 200 or "window.VocabularyData" not in response.text:
-            pytest.skip("No vocabulary data on page")
+            pytest.fail("No vocabulary data on page - pack should be enabled")
 
         # Extract the JSON
         match = re.search(r"window\.VocabularyData\s*=\s*(\[.*?\]);", response.text, re.DOTALL)
@@ -96,12 +134,12 @@ class TestSearchDataIdConsistency:
 class TestSearchDataFields:
     """Test that search data has required fields."""
 
-    def test_search_entries_have_required_fields(self, authenticated_client: TestClient):
+    def test_search_entries_have_required_fields(self, authenticated_client: TestClient, vocab_pack_enabled):
         """Each search entry has required fields for Fuse.js."""
         response = authenticated_client.get("/library/vocabulary")
 
         if response.status_code != 200 or "window.VocabularyData" not in response.text:
-            pytest.skip("No vocabulary data on page")
+            pytest.fail("No vocabulary data on page - pack should be enabled")
 
         match = re.search(r"window\.VocabularyData\s*=\s*(\[.*?\]);", response.text, re.DOTALL)
         if not match:
