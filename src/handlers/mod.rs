@@ -129,7 +129,8 @@ pub async fn index(State(state): State<AppState>, auth: AuthContext) -> Html<Str
 
   // Always fetch next upcoming review time (for cards not yet due)
   // This allows the UI to show a countdown even when there are cards currently due
-  let next_review_time = db::get_next_upcoming_review_time(&conn)
+  // Uses filtered version to include vocabulary pack cards (matches due_count logic)
+  let next_review_time = db::get_next_upcoming_review_time_filtered(&conn, &app_conn, auth.user_id, &filter)
     .log_warn("Failed to get next review time")
     .flatten();
 

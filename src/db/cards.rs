@@ -230,6 +230,48 @@ pub fn get_next_upcoming_review_time(conn: &Connection) -> Result<Option<DateTim
     }))
 }
 
+/// Get the next upcoming review time (filtered) - includes pack cards
+/// Uses the same filter logic as get_due_count_filtered() for consistency
+pub fn get_next_upcoming_review_time_filtered(
+    conn: &Connection,
+    app_conn: &Connection,
+    user_id: i64,
+    filter: &StudyFilterMode,
+) -> Result<Option<DateTime<Utc>>> {
+    let now = Utc::now().to_rfc3339();
+    let (filter_clause, _, skip_tier_filter) =
+        build_filter_where_clause(conn, app_conn, user_id, filter)?;
+
+    let tier_clause = if skip_tier_filter {
+        String::new()
+    } else {
+        let effective_tiers = get_effective_tiers(conn)?;
+        if effective_tiers.is_empty() {
+            return Ok(None);
+        }
+        let tier_list = effective_tiers
+            .iter()
+            .map(|t| t.to_string())
+            .collect::<Vec<_>>()
+            .join(",");
+        format!("AND cd.tier IN ({})", tier_list)
+    };
+
+    let query = format!(
+        r#"SELECT MIN(COALESCE(cp.next_review, datetime('now'))) {}
+        WHERE COALESCE(cp.next_review, datetime('now')) > ?1
+        {} {}"#,
+        CARD_FROM, tier_clause, filter_clause
+    );
+    let result: Option<String> = conn.query_row(&query, params![now], |row| row.get(0))?;
+
+    Ok(result.and_then(|s| {
+        DateTime::parse_from_rfc3339(&s)
+            .ok()
+            .map(|dt| dt.with_timezone(&Utc))
+    }))
+}
+
 pub fn get_due_cards_interleaved(
     conn: &Connection,
     limit: usize,
