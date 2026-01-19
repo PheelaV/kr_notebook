@@ -17,7 +17,7 @@ use std::path::Path;
 
 /// Current schema version for learning.db
 /// Increment this when adding a new migration
-pub const LEARNING_DB_VERSION: i32 = 7;
+pub const LEARNING_DB_VERSION: i32 = 8;
 
 pub fn run_migrations(conn: &Connection) -> Result<()> {
     run_migrations_with_app_db(conn, None)
@@ -60,6 +60,9 @@ pub fn run_migrations_with_app_db(conn: &Connection, app_db_path: Option<&Path>)
     }
     if current_version < 7 {
         migrate_v6_to_v7(conn)?;
+    }
+    if current_version < 8 {
+        migrate_v7_to_v8(conn)?;
     }
 
     // Legacy cards → card_progress migration (has its own idempotency guards)
@@ -399,6 +402,23 @@ fn migrate_v6_to_v7(conn: &Connection) -> Result<()> {
     )?;
 
     record_version(conn, 7, "Add offline study mode support")?;
+    Ok(())
+}
+
+/// v7→v8: Add pre-review state columns to review_logs for override restoration
+fn migrate_v7_to_v8(conn: &Connection) -> Result<()> {
+    tracing::info!("Running migration v7→v8: Add pre-review state to review_logs");
+
+    // Add columns to store card state before the review was applied
+    // Used to restore state when user overrides a ruling
+    add_column_if_missing(conn, "review_logs", "pre_review_next_review", "TEXT")?;
+    add_column_if_missing(conn, "review_logs", "pre_review_learning_step", "INTEGER")?;
+    add_column_if_missing(conn, "review_logs", "pre_review_repetitions", "INTEGER")?;
+    add_column_if_missing(conn, "review_logs", "pre_review_fsrs_stability", "REAL")?;
+    add_column_if_missing(conn, "review_logs", "pre_review_fsrs_difficulty", "REAL")?;
+    add_column_if_missing(conn, "review_logs", "pre_review_fsrs_state", "TEXT")?;
+
+    record_version(conn, 8, "Add pre-review state to review_logs for override")?;
     Ok(())
 }
 

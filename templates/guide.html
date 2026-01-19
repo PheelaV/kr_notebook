@@ -235,37 +235,59 @@
         How Answers Are Scored
       </h2>
       <p class="text-gray-700 dark:text-gray-300 mb-4">
-        Your answers are automatically scored based on accuracy:
+        Your answers are automatically scored based on accuracy. Each result maps to a quality rating that determines scheduling:
       </p>
-      <div class="space-y-3">
-        <div class="flex flex-col sm:flex-row sm:items-start gap-2 sm:gap-0">
-          <span class="inline-block w-24 shrink-0 bg-green-500 text-white text-center py-1 px-2 rounded text-sm font-semibold sm:mr-3">
-            Correct
-          </span>
-          <div class="text-gray-700 dark:text-gray-300 text-sm sm:text-base">
-            <strong>Got it right!</strong> Interval increases. Card becomes easier.
-          </div>
+
+      <!-- Quality Table -->
+      <div class="overflow-x-auto mb-4">
+        <table class="w-full text-sm text-left">
+          <thead class="text-xs uppercase bg-gray-50 dark:bg-gray-700 text-gray-700 dark:text-gray-300">
+            <tr>
+              <th class="px-3 py-2">Result</th>
+              <th class="px-3 py-2">Quality</th>
+              <th class="px-3 py-2">SRS Effect</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
+            <tr class="bg-white dark:bg-gray-800">
+              <td class="px-3 py-2"><span class="text-green-600 dark:text-green-400 font-medium">Correct</span></td>
+              <td class="px-3 py-2 font-mono">4 (Good)</td>
+              <td class="px-3 py-2 text-gray-600 dark:text-gray-400">Normal interval increase</td>
+            </tr>
+            <tr class="bg-white dark:bg-gray-800">
+              <td class="px-3 py-2"><span class="text-green-600 dark:text-green-400 font-medium">Close (typo)</span></td>
+              <td class="px-3 py-2 font-mono">4 (Good)</td>
+              <td class="px-3 py-2 text-gray-600 dark:text-gray-400">No penalty &ndash; you knew it</td>
+            </tr>
+            <tr class="bg-white dark:bg-gray-800">
+              <td class="px-3 py-2"><span class="text-orange-600 dark:text-orange-400 font-medium">With hint</span></td>
+              <td class="px-3 py-2 font-mono">3 (Hard)</td>
+              <td class="px-3 py-2 text-gray-600 dark:text-gray-400">Slightly shorter interval</td>
+            </tr>
+            <tr class="bg-white dark:bg-gray-800">
+              <td class="px-3 py-2"><span class="text-yellow-600 dark:text-yellow-400 font-medium">Partial</span></td>
+              <td class="px-3 py-2 font-mono">2 (Hard)</td>
+              <td class="px-3 py-2 text-gray-600 dark:text-gray-400">Shorter interval (knowledge gap)</td>
+            </tr>
+            <tr class="bg-white dark:bg-gray-800">
+              <td class="px-3 py-2"><span class="text-red-600 dark:text-red-400 font-medium">Incorrect</span></td>
+              <td class="px-3 py-2 font-mono">0 (Again)</td>
+              <td class="px-3 py-2 text-gray-600 dark:text-gray-400">Reset to learning phase</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="space-y-3 text-sm">
+        <div class="bg-green-50 dark:bg-green-900/20 rounded-lg p-3">
+          <span class="font-semibold text-green-800 dark:text-green-200">Typo tolerance:</span>
+          <span class="text-green-700 dark:text-green-300">1-2 character differences are accepted as correct for longer answers.</span>
         </div>
-        <div class="flex flex-col sm:flex-row sm:items-start gap-2 sm:gap-0">
-          <span class="inline-block w-24 shrink-0 bg-orange-500 text-white text-center py-1 px-2 rounded text-sm font-semibold sm:mr-3">
-            With Hint
-          </span>
-          <div class="text-gray-700 dark:text-gray-300 text-sm sm:text-base">
-            <strong>Used hints.</strong> Counts as "Hard" - card will appear again soon.
-          </div>
-        </div>
-        <div class="flex flex-col sm:flex-row sm:items-start gap-2 sm:gap-0">
-          <span class="inline-block w-24 shrink-0 bg-red-500 text-white text-center py-1 px-2 rounded text-sm font-semibold sm:mr-3">
-            Incorrect
-          </span>
-          <div class="text-gray-700 dark:text-gray-300 text-sm sm:text-base">
-            <strong>Wrong answer.</strong> Card resets and will appear again shortly.
-          </div>
+        <div class="bg-yellow-50 dark:bg-yellow-900/20 rounded-lg p-3">
+          <span class="font-semibold text-yellow-800 dark:text-yellow-200">Partial match:</span>
+          <span class="text-yellow-700 dark:text-yellow-300">Core answer correct but missing required context (e.g., "that" instead of "that &lt;far&gt;").</span>
         </div>
       </div>
-      <p class="text-gray-600 dark:text-gray-400 mt-4 text-sm">
-        Tip: Small typos (1-2 characters off) are accepted as correct, but try to be accurate!
-      </p>
     </section>
 
     <!-- Override Ruling -->
@@ -284,21 +306,50 @@
           <li>After answering a card, click <strong>"Show last card"</strong> to expand the previous card details</li>
           <li>Click the <strong>"Override ruling"</strong> link at the bottom</li>
           <li>Edit the suggested answer field if you want to propose an alternative correct answer</li>
-          <li>Click the button that matches how you would rate your answer:
-            <ul class="mt-1 ml-4 list-disc text-gray-600 dark:text-gray-400">
-              <li><span class="text-red-600 dark:text-red-400 font-medium">Wrong</span> - I got it completely wrong</li>
-              <li><span class="text-yellow-600 dark:text-yellow-400 font-medium">Hard</span> - Correct but I struggled</li>
-              <li><span class="text-green-600 dark:text-green-400 font-medium">Correct</span> - My answer was right</li>
-              <li><span class="text-blue-600 dark:text-blue-400 font-medium">Easy</span> - It was too easy</li>
-            </ul>
-          </li>
+          <li>Click the button that matches how you would rate your answer</li>
         </ol>
+      </div>
+
+      <!-- Override Quality Table -->
+      <div class="overflow-x-auto mb-4">
+        <table class="w-full text-sm text-left">
+          <thead class="text-xs uppercase bg-gray-50 dark:bg-gray-700 text-gray-700 dark:text-gray-300">
+            <tr>
+              <th class="px-3 py-2">Button</th>
+              <th class="px-3 py-2">Quality</th>
+              <th class="px-3 py-2">Effect</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
+            <tr class="bg-white dark:bg-gray-800">
+              <td class="px-3 py-2"><span class="text-red-600 dark:text-red-400 font-medium">Wrong</span></td>
+              <td class="px-3 py-2 font-mono">0</td>
+              <td class="px-3 py-2 text-gray-600 dark:text-gray-400">Reset to learning (confirms wrong)</td>
+            </tr>
+            <tr class="bg-white dark:bg-gray-800">
+              <td class="px-3 py-2"><span class="text-yellow-600 dark:text-yellow-400 font-medium">Hard</span></td>
+              <td class="px-3 py-2 font-mono">2</td>
+              <td class="px-3 py-2 text-gray-600 dark:text-gray-400">Shorter interval (struggled)</td>
+            </tr>
+            <tr class="bg-white dark:bg-gray-800">
+              <td class="px-3 py-2"><span class="text-green-600 dark:text-green-400 font-medium">Correct</span></td>
+              <td class="px-3 py-2 font-mono">4</td>
+              <td class="px-3 py-2 text-gray-600 dark:text-gray-400">Restores pre-review timing</td>
+            </tr>
+            <tr class="bg-white dark:bg-gray-800">
+              <td class="px-3 py-2"><span class="text-blue-600 dark:text-blue-400 font-medium">Easy</span></td>
+              <td class="px-3 py-2 font-mono">5</td>
+              <td class="px-3 py-2 text-gray-600 dark:text-gray-400">Restores timing + longer interval</td>
+            </tr>
+          </tbody>
+        </table>
       </div>
 
       <div class="bg-indigo-50 dark:bg-indigo-900/30 rounded-lg p-4">
         <p class="text-indigo-800 dark:text-indigo-200 text-sm">
-          <strong>Note:</strong> Your override will update the card's scheduling and your suggestion
-          will be recorded for review. This helps improve the answer validation system over time.
+          <strong>State restoration:</strong> When you override to "Correct" or "Easy", the card's timing
+          is restored to what it was <em>before</em> the review. This prevents unfair interval resets when
+          the validation system misjudges your answer.
         </p>
       </div>
     </section>

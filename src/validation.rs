@@ -397,6 +397,18 @@ fn generate_valid_answers(parsed: &ParsedAnswer) -> (Vec<String>, Vec<String>) {
     }
   }
 
+  // Accept "core + info" when grammar info is present (e.g., "that (thing)" → accept "that thing")
+  // This allows users to type the full phrase including parenthetical content
+  if let Some(ref info) = parsed.info {
+    let normalized_info = normalize_answer(info);
+    if !normalized_info.is_empty() {
+      let with_info = format!("{} {}", normalized_core, normalized_info);
+      if !partial_answers.contains(&with_info) {
+        partial_answers.push(with_info);
+      }
+    }
+  }
+
   // Generate full answers (with disambiguation if present)
   let full_answers = if let Some(ref disambig) = parsed.disambiguation {
     let mut full = Vec::new();
@@ -917,11 +929,16 @@ mod tests {
 
   #[test]
   fn test_info_ignored() {
-    // (info) syntax - ignored in validation
+    // (info) syntax - info alone is not valid, core is required
     assert_eq!(validate_answer("that", "that (far)"), AnswerResult::Correct);
     assert_eq!(validate_answer("far", "that (far)"), AnswerResult::Incorrect);
     assert_eq!(validate_answer("run", "run (verb)"), AnswerResult::Correct);
     assert_eq!(validate_answer("verb", "run (verb)"), AnswerResult::Incorrect);
+
+    // User types full phrase including info content - should be accepted
+    assert_eq!(validate_answer("that far", "that (far)"), AnswerResult::Correct);
+    assert_eq!(validate_answer("run verb", "run (verb)"), AnswerResult::Correct);
+    assert_eq!(validate_answer("that thing", "that (thing)"), AnswerResult::Correct);
 
     // Korean with romanization hint
     assert_eq!(validate_answer("소파", "소파 (so-pa)"), AnswerResult::Correct);

@@ -327,6 +327,16 @@ pub async fn validate_answer_handler(
       study_session.add_failed_card(card.id);
     }
 
+    // Capture pre-review state BEFORE updating SRS (for override restoration)
+    let pre_state = db::PreReviewState {
+      next_review: Some(card.next_review.to_rfc3339()),
+      learning_step: Some(card.learning_step),
+      repetitions: Some(card.repetitions),
+      fsrs_stability: card.fsrs_stability,
+      fsrs_difficulty: card.fsrs_difficulty,
+      fsrs_state: card.fsrs_state.as_ref().map(|s| s.as_str().to_owned()),
+    };
+
     // Update SRS based on FSRS or SM-2
     let use_fsrs = db::get_use_fsrs(&conn).log_warn_default("Failed to get FSRS setting");
     let focus_mode = db::is_focus_mode_active(&conn).unwrap_or(false);
@@ -376,9 +386,9 @@ pub async fn validate_answer_handler(
       );
     }
 
-    // Log review with enhanced tracking
+    // Log review with pre-state for override restoration
     let direction = get_review_direction(&card);
-    if let Err(e) = db::insert_review_log_enhanced(
+    if let Err(e) = db::insert_review_log_with_pre_state(
       &conn,
       card.id,
       quality,
@@ -387,6 +397,7 @@ pub async fn validate_answer_handler(
       direction,
       None,
       form.hints_used.into(),
+      Some(&pre_state),
     ) {
       tracing::error!("Failed to insert review log for card {}: {}", card.id, e);
     }
@@ -820,8 +831,50 @@ pub async fn override_ruling_handler(
     }
   };
 
-  // 1. Record corrective review in user's learning.db
+  // 1. Determine if we should restore pre-review state or recalculate
   let is_correct = form.quality >= 2;
+
+  // 2. For correct overrides, restore the pre-review state instead of recalculating
+  if is_correct {
+    // Look up pre-review state from the most recent review log
+    match db::get_latest_review_pre_state(&user_conn, form.card_id) {
+      Ok(Some(pre_state)) => {
+        // Restore the card's state to before the review was applied
+        if let Err(e) = db::restore_card_pre_review_state(&user_conn, form.card_id, &pre_state) {
+          tracing::error!("Failed to restore pre-review state: {}", e);
+          // Fall back to recalculation
+          if let Err(e) = update_card_srs_for_override(&user_conn, &card, form.quality) {
+            tracing::error!("Failed to update SRS for override: {}", e);
+          }
+        } else {
+          tracing::info!(
+            "Restored pre-review state for card {} (override to correct)",
+            form.card_id
+          );
+        }
+      }
+      Ok(None) => {
+        // No pre-review state available (old review), fall back to recalculation
+        tracing::debug!("No pre-review state for card {}, using recalculation", form.card_id);
+        if let Err(e) = update_card_srs_for_override(&user_conn, &card, form.quality) {
+          tracing::error!("Failed to update SRS for override: {}", e);
+        }
+      }
+      Err(e) => {
+        tracing::error!("Failed to get pre-review state: {}", e);
+        if let Err(e) = update_card_srs_for_override(&user_conn, &card, form.quality) {
+          tracing::error!("Failed to update SRS for override: {}", e);
+        }
+      }
+    }
+  } else {
+    // User confirmed answer was wrong - recalculate SRS as usual
+    if let Err(e) = update_card_srs_for_override(&user_conn, &card, form.quality) {
+      tracing::error!("Failed to update SRS for override: {}", e);
+    }
+  }
+
+  // 3. Record corrective review in user's learning.db
   if let Err(e) = db::insert_review_log_enhanced(
     &user_conn,
     form.card_id,
@@ -836,13 +889,7 @@ pub async fn override_ruling_handler(
     return StatusCode::INTERNAL_SERVER_ERROR;
   }
 
-  // 2. Update card SRS state
-  if let Err(e) = update_card_srs_for_override(&user_conn, &card, form.quality) {
-    tracing::error!("Failed to update SRS for override: {}", e);
-    // Continue anyway - review was logged
-  }
-
-  // 3. Save suggestion to app.db for admin review (sanitized)
+  // 4. Save suggestion to app.db for admin review (sanitized)
   if let Ok(app_conn) = state.auth_db.lock() {
     if let Err(e) = save_validation_suggestion(&app_conn, &form, &auth.username) {
       tracing::error!("Failed to save validation suggestion: {}", e);

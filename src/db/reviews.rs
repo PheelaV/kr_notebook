@@ -4,6 +4,17 @@ use chrono::Utc;
 use rusqlite::{params, Connection, Result};
 
 use crate::domain::{ReviewDirection, ReviewLog, StudyMode};
+
+/// Pre-review card state for backup/restore on override
+#[derive(Debug, Clone, Default)]
+pub struct PreReviewState {
+    pub next_review: Option<String>,
+    pub learning_step: Option<i64>,
+    pub repetitions: Option<i64>,
+    pub fsrs_stability: Option<f64>,
+    pub fsrs_difficulty: Option<f64>,
+    pub fsrs_state: Option<String>,
+}
 #[cfg(feature = "profiling")]
 use crate::profiling::EventType;
 
@@ -32,6 +43,31 @@ pub fn insert_review_log_enhanced(
     response_time_ms: Option<i64>,
     hints_used: i32,
 ) -> Result<i64> {
+    insert_review_log_with_pre_state(
+        conn,
+        card_id,
+        quality,
+        is_correct,
+        study_mode,
+        direction,
+        response_time_ms,
+        hints_used,
+        None,
+    )
+}
+
+/// Insert a review log with pre-review state for override restoration
+pub fn insert_review_log_with_pre_state(
+    conn: &Connection,
+    card_id: i64,
+    quality: u8,
+    is_correct: bool,
+    study_mode: StudyMode,
+    direction: ReviewDirection,
+    response_time_ms: Option<i64>,
+    hints_used: i32,
+    pre_state: Option<&PreReviewState>,
+) -> Result<i64> {
     #[cfg(feature = "profiling")]
     crate::profile_log!(EventType::DbQuery {
         operation: "insert_enhanced".into(),
@@ -39,10 +75,28 @@ pub fn insert_review_log_enhanced(
     });
 
     let now = Utc::now().to_rfc3339();
+
+    let (pre_next_review, pre_learning_step, pre_repetitions, pre_fsrs_stability, pre_fsrs_difficulty, pre_fsrs_state) =
+        match pre_state {
+            Some(s) => (
+                s.next_review.as_deref(),
+                s.learning_step,
+                s.repetitions,
+                s.fsrs_stability,
+                s.fsrs_difficulty,
+                s.fsrs_state.as_deref(),
+            ),
+            None => (None, None, None, None, None, None),
+        };
+
     conn.execute(
         r#"
-    INSERT INTO review_logs (card_id, quality, reviewed_at, is_correct, study_mode, direction, response_time_ms, hints_used)
-    VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+    INSERT INTO review_logs (
+        card_id, quality, reviewed_at, is_correct, study_mode, direction, response_time_ms, hints_used,
+        pre_review_next_review, pre_review_learning_step, pre_review_repetitions,
+        pre_review_fsrs_stability, pre_review_fsrs_difficulty, pre_review_fsrs_state
+    )
+    VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
     "#,
         params![
             card_id,
@@ -53,9 +107,59 @@ pub fn insert_review_log_enhanced(
             direction.as_str(),
             response_time_ms,
             hints_used,
+            pre_next_review,
+            pre_learning_step,
+            pre_repetitions,
+            pre_fsrs_stability,
+            pre_fsrs_difficulty,
+            pre_fsrs_state,
         ],
     )?;
     Ok(conn.last_insert_rowid())
+}
+
+/// Get the most recent review log for a card with pre-review state
+pub fn get_latest_review_pre_state(conn: &Connection, card_id: i64) -> Result<Option<PreReviewState>> {
+    #[cfg(feature = "profiling")]
+    crate::profile_log!(EventType::DbQuery {
+        operation: "select_latest".into(),
+        table: "review_logs".into(),
+    });
+
+    let result = conn.query_row(
+        r#"
+        SELECT pre_review_next_review, pre_review_learning_step, pre_review_repetitions,
+               pre_review_fsrs_stability, pre_review_fsrs_difficulty, pre_review_fsrs_state
+        FROM review_logs
+        WHERE card_id = ?1
+        ORDER BY id DESC
+        LIMIT 1
+        "#,
+        params![card_id],
+        |row| {
+            Ok(PreReviewState {
+                next_review: row.get(0)?,
+                learning_step: row.get(1)?,
+                repetitions: row.get(2)?,
+                fsrs_stability: row.get(3)?,
+                fsrs_difficulty: row.get(4)?,
+                fsrs_state: row.get(5)?,
+            })
+        },
+    );
+
+    match result {
+        Ok(state) => {
+            // Only return if we have actual pre-review data
+            if state.next_review.is_some() {
+                Ok(Some(state))
+            } else {
+                Ok(None)
+            }
+        }
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(e),
+    }
 }
 
 /// Record a confusion (wrong answer) for analysis

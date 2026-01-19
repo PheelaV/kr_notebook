@@ -294,6 +294,31 @@ pub fn to_quality(&self, used_hint: bool) -> u8 {
 
 ---
 
+## Override Buttons
+
+When users override a ruling, they select a quality rating directly:
+
+| Button | Quality | SRS Effect | When to Use |
+|--------|---------|------------|-------------|
+| **Wrong** | 0 | Again - reset to learning | Confirm the answer was truly wrong |
+| **Hard** | 2 | Shorter interval | Correct but struggled to recall |
+| **Correct** | 4 | Normal interval, restores pre-review state | Answer was right, system misjudged |
+| **Easy** | 5 | Longer interval | Knew it instantly, too easy |
+
+### Override State Restoration
+
+When overriding to "Correct" or "Easy" (quality ≥ 2), the system restores the card's
+pre-review state instead of recalculating. This preserves the card's timing continuity:
+
+- If a card was due in 3 days and user got it "wrong" (but actually right)
+- Overriding to "Correct" restores the 3-day interval, not a fresh calculation
+- This prevents unfair interval resets from validation errors
+
+Pre-review state is stored server-side in `review_logs` at review time (not client-side),
+preventing users from manipulating their intervals through the override UI.
+
+---
+
 ## Hint System
 
 Progressive hints reveal the answer gradually.

@@ -697,6 +697,42 @@ pub fn update_card_after_fsrs_review(
     Ok(())
 }
 
+/// Restore a card's SRS state from pre-review backup (for override correction)
+pub fn restore_card_pre_review_state(
+    conn: &Connection,
+    card_id: i64,
+    pre_state: &crate::db::reviews::PreReviewState,
+) -> Result<()> {
+    #[cfg(feature = "profiling")]
+    crate::profile_log!(EventType::DbQuery {
+        operation: "restore_pre_state".into(),
+        table: "card_progress".into(),
+    });
+
+    conn.execute(
+        r#"
+        UPDATE card_progress SET
+            next_review = ?2,
+            learning_step = ?3,
+            repetitions = ?4,
+            fsrs_stability = ?5,
+            fsrs_difficulty = ?6,
+            fsrs_state = ?7
+        WHERE card_id = ?1
+        "#,
+        params![
+            card_id,
+            pre_state.next_review,
+            pre_state.learning_step,
+            pre_state.repetitions,
+            pre_state.fsrs_stability,
+            pre_state.fsrs_difficulty,
+            pre_state.fsrs_state,
+        ],
+    )?;
+    Ok(())
+}
+
 /// Convert a database row to a Card struct
 /// Column order: id(0), front(1), main_answer(2), description(3), card_type(4), tier(5),
 ///               audio_hint(6), is_reverse(7), pack_id(8), lesson(9),
