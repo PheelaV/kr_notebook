@@ -92,14 +92,15 @@
 
   /**
    * Reset state for new card
+   * Note: hint state (hints, currentHint, hintsUsed) is NOT reset here
+   * because initHints() is called by inline script in the new card content
+   * and htmx:afterSwap fires AFTER inline scripts execute
    */
   function resetState() {
     selectedAnswer = null;
     lastTapTime = 0;
     lastTapButton = null;
-    currentHint = 0;
-    hintsUsed = 0;
-    hints = [];
+    // Don't reset hint state - initHints() handles that
   }
 
   // Expose to global scope IMMEDIATELY so templates can use these functions

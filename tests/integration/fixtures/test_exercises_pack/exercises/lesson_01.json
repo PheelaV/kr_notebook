@@ -1,0 +1,62 @@
+[
+  {
+    "id": "TEST-L1-C001",
+    "type": "cloze",
+    "sentence": "I___1 happy",
+    "blanks": [
+      {"position": 1, "answer": "am", "distractors": ["is", "are", "be"]}
+    ],
+    "english": "I am happy",
+    "grammar_point": "test_be_verb"
+  },
+  {
+    "id": "TEST-L1-C002",
+    "type": "cloze",
+    "sentence": "She___1 a student",
+    "blanks": [
+      {"position": 1, "answer": "is", "distractors": ["am", "are", "be"]}
+    ],
+    "english": "She is a student",
+    "grammar_point": "test_be_verb"
+  },
+  {
+    "id": "TEST-L1-C003",
+    "type": "cloze",
+    "sentence": "They___1 friends",
+    "blanks": [
+      {"position": 1, "answer": "are", "distractors": ["am", "is", "be"]}
+    ],
+    "english": "They are friends",
+    "grammar_point": "test_be_verb"
+  },
+  {
+    "id": "TEST-L1-C004",
+    "type": "cloze",
+    "sentence": "We___1 learning",
+    "blanks": [
+      {"position": 1, "answer": "are", "distractors": ["am", "is", "be"]}
+    ],
+    "english": "We are learning",
+    "grammar_point": "test_be_verb"
+  },
+  {
+    "id": "TEST-L1-C005",
+    "type": "cloze",
+    "sentence": "It___1 cold",
+    "blanks": [
+      {"position": 1, "answer": "is", "distractors": ["am", "are", "be"]}
+    ],
+    "english": "It is cold",
+    "grammar_point": "test_be_verb"
+  },
+  {
+    "id": "TEST-L1-C006",
+    "type": "cloze",
+    "sentence": "I___1 tired",
+    "blanks": [
+      {"position": 1, "answer": "am", "distractors": ["is", "are", "be"]}
+    ],
+    "english": "I am tired",
+    "grammar_point": "test_be_verb"
+  }
+]

@@ -185,6 +185,12 @@ async fn main() {
         .route("/reference/pack/{pack_id}", get(handlers::reference_pack_overview))
         .route("/reference/pack/{pack_id}/lesson/{lesson}", get(handlers::reference_lesson))
         .route("/reference/pack/{pack_id}/quick-reference", get(handlers::quick_reference))
+        // Exercise routes (interactive grammar practice)
+        .route("/exercises", get(handlers::exercise_index))
+        .route("/exercises/pack/{pack_id}", get(handlers::exercise_pack))
+        .route("/exercises/pack/{pack_id}/lesson/{lesson}", get(handlers::exercise_session))
+        .route("/exercises/check", post(handlers::check_cloze))
+        .route("/exercises/next", post(handlers::next_exercise))
         // API endpoint for service worker to get dynamic precache URLs
         .route("/api/precache-urls", get(handlers::precache_urls))
         // Offline study mode API

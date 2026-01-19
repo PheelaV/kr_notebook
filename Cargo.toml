@@ -36,6 +36,7 @@ hex = "0.4.3"
 urlencoding = "2.1"
 html-escape = "0.2.13"
 zip = "2.1"
+unicode-normalization = "0.1"
 
 [dev-dependencies]
 axum-test = "18.4.1"

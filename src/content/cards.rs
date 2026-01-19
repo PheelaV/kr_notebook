@@ -636,4 +636,33 @@ mod tests {
         assert_eq!(lesson1_count, 1);
         assert_eq!(lesson2_count, 1);
     }
+
+    #[test]
+    fn test_load_test_exercises_pack_cards() {
+        use std::path::PathBuf;
+
+        // Load the test_exercises_pack fixture used by E2E tests
+        let fixture_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/integration/fixtures/test_exercises_pack");
+
+        // Skip if fixture doesn't exist
+        if !fixture_path.exists() {
+            return;
+        }
+
+        // This tests that the cards.json format is correct (must be {"cards": [...]})
+        let result = load_cards_from_pack(&fixture_path, "cards.json");
+        assert!(
+            result.is_ok(),
+            "Failed to load test_exercises_pack cards.json: {:?}",
+            result.err()
+        );
+
+        // Empty cards array is valid for exercises-only packs
+        let cards = result.unwrap();
+        assert!(
+            cards.is_empty(),
+            "test_exercises_pack should have empty cards array"
+        );
+    }
 }

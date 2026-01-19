@@ -210,6 +210,26 @@ pub struct ReferenceConfig {
     pub has_patterns: bool,
 }
 
+/// Exercise pack configuration for interactive grammar practice.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExerciseConfig {
+    /// Path to directory containing exercise JSON files (e.g., "exercises").
+    /// Files should be named `lesson_01.json`, `lesson_02.json`, etc.
+    pub directory: String,
+
+    /// Exercise types available in this pack (e.g., ["cloze"])
+    #[serde(default)]
+    pub types: Vec<String>,
+
+    /// Default tier for exercises in this pack (for unlocking)
+    #[serde(default = "default_exercise_tier")]
+    pub tier: u8,
+}
+
+fn default_exercise_tier() -> u8 {
+    5
+}
+
 /// UI configuration for generic progress/study display.
 /// Allows packs to customize how they appear in the app without hardcoded references.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -315,6 +335,10 @@ pub struct PackManifest {
     /// Reference content configuration (optional, can be combined with cards)
     #[serde(default)]
     pub reference: Option<ReferenceConfig>,
+
+    /// Exercise configuration for interactive grammar practice (optional)
+    #[serde(default)]
+    pub exercises: Option<ExerciseConfig>,
 
     /// UI metadata for generic progress/study display
     #[serde(default)]

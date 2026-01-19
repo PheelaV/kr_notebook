@@ -114,6 +114,15 @@ function initTestEnv(name: string, dataDir: string): void {
     fs.cpSync(vocabPackSrc, vocabPackDst, { recursive: true });
     console.log(`  Copied test_vocabulary_pack to ${vocabPackDst}`);
   }
+
+  // Copy test exercises pack fixture for exercise tests
+  const exercisePackSrc = path.join(PROJECT_ROOT, 'tests', 'integration', 'fixtures', 'test_exercises_pack');
+  if (fs.existsSync(exercisePackSrc)) {
+    const exercisePackDst = path.join(dataDir, 'content', 'packs', 'test_exercises_pack');
+    fs.mkdirSync(path.dirname(exercisePackDst), { recursive: true });
+    fs.cpSync(exercisePackSrc, exercisePackDst, { recursive: true });
+    console.log(`  Copied test_exercises_pack to ${exercisePackDst}`);
+  }
 }
 
 // Initialize fresh install environment (no database, just empty directory)
@@ -203,10 +212,21 @@ async function globalSetup(config: FullConfig): Promise<void> {
 
   ensureServersDir();
 
+  // Check E2E_PROJECT env var to filter which servers to start
+  // Usage: E2E_PROJECT=exercises-chrome npm test -- --project=exercises-chrome
+  const filteredProject = process.env.E2E_PROJECT;
+  if (filteredProject) {
+    console.log(`  Filtering to project: ${filteredProject}`);
+  }
+
   // Track which ports/dataDirs we've set up (for shared projects)
   const setupPorts = new Set<number>();
 
   for (const project of config.projects) {
+    // Skip projects not matching E2E_PROJECT filter (exact match)
+    if (filteredProject && project.name !== filteredProject) {
+      continue;
+    }
     const metadata = project.metadata as {
       dataDir?: string;
       port?: number;

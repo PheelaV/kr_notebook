@@ -1,4 +1,5 @@
 pub mod diagnostic;
+pub mod exercises;
 pub mod guide;
 pub mod library;
 pub mod listen;
@@ -185,6 +186,9 @@ pub use study::{
   download_session, sync_session,
 };
 pub use vocabulary::vocabulary_library;
+pub use exercises::{
+  exercise_index, exercise_pack, exercise_session, check_cloze, next_exercise,
+};
 
 // ============================================================================
 // Offline / Service Worker Handlers

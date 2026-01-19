@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+
+{% block title %}Grammar Exercises{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto">
+  <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mb-2">Grammar Exercises</h1>
+  <p class="text-gray-600 dark:text-gray-400 mb-8">Interactive practice for Korean grammar patterns</p>
+
+  {% if packs.is_empty() %}
+  <div class="bg-yellow-50 dark:bg-yellow-900/20 rounded-lg p-6 text-center">
+    <p class="text-yellow-800 dark:text-yellow-200">No exercise packs available yet.</p>
+    <p class="text-sm text-yellow-700 dark:text-yellow-300 mt-2">
+      Exercise packs will appear here once you have access to packs with grammar exercises.
+    </p>
+  </div>
+  {% else %}
+  <div class="grid gap-4">
+    {% for pack in packs %}
+    <a href="/exercises/pack/{{ pack.pack_id }}"
+       class="block bg-white dark:bg-gray-800 shadow rounded-lg p-6 hover:shadow-md transition-shadow">
+      <div class="flex items-center justify-between">
+        <div>
+          <h2 class="text-lg font-bold text-gray-900 dark:text-white">{{ pack.pack_name }}</h2>
+          {% if let Some(desc) = pack.description %}
+          <p class="text-gray-600 dark:text-gray-400 mt-1">{{ desc }}</p>
+          {% endif %}
+          <p class="text-sm text-gray-500 dark:text-gray-400 mt-2">
+            {{ pack.lesson_count }} lesson{% if pack.lesson_count != 1 %}s{% endif %} &middot;
+            {{ pack.exercise_count }} exercise{% if pack.exercise_count != 1 %}s{% endif %}
+          </p>
+        </div>
+        <span class="text-indigo-600 dark:text-indigo-400 text-2xl">&rarr;</span>
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

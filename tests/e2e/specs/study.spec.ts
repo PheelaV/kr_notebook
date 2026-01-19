@@ -86,6 +86,59 @@ test.describe('Study Mode', () => {
         await expect(authenticatedPage.locator('[data-testid="hint-area"]')).toBeVisible();
       }
     });
+
+    test('should show hint after HTMX swap (next card)', async ({ authenticatedPage, testUser }) => {
+      // This test verifies hints work after navigating to a new card via HTMX
+      // Bug: resetState() in htmx:afterSwap may clear hints initialized by inline script
+      setupScenario(testUser.username, 'tier1_new', testUser.dataDir);
+      await authenticatedPage.goto('/study');
+
+      await authenticatedPage.waitForSelector('[data-testid="card-container"]');
+
+      // Helper to answer current card and go to next
+      async function answerAndNext() {
+        const textInput = authenticatedPage.locator('[data-testid="answer-input"]');
+        const choiceGrid = authenticatedPage.locator('[data-testid="choice-grid"]');
+
+        if (await textInput.isVisible()) {
+          await textInput.fill('test');
+          await authenticatedPage.click('[data-testid="submit-answer"]');
+        } else if (await choiceGrid.isVisible()) {
+          // Multiple choice: click option, then wait for submit to be enabled
+          await authenticatedPage.locator('[data-testid="choice-option"]').first().click();
+          await authenticatedPage.locator('[data-testid="submit-answer"]:not([disabled])').click();
+        }
+        await authenticatedPage.click('[data-testid="next-card"]');
+        await authenticatedPage.waitForSelector('[data-testid="card-container"]');
+      }
+
+      // Answer cards until we get a text input card (forward card with hint button)
+      // This ensures we test HTMX swap with a card that has hints
+      let foundTextInputAfterSwap = false;
+      for (let i = 0; i < 5; i++) {
+        await answerAndNext();
+
+        // Check if new card has text input (hint button only appears for text input)
+        const hintButton = authenticatedPage.locator('[data-testid="hint-button"]');
+        if (await hintButton.isVisible({ timeout: 1000 }).catch(() => false)) {
+          foundTextInputAfterSwap = true;
+
+          // CRITICAL TEST: Verify hint works AFTER HTMX swap
+          // Hint area should be hidden initially
+          await expect(authenticatedPage.locator('[data-testid="hint-area"]')).toBeHidden();
+
+          // Click hint button
+          await hintButton.click();
+
+          // Hint area should now be visible (fails if hints array was cleared)
+          await expect(authenticatedPage.locator('[data-testid="hint-area"]')).toBeVisible();
+          break;
+        }
+      }
+
+      // Ensure we actually tested the hint functionality
+      expect(foundTextInputAfterSwap).toBe(true);
+    });
   });
 
   test.describe('Classic Study (Flip Cards)', () => {

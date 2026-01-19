@@ -10,6 +10,7 @@ pub enum CardType {
   CompoundVowel,
   Syllable,
   Vocabulary,
+  Sentence,
 }
 
 impl CardType {
@@ -22,6 +23,7 @@ impl CardType {
       "compound_vowel" => Some(Self::CompoundVowel),
       "syllable" => Some(Self::Syllable),
       "Vocabulary" | "vocabulary" => Some(Self::Vocabulary),
+      "Sentence" | "sentence" => Some(Self::Sentence),
       _ => None,
     }
   }
@@ -35,6 +37,7 @@ impl CardType {
       Self::CompoundVowel => "compound_vowel",
       Self::Syllable => "syllable",
       Self::Vocabulary => "vocabulary",
+      Self::Sentence => "sentence",
     }
   }
 }
@@ -199,6 +202,7 @@ mod tests {
       CardType::CompoundVowel,
       CardType::Syllable,
       CardType::Vocabulary,
+      CardType::Sentence,
     ];
 
     for ct in types {
@@ -206,6 +210,12 @@ mod tests {
       let parsed = CardType::from_str(s);
       assert_eq!(parsed, Some(ct));
     }
+  }
+
+  #[test]
+  fn test_card_type_from_str_sentence() {
+    assert_eq!(CardType::from_str("sentence"), Some(CardType::Sentence));
+    assert_eq!(CardType::from_str("Sentence"), Some(CardType::Sentence));
   }
 
   // FsrsState tests

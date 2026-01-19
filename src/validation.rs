@@ -652,6 +652,99 @@ fn validate_phonetic_answer(normalized_input: &str, correct_answer: &str) -> Ans
   AnswerResult::Correct
 }
 
+// ============================================================================
+// Cloze exercise validation
+// ============================================================================
+
+/// Result of cloze answer validation with pedagogical feedback.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum ClozeResult {
+    /// Correct answer
+    Correct,
+    /// Space before particle detected (common Korean learner error)
+    SpacingError(String),
+    /// Wrong particle variant (e.g., 은 when 는 expected)
+    WrongVariant(String),
+    /// Incorrect answer
+    Incorrect,
+}
+
+impl ClozeResult {
+    pub fn is_correct(&self) -> bool {
+        matches!(self, ClozeResult::Correct)
+    }
+
+    pub fn feedback(&self) -> Option<&str> {
+        match self {
+            ClozeResult::SpacingError(msg) => Some(msg),
+            ClozeResult::WrongVariant(msg) => Some(msg),
+            _ => None,
+        }
+    }
+}
+
+/// Common Korean particle pairs (consonant/vowel variants).
+/// Used to detect wrong variant errors and provide helpful feedback.
+static PARTICLE_PAIRS: &[(&str, &str)] = &[
+    ("은", "는"), // topic marker
+    ("이", "가"), // subject marker
+    ("을", "를"), // object marker
+    ("으로", "로"), // direction/method
+    ("과", "와"), // "and" conjunction
+    ("아", "야"), // vocative (calling someone)
+];
+
+/// Validate a cloze answer with Korean-specific feedback.
+///
+/// Provides pedagogical feedback for common errors like:
+/// - Space before particle ("학교 에서" instead of "학교에서")
+/// - Wrong particle variant ("학교은" instead of "학교는")
+pub fn validate_cloze(input: &str, expected: &str) -> ClozeResult {
+    // 1. Normalize Unicode to NFC form
+    use unicode_normalization::UnicodeNormalization;
+    let normalized_input: String = input.nfc().collect();
+    let normalized_expected: String = expected.nfc().collect();
+
+    // 2. Trim whitespace
+    let trimmed = normalized_input.trim();
+    let expected_trimmed = normalized_expected.trim();
+
+    // 3. Check for exact match first
+    if trimmed == expected_trimmed {
+        return ClozeResult::Correct;
+    }
+
+    // 4. Check for space before particle (common learner error)
+    // Pattern: input has internal space that expected doesn't have
+    if trimmed.contains(' ') && !expected_trimmed.contains(' ') {
+        // Remove the space and check if it matches
+        let without_space: String = trimmed.chars().filter(|c| !c.is_whitespace()).collect();
+        if without_space == expected_trimmed {
+            return ClozeResult::SpacingError(
+                "Particles attach directly to nouns without a space".to_string(),
+            );
+        }
+    }
+
+    // 5. Check for wrong particle variant
+    // Look for cases where user typed the "paired" variant
+    for (consonant_form, vowel_form) in PARTICLE_PAIRS {
+        if expected_trimmed == *consonant_form && trimmed == *vowel_form {
+            return ClozeResult::WrongVariant(
+                "Check if the noun ends in a consonant or vowel".to_string(),
+            );
+        }
+        if expected_trimmed == *vowel_form && trimmed == *consonant_form {
+            return ClozeResult::WrongVariant(
+                "Check if the noun ends in a consonant or vowel".to_string(),
+            );
+        }
+    }
+
+    // 6. Not a recognized error pattern
+    ClozeResult::Incorrect
+}
+
 /// Generate progressive hints for an answer
 pub struct HintGenerator {
   /// Core answer for hints (grammar stripped)
@@ -1083,5 +1176,68 @@ mod tests {
     // Info alone should NOT match
     assert_eq!(validate_answer("thing", "this (thing)"), AnswerResult::Incorrect);
     assert_eq!(validate_answer("formal", "I, me (formal)"), AnswerResult::Incorrect);
+  }
+
+  // ============================================================================
+  // Cloze validation tests
+  // ============================================================================
+
+  #[test]
+  fn test_cloze_exact_match() {
+    assert_eq!(validate_cloze("는", "는"), ClozeResult::Correct);
+    assert_eq!(validate_cloze("을", "을"), ClozeResult::Correct);
+    assert_eq!(validate_cloze("에서", "에서"), ClozeResult::Correct);
+  }
+
+  #[test]
+  fn test_cloze_rejects_space_before_particle() {
+    // Common learner error: adding space before particle
+    let result = validate_cloze("학교 에서", "학교에서");
+    assert!(matches!(result, ClozeResult::SpacingError(_)));
+    assert_eq!(
+      result.feedback().unwrap(),
+      "Particles attach directly to nouns without a space"
+    );
+  }
+
+  #[test]
+  fn test_cloze_wrong_particle_variant() {
+    // Topic marker: 은 (after consonant) vs 는 (after vowel)
+    let result = validate_cloze("은", "는");
+    assert!(matches!(result, ClozeResult::WrongVariant(_)));
+    assert_eq!(
+      result.feedback().unwrap(),
+      "Check if the noun ends in a consonant or vowel"
+    );
+
+    // Subject marker: 이 (after consonant) vs 가 (after vowel)
+    let result = validate_cloze("이", "가");
+    assert!(matches!(result, ClozeResult::WrongVariant(_)));
+
+    // Object marker: 을 (after consonant) vs 를 (after vowel)
+    let result = validate_cloze("를", "을");
+    assert!(matches!(result, ClozeResult::WrongVariant(_)));
+  }
+
+  #[test]
+  fn test_cloze_incorrect() {
+    // Completely wrong particle
+    assert_eq!(validate_cloze("에", "는"), ClozeResult::Incorrect);
+    assert_eq!(validate_cloze("서", "을"), ClozeResult::Incorrect);
+  }
+
+  #[test]
+  fn test_cloze_whitespace_trimming() {
+    // Leading/trailing whitespace should be trimmed
+    assert_eq!(validate_cloze("  는  ", "는"), ClozeResult::Correct);
+    assert_eq!(validate_cloze("\t을\n", "을"), ClozeResult::Correct);
+  }
+
+  #[test]
+  fn test_cloze_result_is_correct() {
+    assert!(ClozeResult::Correct.is_correct());
+    assert!(!ClozeResult::Incorrect.is_correct());
+    assert!(!ClozeResult::SpacingError("test".to_string()).is_correct());
+    assert!(!ClozeResult::WrongVariant("test".to_string()).is_correct());
   }
 }

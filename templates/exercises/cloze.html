@@ -1,0 +1,125 @@
+{# Cloze Exercise Component
+   Displays a fill-in-the-blank exercise with multiple choice options.
+   Follows the same patterns as interactive_card.html for consistency.
+
+   Required context variables:
+   - exercise: Exercise struct with sentence, blanks, grammar_point, english
+   - exercise_index: Current exercise number (0-indexed)
+   - exercise_count: Total exercises in lesson
+   - pack_id: Pack identifier
+   - lesson: Lesson number
+#}
+<div id="card-container" data-testid="card-container" class="text-center">
+  <!-- Card Display -->
+  <div class="mb-4 sm:mb-6 bg-white dark:bg-gray-800 shadow-lg rounded-xl p-6 sm:p-10">
+    <!-- Sentence with blank -->
+    <div data-testid="exercise-sentence" class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mb-6 leading-relaxed">
+      {% for (i, part) in exercise.sentence.split("___").enumerate() %}
+        {% if i > 0 %}
+          {% let blank_num = i %}
+          <span class="inline-block mx-1 px-3 py-1 border-b-4 border-indigo-500 dark:border-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 rounded text-indigo-600 dark:text-indigo-300 min-w-[3rem]" data-blank="{{ blank_num }}">?</span>
+        {% endif %}
+        {{ part }}
+      {% endfor %}
+    </div>
+
+    <!-- Answer Input Phase -->
+    <div id="input-phase">
+      {% if let Some(first_blank) = exercise.blanks.first() %}
+      <form id="answer-form" hx-post="/exercises/check" hx-target="#exercise-container" hx-swap="innerHTML"
+            onsubmit="return CardInteractions && CardInteractions.validateMultipleChoice ? CardInteractions.validateMultipleChoice() : true">
+        <input type="hidden" name="pack_id" value="{{ pack_id }}">
+        <input type="hidden" name="lesson" value="{{ lesson }}">
+        <input type="hidden" name="exercise_index" value="{{ exercise_index }}">
+        <input type="hidden" name="blank_position" value="{{ first_blank.position }}">
+        <input type="hidden" name="answer" id="answer-input" value="">
+
+        <!-- Multiple choice grid (same pattern as study mode) -->
+        <div class="grid grid-cols-2 gap-2 sm:gap-3 mb-4" data-testid="choice-grid">
+          {# Build choices array: answer + distractors, will be shuffled client-side #}
+          <button type="button"
+                  id="choice-1"
+                  data-choice="{{ first_blank.answer }}"
+                  data-testid="choice-option"
+                  class="choice-btn relative text-3xl sm:text-4xl p-4 sm:p-6 min-h-[4rem] sm:min-h-[5rem] bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 active:bg-indigo-200 dark:active:bg-indigo-800 text-gray-900 dark:text-white font-bold rounded-lg transition-colors border-2 border-transparent touch-manipulation">
+            <span class="absolute top-1 left-2 text-xs font-normal text-gray-400 dark:text-gray-500">1</span>
+            {{ first_blank.answer }}
+          </button>
+          {% for (idx, distractor) in first_blank.distractors.iter().enumerate() %}
+          <button type="button"
+                  id="choice-{{ idx + 2 }}"
+                  data-choice="{{ distractor }}"
+                  data-testid="choice-option"
+                  class="choice-btn relative text-3xl sm:text-4xl p-4 sm:p-6 min-h-[4rem] sm:min-h-[5rem] bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 active:bg-indigo-200 dark:active:bg-indigo-800 text-gray-900 dark:text-white font-bold rounded-lg transition-colors border-2 border-transparent touch-manipulation">
+            <span class="absolute top-1 left-2 text-xs font-normal text-gray-400 dark:text-gray-500">{{ idx + 2 }}</span>
+            {{ distractor }}
+          </button>
+          {% endfor %}
+        </div>
+
+        <button type="submit" id="submit-btn" data-testid="submit-answer" disabled
+                class="w-full bg-indigo-500 hover:bg-indigo-600 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-semibold py-3 px-4 rounded-lg transition-colors">
+          Check <span class="text-xs opacity-75">(Enter)</span>
+        </button>
+      </form>
+      {% endif %}
+    </div>
+
+    <!-- Grammar point hint -->
+    {% if let Some(grammar) = exercise.grammar_point %}
+    <p class="mt-4 text-sm text-gray-500 dark:text-gray-400 text-center">
+      <span class="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">{{ grammar }}</span>
+    </p>
+    {% endif %}
+  </div>
+</div>
+
+<script>
+  // Shuffle choice buttons on load (same pattern as study mode)
+  (function() {
+    const grid = document.querySelector('[data-testid="choice-grid"]');
+    if (grid) {
+      const buttons = Array.from(grid.children);
+      for (let i = buttons.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        grid.appendChild(buttons[j]);
+      }
+      // Re-number after shuffle
+      buttons.forEach((btn, i) => {
+        const numSpan = btn.querySelector('.absolute');
+        if (numSpan) numSpan.textContent = i + 1;
+        btn.id = `choice-${i + 1}`;
+      });
+    }
+  })();
+
+  // Setup choice button click handlers (similar to card-interactions.js)
+  document.querySelectorAll('.choice-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+      // Remove selection from all buttons
+      document.querySelectorAll('.choice-btn').forEach(b => {
+        b.classList.remove('border-indigo-500', 'bg-indigo-100', 'dark:bg-indigo-900');
+        b.classList.add('border-transparent');
+      });
+      // Select this button
+      this.classList.add('border-indigo-500', 'bg-indigo-100', 'dark:bg-indigo-900');
+      this.classList.remove('border-transparent');
+      // Set the answer value
+      document.getElementById('answer-input').value = this.dataset.choice;
+      // Enable submit button
+      document.getElementById('submit-btn').disabled = false;
+    });
+  });
+
+  // Keyboard shortcuts (1-4 to select, Enter to submit)
+  document.addEventListener('keydown', function(e) {
+    if (e.target.tagName === 'INPUT' && e.target.type === 'text') return;
+
+    const key = parseInt(e.key);
+    if (key >= 1 && key <= 4) {
+      const btn = document.getElementById(`choice-${key}`);
+      if (btn) btn.click();
+    }
+  });
+</script>
+

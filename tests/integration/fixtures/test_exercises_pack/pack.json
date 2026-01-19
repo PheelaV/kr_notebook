@@ -1,0 +1,18 @@
+{
+  "id": "test_exercises_pack",
+  "name": "Test Exercises Pack",
+  "description": "Mock exercises pack for E2E testing",
+  "type": "cards",
+  "version": "1.0.0",
+  "tier": 1,
+  "provides": ["grammar"],
+  "cards": {
+    "file": "cards.json",
+    "tier": 1
+  },
+  "exercises": {
+    "directory": "exercises",
+    "types": ["cloze"],
+    "tier": 1
+  }
+}

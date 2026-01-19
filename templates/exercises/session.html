@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+
+{% block title %}Lesson {{ lesson }} - Exercises{% endblock %}
+
+{% block content %}
+<div class="max-w-lg mx-auto" id="exercise-session">
+  <nav class="mb-6 text-sm">
+    <a href="/exercises/pack/{{ pack_id }}" class="text-indigo-600 dark:text-indigo-400 hover:underline">&larr; Back to {{ pack_name }}</a>
+  </nav>
+
+  <div class="mb-4 flex items-center justify-between">
+    <h1 class="text-xl font-bold text-gray-900 dark:text-white">Lesson {{ lesson }}</h1>
+  </div>
+
+  <!-- Progress bar (updated via OOB swap) -->
+  <div id="exercise-progress" data-testid="progress-bar" class="mb-4 flex items-center justify-center gap-3 text-xs text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2">
+    <span class="flex items-center gap-1">
+      <span class="text-indigo-500 dark:text-indigo-400">&#9679;</span>
+      Progress: {{ exercise_index + 1 }} / {{ exercise_count }}
+    </span>
+    <span class="flex-1">
+      <div class="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-2">
+        <div class="bg-green-500 h-2 rounded-full transition-all duration-300" style="width: {{ (exercise_index + 1) * 100 / exercise_count }}%"></div>
+      </div>
+    </span>
+  </div>
+
+  <!-- Exercise container (HTMX swap target) -->
+  <div id="exercise-container" data-testid="exercise-container">
+    {% include "exercises/cloze.html" %}
+  </div>
+</div>
+{% endblock %}

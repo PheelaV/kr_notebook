@@ -21,6 +21,7 @@
 pub mod audio;
 pub mod cards;
 pub mod discovery;
+pub mod exercises;
 pub mod generator;
 pub mod packs;
 pub mod reference;
@@ -34,7 +35,11 @@ pub use discovery::{
     discover_packs_with_external, find_packs_providing, find_packs_providing_with_external,
     PackLocation,
 };
-pub use packs::{AudioConfig, CardConfig, GeneratorConfig, PackManifest, PackType, ReferenceConfig};
+pub use exercises::{
+    load_exercises_from_pack, ClozeBlank, Exercise, ExerciseLesson, ExerciseLoadError,
+    ExercisePackData, ExerciseType,
+};
+pub use packs::{AudioConfig, CardConfig, ExerciseConfig, GeneratorConfig, PackManifest, PackType, ReferenceConfig};
 pub use reference::{
     find_lesson, load_reference, load_reference_from_pack, GrammarRule, PatternCard,
     ReferenceExample, ReferenceLesson, ReferenceLoadError, ReferencePackData, ReferenceSection,
