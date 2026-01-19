@@ -23,6 +23,7 @@ pub async fn guide() -> Html<String> {
     let toc_items = vec![
         TocItem { id: "quick-start".into(), short_label: "Quick Start".into(), full_label: "Quick Start".into() },
         TocItem { id: "interactive".into(), short_label: "Interactive".into(), full_label: "Interactive Learning".into() },
+        TocItem { id: "romanization".into(), short_label: "Romanization".into(), full_label: "Romanization System".into() },
         TocItem { id: "study-controls".into(), short_label: "Controls".into(), full_label: "Study Page Controls".into() },
         TocItem { id: "hints".into(), short_label: "Hints".into(), full_label: "Using Hints".into() },
         TocItem { id: "srs".into(), short_label: "SRS".into(), full_label: "Spaced Repetition".into() },
