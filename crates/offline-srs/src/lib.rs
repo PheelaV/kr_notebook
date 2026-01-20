@@ -21,36 +21,86 @@ static SPELLING_EQUIVALENCES: &[(&str, &str)] = &[
     ("behaviour", "behavior"),
     ("favour", "favor"),
     ("honour", "honor"),
+    ("humour", "humor"),
+    ("labour", "labor"),
+    ("neighbour", "neighbor"),
+    ("rumour", "rumor"),
+    ("savour", "savor"),
+    ("vapour", "vapor"),
     ("centre", "center"),
     ("fibre", "fiber"),
+    ("litre", "liter"),
+    ("metre", "meter"),
+    ("theatre", "theater"),
     ("grey", "gray"),
+    ("analyse", "analyze"),
+    ("catalyse", "catalyze"),
+    ("paralyse", "paralyze"),
     ("defence", "defense"),
+    ("offence", "offense"),
     ("licence", "license"),
+    ("practise", "practice"),
+    ("traveller", "traveler"),
+    ("cancelled", "canceled"),
+    ("jewellery", "jewelry"),
+    ("mum", "mom"),
     ("favourite", "favorite"),
     ("organise", "organize"),
     ("realise", "realize"),
-    ("mum", "mom"),
+    ("recognise", "recognize"),
 ];
 
 /// Contraction expansions (normalized to expanded form)
 static CONTRACTIONS: &[(&str, &str)] = &[
     ("i'm", "i am"),
+    ("i've", "i have"),
+    ("i'll", "i will"),
+    ("i'd", "i would"),
     ("you're", "you are"),
+    ("you've", "you have"),
+    ("you'll", "you will"),
+    ("you'd", "you would"),
     ("he's", "he is"),
+    ("he'll", "he will"),
+    ("he'd", "he would"),
     ("she's", "she is"),
+    ("she'll", "she will"),
+    ("she'd", "she would"),
     ("it's", "it is"),
+    ("it'll", "it will"),
     ("we're", "we are"),
+    ("we've", "we have"),
+    ("we'll", "we will"),
+    ("we'd", "we would"),
     ("they're", "they are"),
+    ("they've", "they have"),
+    ("they'll", "they will"),
+    ("they'd", "they would"),
+    ("that's", "that is"),
+    ("there's", "there is"),
+    ("here's", "here is"),
+    ("what's", "what is"),
+    ("who's", "who is"),
+    ("where's", "where is"),
+    ("how's", "how is"),
     ("isn't", "is not"),
     ("aren't", "are not"),
+    ("wasn't", "was not"),
+    ("weren't", "were not"),
+    ("haven't", "have not"),
+    ("hasn't", "has not"),
+    ("hadn't", "had not"),
+    ("won't", "will not"),
+    ("wouldn't", "would not"),
     ("don't", "do not"),
     ("doesn't", "does not"),
     ("didn't", "did not"),
     ("can't", "cannot"),
-    ("won't", "will not"),
-    ("wouldn't", "would not"),
     ("couldn't", "could not"),
     ("shouldn't", "should not"),
+    ("mightn't", "might not"),
+    ("mustn't", "must not"),
+    ("let's", "let us"),
 ];
 
 /// Result of answer validation
@@ -284,6 +334,18 @@ fn generate_valid_answers(parsed: &ParsedAnswer) -> (Vec<String>, Vec<String>) {
         }
     }
 
+    // Accept "core + info" when grammar info is present (e.g., "that (thing)" → accept "that thing")
+    // This allows users to type the full phrase including parenthetical content
+    if let Some(ref info) = parsed.info {
+        let normalized_info = normalize_answer(info);
+        if !normalized_info.is_empty() {
+            let with_info = format!("{} {}", normalized_core, normalized_info);
+            if !partial_answers.contains(&with_info) {
+                partial_answers.push(with_info);
+            }
+        }
+    }
+
     let full_answers = if let Some(ref disambig) = parsed.disambiguation {
         let mut full = Vec::new();
         let normalized_disambig = normalize_answer(disambig);
@@ -408,6 +470,20 @@ fn validate_answer_internal(user_input: &str, correct_answer: &str) -> AnswerRes
     // Exact match with full answers
     if full_answers.contains(&normalized_input) {
         return AnswerResult::Correct;
+    }
+
+    // Check if user typed "core + info" (e.g., "this thing" for "this (thing)")
+    // Only exact match, not typo tolerance - info is supplementary
+    if let Some(ref info) = parsed.info {
+        let normalized_info = normalize_answer(info);
+        if !normalized_info.is_empty() {
+            for partial in &partial_answers {
+                let with_info = format!("{} {}", partial, normalized_info);
+                if normalized_input == with_info {
+                    return AnswerResult::Correct;
+                }
+            }
+        }
     }
 
     // Permutation matching for comma-separated synonyms
@@ -839,6 +915,20 @@ mod tests {
     fn test_contraction_normalization() {
         assert_eq!(validate_answer_internal("I am", "I'm"), AnswerResult::Correct);
         assert_eq!(validate_answer_internal("don't", "do not"), AnswerResult::Correct);
+    }
+
+    #[test]
+    fn test_info_tag_with_user_included() {
+        // User types "core + info" for answers like "that (thing)" → accept "that thing"
+        assert_eq!(validate_answer_internal("this thing", "this (thing)"), AnswerResult::Correct);
+        assert_eq!(validate_answer_internal("that far", "that (far)"), AnswerResult::Correct);
+        // Core only also correct (info is supplementary)
+        assert_eq!(validate_answer_internal("this", "this (thing)"), AnswerResult::Correct);
+        assert_eq!(validate_answer_internal("that", "that (far)"), AnswerResult::Correct);
+        // With formal marker
+        assert_eq!(validate_answer_internal("I formal", "I, me (formal)"), AnswerResult::Correct);
+        // Wrong answer still incorrect
+        assert_eq!(validate_answer_internal("wrong", "this (thing)"), AnswerResult::Incorrect);
     }
 
     #[test]

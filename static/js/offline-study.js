@@ -25,6 +25,11 @@ const OfflineStudy = (function() {
   let correctCount = 0;
   let cardsSinceReinforcement = 0; // Counter for interleaving reinforcement cards
 
+  // State for override functionality
+  let lastUserAnswer = '';
+  let lastValidation = null;
+  let lastPreState = null; // Card state before the review was processed
+
   // DOM elements (populated on init)
   let elements = {};
 
@@ -345,9 +350,19 @@ const OfflineStudy = (function() {
     // Disable further input
     disableInput();
 
+    // Save pre-state for potential override
+    lastPreState = {
+      learning_step: currentCard.learning_step,
+      fsrs_stability: currentCard.fsrs_stability,
+      fsrs_difficulty: currentCard.fsrs_difficulty,
+      next_review: currentCard.next_review
+    };
+    lastUserAnswer = answer;
+
     // Validate answer using WASM
     const validationJson = wasm.validate_answer(answer, currentCard.back, hintsUsed > 0);
     const validation = JSON.parse(validationJson);
+    lastValidation = validation;
 
     // Calculate new SRS state using WASM
     const cardState = JSON.stringify({
@@ -384,7 +399,7 @@ const OfflineStudy = (function() {
       });
     }
 
-    // Store response in IndexedDB
+    // Store response in IndexedDB (with user answer for potential override)
     await window.OfflineStorage.addResponse({
       session_id: session.session_id,
       card_id: currentCard.card_id,
@@ -395,7 +410,15 @@ const OfflineStudy = (function() {
       learning_step: newState.learning_step,
       fsrs_stability: newState.fsrs_stability,
       fsrs_difficulty: newState.fsrs_difficulty,
-      next_review: newState.next_review
+      next_review: newState.next_review,
+      // Store for potential override
+      user_answer: answer,
+      original_result: validation.result,
+      // Store pre-state for override restoration
+      pre_learning_step: lastPreState.learning_step,
+      pre_fsrs_stability: lastPreState.fsrs_stability,
+      pre_fsrs_difficulty: lastPreState.fsrs_difficulty,
+      pre_next_review: lastPreState.next_review
     });
 
     // Update card state in session (for consistency if card comes back in reinforcement)
@@ -450,6 +473,48 @@ const OfflineStudy = (function() {
         ${!isCorrect ? `<div class="correct-answer mt-2">Correct answer: <strong>${escapeHtml(currentCard.back)}</strong></div>` : ''}
         ${descriptionHtml}
       </div>
+
+      <!-- Override section (hidden initially) -->
+      <div id="override-section" class="hidden mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+        <div class="mb-3">
+          <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">
+            Your answer (edit if needed):
+          </label>
+          <input type="text" id="suggested-answer"
+                 class="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded
+                        bg-white dark:bg-gray-700 text-gray-900 dark:text-white
+                        focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                 value="${escapeHtml(lastUserAnswer)}"
+                 placeholder="What should be accepted?">
+        </div>
+
+        <p class="text-sm text-gray-600 dark:text-gray-400 mb-2">How would you rate your answer?</p>
+        <div class="flex flex-wrap justify-center gap-2">
+          <button type="button" onclick="OfflineStudy.submitOverride(0)"
+                  class="px-3 py-1.5 text-sm bg-red-100 hover:bg-red-200 dark:bg-red-900/30 dark:hover:bg-red-900/50 text-red-800 dark:text-red-300 rounded">
+            Wrong
+          </button>
+          <button type="button" onclick="OfflineStudy.submitOverride(2)"
+                  class="px-3 py-1.5 text-sm bg-yellow-100 hover:bg-yellow-200 dark:bg-yellow-900/30 dark:hover:bg-yellow-900/50 text-yellow-800 dark:text-yellow-300 rounded">
+            Hard
+          </button>
+          <button type="button" onclick="OfflineStudy.submitOverride(4)"
+                  class="px-3 py-1.5 text-sm bg-green-100 hover:bg-green-200 dark:bg-green-900/30 dark:hover:bg-green-900/50 text-green-800 dark:text-green-300 rounded">
+            Correct
+          </button>
+          <button type="button" onclick="OfflineStudy.submitOverride(5)"
+                  class="px-3 py-1.5 text-sm bg-blue-100 hover:bg-blue-200 dark:bg-blue-900/30 dark:hover:bg-blue-900/50 text-blue-800 dark:text-blue-300 rounded">
+            Easy
+          </button>
+        </div>
+      </div>
+
+      <!-- Toggle button -->
+      <button type="button" id="show-override-btn" onclick="OfflineStudy.showOverrideSection()"
+              class="mt-3 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 underline block mx-auto">
+        Override ruling
+      </button>
+
       <button type="button"
               class="continue-btn mt-4 w-full px-4 py-3 bg-indigo-600 text-white rounded-lg
                      hover:bg-indigo-700 transition-colors font-medium"
@@ -472,6 +537,113 @@ const OfflineStudy = (function() {
           btn.classList.add('border-red-500', 'bg-red-50', 'dark:bg-red-900/20');
         }
       });
+    }
+  }
+
+  /**
+   * Show the override section.
+   */
+  function showOverrideSection() {
+    const overrideSection = document.getElementById('override-section');
+    const showBtn = document.getElementById('show-override-btn');
+    if (overrideSection) {
+      overrideSection.classList.remove('hidden');
+    }
+    if (showBtn) {
+      showBtn.classList.add('hidden');
+    }
+  }
+
+  /**
+   * Submit an override for the current card.
+   * @param {number} quality - Override quality (0=Wrong, 2=Hard, 4=Correct, 5=Easy)
+   */
+  async function submitOverride(quality) {
+    if (!currentCard || !lastPreState) return;
+
+    const suggestedAnswer = document.getElementById('suggested-answer')?.value || lastUserAnswer;
+    const isCorrectOverride = quality >= 4; // Correct or Easy
+
+    // Calculate new state based on override quality
+    const cardState = JSON.stringify({
+      learning_step: lastPreState.learning_step,
+      fsrs_stability: lastPreState.fsrs_stability,
+      fsrs_difficulty: lastPreState.fsrs_difficulty,
+      repetitions: currentCard.repetitions || 0,
+      last_review: null
+    });
+
+    const newStateJson = wasm.calculate_next_review(
+      cardState,
+      quality,
+      session.desired_retention,
+      session.focus_mode
+    );
+    const newState = JSON.parse(newStateJson);
+
+    // Update stats if override changes correctness
+    if (isCorrectOverride && !lastValidation.is_correct) {
+      // Was marked wrong, now marked correct - fix stats
+      correctCount++;
+      // Remove from reinforcement queue if present
+      const idx = reinforcementQueue.findIndex(c => c.card_id === currentCard.card_id);
+      if (idx !== -1) {
+        reinforcementQueue.splice(idx, 1);
+      }
+    } else if (!isCorrectOverride && lastValidation.is_correct) {
+      // Was marked correct, now marked wrong - fix stats
+      correctCount--;
+      // Add to reinforcement queue
+      reinforcementQueue.push({
+        ...currentCard,
+        learning_step: newState.learning_step,
+        fsrs_stability: newState.fsrs_stability,
+        fsrs_difficulty: newState.fsrs_difficulty,
+        next_review: newState.next_review
+      });
+    }
+
+    // Store override response in IndexedDB
+    await window.OfflineStorage.addResponse({
+      session_id: session.session_id,
+      card_id: currentCard.card_id,
+      quality: quality,
+      is_correct: isCorrectOverride,
+      hints_used: hintsUsed,
+      timestamp: new Date().toISOString(),
+      learning_step: newState.learning_step,
+      fsrs_stability: newState.fsrs_stability,
+      fsrs_difficulty: newState.fsrs_difficulty,
+      next_review: newState.next_review,
+      // Override-specific fields
+      is_override: true,
+      user_answer: lastUserAnswer,
+      original_result: lastValidation.result,
+      suggested_answer: suggestedAnswer,
+      // Pre-state for server-side restoration
+      pre_learning_step: lastPreState.learning_step,
+      pre_fsrs_stability: lastPreState.fsrs_stability,
+      pre_fsrs_difficulty: lastPreState.fsrs_difficulty,
+      pre_next_review: lastPreState.next_review
+    });
+
+    // Update card state in session
+    await window.OfflineStorage.updateCardState(currentCard.card_id, newState);
+
+    // Update pending count display
+    updatePendingCount();
+
+    // Update UI to reflect override
+    const resultSection = elements.cardContainer.querySelector('.result-section');
+    if (resultSection) {
+      const overrideSection = document.getElementById('override-section');
+      if (overrideSection) {
+        overrideSection.innerHTML = `
+          <div class="text-center text-sm text-indigo-600 dark:text-indigo-400">
+            <span>Override saved - will sync when online</span>
+          </div>
+        `;
+      }
     }
   }
 
@@ -574,6 +746,8 @@ const OfflineStudy = (function() {
     showNextCard: showNextCard,
     showHint: showHint,
     submitAnswer: submitAnswer,
+    showOverrideSection: showOverrideSection,
+    submitOverride: submitOverride,
     getSessionInfo: getSessionInfo,
     isAvailable: isAvailable,
     updatePendingCount: updatePendingCount

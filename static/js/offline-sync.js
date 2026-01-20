@@ -227,6 +227,8 @@ const OfflineSync = (function() {
       return {
         success: errors.length === 0,
         synced_count: result.synced_count,
+        skipped_count: result.skipped_count || 0,
+        skipped_cards: result.skipped_cards || [],
         total_count: totalCount,
         errors: errors
       };
@@ -289,25 +291,58 @@ const OfflineSync = (function() {
   function showSyncResult(result) {
     if (!notificationElement) return;
 
-    // Full success - all synced
+    // Full success - all synced (with possible skipped due to conflicts)
     if (result.success && result.synced_count > 0) {
+      var skippedInfo = result.skipped_count > 0
+        ? `<p class="text-sm text-gray-500 dark:text-gray-400">${result.skipped_count} skipped (already reviewed online)</p>`
+        : '';
       notificationElement.innerHTML = `
         <div class="flex items-center gap-3">
           <svg class="w-5 h-5 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
-          <p class="font-medium text-gray-900 dark:text-white">
-            Synced ${result.synced_count} review${result.synced_count === 1 ? '' : 's'}
-          </p>
+          <div>
+            <p class="font-medium text-gray-900 dark:text-white">
+              Synced ${result.synced_count} review${result.synced_count === 1 ? '' : 's'}
+            </p>
+            ${skippedInfo}
+          </div>
         </div>
       `;
-      setTimeout(hideNotification, 2000);
+      setTimeout(hideNotification, result.skipped_count > 0 ? 3000 : 2000);
     } else if (result.synced_count === 0 && result.total_count === 0) {
       // Nothing to sync, just hide
       hideNotification();
-    } else if (result.synced_count > 0 && result.errors.length > 0) {
-      // Partial success - some synced, some failed
-      var failedCount = result.total_count - result.synced_count;
+    } else if (result.synced_count === 0 && result.skipped_count > 0 && result.errors.length === 0) {
+      // All reviews were skipped due to conflicts (already reviewed online)
+      notificationElement.innerHTML = `
+        <div class="flex items-center gap-3">
+          <svg class="w-5 h-5 text-blue-600 dark:text-blue-400" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />
+          </svg>
+          <div>
+            <p class="font-medium text-gray-900 dark:text-white">
+              All ${result.skipped_count} reviews skipped
+            </p>
+            <p class="text-sm text-gray-500 dark:text-gray-400">
+              Cards were already reviewed online
+            </p>
+          </div>
+        </div>
+      `;
+      // Clear the skipped reviews from storage since they don't need retry
+      window.OfflineStorage.clearAll();
+      setTimeout(hideNotification, 3000);
+    } else if (result.synced_count > 0 && (result.errors.length > 0 || result.skipped_count > 0)) {
+      // Partial success - some synced, some failed or skipped
+      var failedCount = result.errors.length;
+      var statusParts = [];
+      if (result.skipped_count > 0) {
+        statusParts.push(`${result.skipped_count} skipped (reviewed online)`);
+      }
+      if (failedCount > 0) {
+        statusParts.push(`${failedCount} failed - will retry`);
+      }
       notificationElement.innerHTML = `
         <div class="flex items-center gap-3">
           <svg class="w-5 h-5 text-yellow-600 dark:text-yellow-400" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
@@ -318,7 +353,7 @@ const OfflineSync = (function() {
               Synced ${result.synced_count} of ${result.total_count} reviews
             </p>
             <p class="text-sm text-gray-500 dark:text-gray-400">
-              ${failedCount} failed - will retry next time
+              ${statusParts.join(', ')}
             </p>
           </div>
         </div>

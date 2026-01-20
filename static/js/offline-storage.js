@@ -366,7 +366,7 @@ const OfflineStorage = (function() {
     return {
       session_id: session.session_id,
       reviews: responses.map(function(r) {
-        return {
+        var review = {
           card_id: r.card_id,
           quality: r.quality,
           is_correct: r.is_correct,
@@ -378,6 +378,21 @@ const OfflineStorage = (function() {
           fsrs_difficulty: r.fsrs_difficulty,
           next_review: r.next_review || new Date().toISOString()
         };
+        // Include override fields if present
+        if (r.is_override) {
+          review.is_override = true;
+          review.user_answer = r.user_answer || '';
+          review.original_result = r.original_result || '';
+          review.suggested_answer = r.suggested_answer || '';
+          // Include pre-state for override restoration
+          if (r.pre_learning_step !== undefined) {
+            review.pre_learning_step = r.pre_learning_step;
+            review.pre_fsrs_stability = r.pre_fsrs_stability;
+            review.pre_fsrs_difficulty = r.pre_fsrs_difficulty;
+            review.pre_next_review = r.pre_next_review;
+          }
+        }
+        return review;
       })
     };
   }
