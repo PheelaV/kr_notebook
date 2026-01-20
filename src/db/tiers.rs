@@ -467,13 +467,13 @@ pub fn get_progress_by_tier(conn: &Connection) -> Result<Vec<TierProgress>> {
         )?;
 
         let learning: i64 = conn.query_row(
-            &format!("SELECT COUNT(*) {} WHERE cd.tier = ?1 AND COALESCE(cp.total_reviews, 0) > 0 AND COALESCE(cp.repetitions, 0) < 2", TIER_FROM),
+            &format!("SELECT COUNT(*) {} WHERE cd.tier = ?1 AND COALESCE(cp.total_reviews, 0) > 0 AND COALESCE(cp.learning_step, 0) < 4", TIER_FROM),
             params![tier],
             |row| row.get(0),
         )?;
 
         let learned: i64 = conn.query_row(
-            &format!("SELECT COUNT(*) {} WHERE cd.tier = ?1 AND COALESCE(cp.repetitions, 0) >= 2", TIER_FROM),
+            &format!("SELECT COUNT(*) {} WHERE cd.tier = ?1 AND COALESCE(cp.learning_step, 0) >= 4", TIER_FROM),
             params![tier],
             |row| row.get(0),
         )?;
