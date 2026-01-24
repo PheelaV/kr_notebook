@@ -162,6 +162,74 @@ pub fn get_latest_review_pre_state(conn: &Connection, card_id: i64) -> Result<Op
     }
 }
 
+/// Get the timestamp of the most recent non-override review for a card
+/// Used for override timing: SRS should be calculated from original attempt time
+pub fn get_latest_review_time(conn: &Connection, card_id: i64) -> Result<Option<chrono::DateTime<Utc>>> {
+    #[cfg(feature = "profiling")]
+    crate::profile_log!(EventType::DbQuery {
+        operation: "select_latest_time".into(),
+        table: "review_logs".into(),
+    });
+
+    let result = conn.query_row(
+        r#"
+        SELECT reviewed_at
+        FROM review_logs
+        WHERE card_id = ?1 AND study_mode != 'override'
+        ORDER BY id DESC
+        LIMIT 1
+        "#,
+        params![card_id],
+        |row| {
+            let reviewed_at_str: String = row.get(0)?;
+            Ok(reviewed_at_str)
+        },
+    );
+
+    match result {
+        Ok(ts_str) => {
+            match chrono::DateTime::parse_from_rfc3339(&ts_str) {
+                Ok(dt) => Ok(Some(dt.with_timezone(&Utc))),
+                Err(_) => Ok(None),
+            }
+        }
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(e),
+    }
+}
+
+/// Update the quality and is_correct of the most recent review log for a card
+/// Used for override ruling to correct the existing log rather than adding a new one
+pub fn update_latest_review_quality(
+    conn: &Connection,
+    card_id: i64,
+    quality: u8,
+    is_correct: bool,
+) -> Result<usize> {
+    #[cfg(feature = "profiling")]
+    crate::profile_log!(EventType::DbQuery {
+        operation: "update_quality".into(),
+        table: "review_logs".into(),
+    });
+
+    // Update the most recent non-override review for this card
+    let updated = conn.execute(
+        r#"
+        UPDATE review_logs
+        SET quality = ?2, is_correct = ?3
+        WHERE id = (
+            SELECT id FROM review_logs
+            WHERE card_id = ?1 AND study_mode != 'override'
+            ORDER BY id DESC
+            LIMIT 1
+        )
+        "#,
+        params![card_id, quality, if is_correct { 1 } else { 0 }],
+    )?;
+
+    Ok(updated)
+}
+
 /// Record a confusion (wrong answer) for analysis
 pub fn record_confusion(conn: &Connection, card_id: i64, wrong_answer: &str) -> Result<()> {
     #[cfg(feature = "profiling")]

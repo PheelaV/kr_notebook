@@ -892,6 +892,58 @@ pub fn get_due_count_filtered(
     conn.query_row(&query, params![now], |row| row.get(0))
 }
 
+/// Get available due card count with study filter applied, respecting daily new card limit
+///
+/// This function returns the count of cards that are actually available for study:
+/// - All due cards with total_reviews > 0 (review cards)
+/// - Due cards with total_reviews == 0 only if daily new card limit not reached
+pub fn get_available_due_count_filtered(
+    conn: &Connection,
+    app_conn: &Connection,
+    user_id: i64,
+    filter: &StudyFilterMode,
+    can_add_new: bool,
+) -> Result<i64> {
+    #[cfg(feature = "profiling")]
+    crate::profile_log!(EventType::DbQuery {
+        operation: "available_count_filtered".into(),
+        table: "cards".into(),
+    });
+
+    let now = Utc::now().to_rfc3339();
+    let (filter_clause, _, skip_tier_filter) = build_filter_where_clause(conn, app_conn, user_id, filter)?;
+
+    let tier_clause = if skip_tier_filter {
+        String::new()
+    } else {
+        let effective_tiers = get_effective_tiers(conn)?;
+        if effective_tiers.is_empty() {
+            return Ok(0);
+        }
+        let tier_list = effective_tiers
+            .iter()
+            .map(|t| t.to_string())
+            .collect::<Vec<_>>()
+            .join(",");
+        format!("AND cd.tier IN ({})", tier_list)
+    };
+
+    // If can_add_new is false, exclude cards that have never been reviewed (new cards)
+    let new_card_filter = if can_add_new {
+        String::new()
+    } else {
+        "AND COALESCE(cp.total_reviews, 0) > 0".to_string()
+    };
+
+    let query = format!(
+        r#"SELECT COUNT(*) {}
+        WHERE COALESCE(cp.next_review, datetime('now')) <= ?1
+        {} {} {}"#,
+        CARD_FROM, tier_clause, filter_clause, new_card_filter
+    );
+    conn.query_row(&query, params![now], |row| row.get(0))
+}
+
 /// Get due cards interleaved with study filter applied
 pub fn get_due_cards_interleaved_filtered(
     conn: &Connection,

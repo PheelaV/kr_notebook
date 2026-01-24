@@ -167,8 +167,13 @@
 
       const result = resultEl?.dataset.result || 'unknown';
 
+      // Capture session_id from the form
+      const sessionInput = container.querySelector('input[name="session_id"]');
+      const sessionId = sessionInput ? sessionInput.value : '';
+
       window.lastCardData = {
         cardId: container.dataset.cardId,
+        sessionId: sessionId,
         front: front.textContent.trim(),
         answer: answerEl ? answerEl.textContent.trim() : '',
         userAnswer: userAnswerEl ? userAnswerEl.textContent.trim() : '',
@@ -242,6 +247,7 @@
     try {
       const params = new URLSearchParams({
         card_id: window.lastCardData.cardId,
+        session_id: window.lastCardData.sessionId || '',
         quality: quality,
         suggested_answer: suggestedAnswer,
         card_front: window.lastCardData.front || '',

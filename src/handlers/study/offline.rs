@@ -112,12 +112,13 @@ pub async fn download_session(
     // Parse filter mode
     let filter = parse_filter_mode(&request.filter_mode);
 
-    // Get available cards
+    // Get available cards (no sibling exclusion for batch download)
     let all_cards = super::get_available_study_cards_filtered(
         &conn,
         &app_conn,
         auth.user_id,
         &filter,
+        None, // No last_card_id for batch download
     );
 
     if all_cards.is_empty() {

@@ -119,10 +119,15 @@ pub async fn index(State(state): State<AppState>, auth: AuthContext) -> Html<Str
 
   let accelerated_mode = db::get_all_tiers_unlocked(&conn).log_warn_default("Failed to get all_tiers_unlocked");
 
+  // Check if we can introduce new cards (daily limit)
+  let can_add_new = db::can_introduce_new_card(&conn).unwrap_or(true);
+
   // Use filtered counts to include vocabulary pack cards (with permission check)
+  // Use get_available_due_count_filtered to respect daily new card limit
   let filter = db::StudyFilterMode::All;
-  let due_count = db::get_due_count_filtered(&conn, &app_conn, auth.user_id, &filter).log_warn_default("Failed to get due count");
-  let unreviewed_count = if accelerated_mode {
+  let due_count = db::get_available_due_count_filtered(&conn, &app_conn, auth.user_id, &filter, can_add_new)
+    .log_warn_default("Failed to get due count");
+  let unreviewed_count = if accelerated_mode && can_add_new {
     db::get_unreviewed_today_count_filtered(&conn, &app_conn, auth.user_id, &filter).log_warn_default("Failed to get unreviewed count")
   } else {
     0
