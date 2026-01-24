@@ -307,13 +307,49 @@ pub async fn sync_session(
     let mut reviews = request.reviews;
     reviews.sort_by(|a, b| a.timestamp.cmp(&b.timestamp));
 
+    // Begin transaction for atomic sync
+    if let Err(e) = conn.execute("BEGIN IMMEDIATE", []) {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({
+                "error": format!("Failed to begin transaction: {}", e)
+            })),
+        )
+            .into_response();
+    }
+
     // Process each review with server-side FSRS calculation
     for review in &reviews {
-        // Parse review timestamp
+        // Parse review timestamp - reject invalid timestamps instead of using current time
         let review_time: DateTime<Utc> = match chrono::DateTime::parse_from_rfc3339(&review.timestamp) {
             Ok(dt) => dt.with_timezone(&Utc),
-            Err(_) => Utc::now(),
+            Err(e) => {
+                errors.push(format!("Card {}: invalid timestamp '{}': {}", review.card_id, review.timestamp, e));
+                continue;
+            }
         };
+
+        // Validate timestamp is within reasonable bounds
+        // Allow tolerance for clock skew and offline study (reviews can be timestamped
+        // slightly ahead if synced shortly after the review was made)
+        let now = Utc::now();
+        let tolerance = chrono::Duration::minutes(5);
+        if let Some(download_time) = session_download_time {
+            if review_time < download_time - tolerance {
+                errors.push(format!(
+                    "Card {}: review timestamp {} is before session download {}",
+                    review.card_id, review_time, download_time
+                ));
+                continue;
+            }
+        }
+        if review_time > now + tolerance {
+            errors.push(format!(
+                "Card {}: review timestamp {} is in the future",
+                review.card_id, review_time
+            ));
+            continue;
+        }
 
         // CONFLICT DETECTION: Check if card was reviewed online after session download
         let last_online_review = get_last_review_time(&conn, review.card_id);
@@ -369,6 +405,9 @@ pub async fn sync_session(
             review_time,
         );
 
+        // Use server-calculated quality for is_correct to ensure consistency
+        let is_correct_from_quality = review.quality >= 2;
+
         // Update card_progress with server-calculated SRS state
         let update_result = conn.execute(
             r#"
@@ -378,28 +417,28 @@ pub async fn sync_session(
                 fsrs_stability, fsrs_difficulty, fsrs_state
             ) VALUES (
                 ?1, 2.5, 0, ?2, ?3,
-                1, ?4, ?5,
-                ?6, ?7, ?8
+                0, 0, ?4,
+                ?5, ?6, ?7
             )
             ON CONFLICT(card_id) DO UPDATE SET
                 repetitions = ?2,
                 next_review = ?3,
                 total_reviews = total_reviews + 1,
-                correct_reviews = correct_reviews + ?4,
-                learning_step = ?5,
-                fsrs_stability = ?6,
-                fsrs_difficulty = ?7,
-                fsrs_state = ?8
+                correct_reviews = correct_reviews + ?8,
+                learning_step = ?4,
+                fsrs_stability = ?5,
+                fsrs_difficulty = ?6,
+                fsrs_state = ?7
             "#,
             rusqlite::params![
                 review.card_id,
                 fsrs_result.repetitions,
                 fsrs_result.next_review.to_rfc3339(),
-                if review.is_correct { 1 } else { 0 },
                 fsrs_result.learning_step,
                 fsrs_result.stability,
                 fsrs_result.difficulty,
                 fsrs_result.state.as_str(),
+                if is_correct_from_quality { 1 } else { 0 },
             ],
         );
 
@@ -481,6 +520,24 @@ pub async fn sync_session(
         "UPDATE offline_sessions SET synced = 1, synced_at = ?1 WHERE session_id = ?2",
         rusqlite::params![Utc::now().to_rfc3339(), &request.session_id],
     );
+
+    // Commit transaction
+    if let Err(e) = conn.execute("COMMIT", []) {
+        // Try to rollback on commit failure
+        let _ = conn.execute("ROLLBACK", []);
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({
+                "error": format!("Failed to commit transaction: {}", e)
+            })),
+        )
+            .into_response();
+    }
+
+    // Check for tier and pack lesson unlocks after syncing reviews
+    let _ = db::try_auto_unlock_tier(&conn).log_warn("Auto tier unlock failed");
+    let _ = db::try_auto_unlock_all_pack_lessons(&conn, &app_conn)
+        .log_warn("Auto lesson unlock failed");
 
     let skipped_count = skipped_cards.len();
     let response = SyncSessionResponse {

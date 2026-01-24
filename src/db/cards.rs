@@ -1178,10 +1178,10 @@ pub fn get_accessible_card_count(
     );
     let total_cards: i64 = conn.query_row(&query, [], |row| row.get(0))?;
 
-    // Count learned cards (repetitions >= 2)
+    // Count learned cards (graduated: learning_step >= 4)
     let query_learned = format!(
         r#"SELECT COUNT(*) {}
-        WHERE COALESCE(cp.repetitions, 0) >= 2 {}"#,
+        WHERE COALESCE(cp.learning_step, 0) >= 4 {}"#,
         CARD_FROM, filter_clause
     );
     let cards_learned: i64 = conn.query_row(&query_learned, [], |row| row.get(0))?;

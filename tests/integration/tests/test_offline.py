@@ -176,7 +176,9 @@ class TestOfflineSync:
         session_id = data["session_id"]
         card = data["cards"][0]
 
-        # Sync one review
+        # Sync one review (use current time for timestamp)
+        from datetime import datetime, timezone, timedelta
+        now = datetime.now(timezone.utc)
         sync_response = authenticated_client.post(
             "/api/study/sync-offline",
             json={
@@ -187,11 +189,11 @@ class TestOfflineSync:
                         "quality": 4,
                         "is_correct": True,
                         "hints_used": 0,
-                        "timestamp": "2024-01-13T10:05:00Z",
+                        "timestamp": now.isoformat(),
                         "learning_step": 1,
                         "fsrs_stability": 1.5,
                         "fsrs_difficulty": 5.0,
-                        "next_review": "2024-01-14T10:05:00Z",
+                        "next_review": (now + timedelta(days=1)).isoformat(),
                     }
                 ],
             },

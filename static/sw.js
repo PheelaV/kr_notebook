@@ -11,7 +11,7 @@
 'use strict';
 
 // Bump version to trigger update
-const CACHE_VERSION = '27';
+const CACHE_VERSION = '28';
 const CACHE_NAMES = {
   static: `kr-static-${CACHE_VERSION}`,
   pages: `kr-pages-${CACHE_VERSION}`,
@@ -53,6 +53,7 @@ const PRECACHE_CDN = [
 // Fallback pages to precache if dynamic fetch fails (static pages only)
 // Dynamic pack/lesson URLs are fetched from /api/precache-urls
 const PRECACHE_PAGES_FALLBACK = [
+  '/settings',
   '/reference',
   '/reference/basics',
   '/reference/tier1',
@@ -87,6 +88,7 @@ const NETWORK_ONLY_PATTERNS = [
 
 // Routes to cache with offline-first strategy
 const OFFLINE_FIRST_PATTERNS = [
+  /^\/settings$/,
   /^\/reference/,
   /^\/library/,
   /^\/guide$/

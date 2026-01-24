@@ -105,6 +105,10 @@ pub async fn index(State(state): State<AppState>, auth: AuthContext) -> Html<Str
   // Check for auto tier unlock
   let unlocked_tier = db::try_auto_unlock_tier(&conn).log_warn("Auto tier unlock failed").flatten();
 
+  // Check for auto pack lesson unlock
+  let _ = db::try_auto_unlock_all_pack_lessons(&conn, &app_conn)
+    .log_warn("Auto lesson unlock failed");
+
   #[cfg(feature = "profiling")]
   if let Some(tier) = unlocked_tier {
     crate::profile_log!(EventType::TierUnlock {

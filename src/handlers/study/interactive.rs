@@ -212,7 +212,11 @@ pub async fn study_start_interactive(
       return Html(template.render().unwrap_or_default()).into_response();
     }
 
-  // No cards available
+  // No cards available - check for tier and pack lesson unlocks
+  let _ = db::try_auto_unlock_tier(&conn).log_warn("Auto tier unlock failed");
+  let _ = db::try_auto_unlock_all_pack_lessons(&conn, &app_conn)
+    .log_warn("Auto lesson unlock failed");
+
   let template = StudyInteractiveTemplate {
     card_id: 0,
     front: String::new(),
