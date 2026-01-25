@@ -289,9 +289,9 @@ test.describe('Test API', () => {
   test('test API can simulate online/offline events', async ({ authenticatedPage }) => {
     await authenticatedPage.goto('/');
 
-    // Set short delay
+    // Set delay longer than our buffer wait so timer is still active when we check
     await authenticatedPage.evaluate(() => {
-      window.OfflineSyncTestAPI.setStabilityDelay(50);
+      window.OfflineSyncTestAPI.setStabilityDelay(2000);
     });
 
     // Simulate online
@@ -302,7 +302,7 @@ test.describe('Test API', () => {
     // Buffer to ensure event handler completes (Firefox needs more time)
     await authenticatedPage.waitForTimeout(100);
 
-    // Timer should be active
+    // Timer should be active (2000ms delay hasn't elapsed yet)
     const timerActive = await authenticatedPage.evaluate(() => {
       return window.OfflineSyncTestAPI.isStabilityTimerActive();
     });

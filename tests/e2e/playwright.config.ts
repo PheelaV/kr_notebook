@@ -29,15 +29,19 @@ const BROWSERS = {
 
 type BrowserName = keyof typeof BROWSERS;
 
-// Determine which browsers to run based on BROWSER env var
+// Determine which browsers to run based on BROWSER/SKIP_WEBKIT env vars
 function getTargetBrowsers(): BrowserName[] {
   const browserEnv = process.env.BROWSER?.toLowerCase();
+  const skipWebkit = process.env.SKIP_WEBKIT === '1';
 
   if (browserEnv && browserEnv in BROWSERS) {
     return [browserEnv as BrowserName];
   }
 
-  // Default: all browsers
+  // Default: all browsers (unless SKIP_WEBKIT is set)
+  if (skipWebkit) {
+    return ['chrome', 'firefox'];
+  }
   return ['chrome', 'firefox', 'webkit'];
 }
 

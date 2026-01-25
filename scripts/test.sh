@@ -12,11 +12,15 @@
 #   ./scripts/test.sh all          # Everything (default)
 #   ./scripts/test.sh e2e          # E2E tests only (for debugging)
 #   ./scripts/test.sh all --fail-fast  # Exit on first failure
+#   ./scripts/test.sh e2e --no-report  # Skip HTML report (just exit)
+#   ./scripts/test.sh e2e --skip-webkit  # Skip WebKit (useful on Linux)
 #
 # Environment:
 #   PRESERVE_TEST_ENV=1  - Keep test data after run (for debugging)
 #   VERBOSE=1            - Show verbose output
 #   FAIL_FAST=1          - Exit on first test suite failure
+#   NO_REPORT=1          - Skip Playwright HTML report
+#   SKIP_WEBKIT=1        - Skip WebKit browser tests
 #
 
 set -euo pipefail
@@ -35,11 +39,19 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 # Parse arguments
 LEVEL="all"
 FAIL_FAST="${FAIL_FAST:-0}"
+NO_REPORT="${NO_REPORT:-0}"
+SKIP_WEBKIT="${SKIP_WEBKIT:-0}"
 
 for arg in "$@"; do
     case "$arg" in
         --fail-fast|-x)
             FAIL_FAST=1
+            ;;
+        --no-report)
+            NO_REPORT=1
+            ;;
+        --skip-webkit)
+            SKIP_WEBKIT=1
             ;;
         unit|integration|all|e2e)
             LEVEL="$arg"
@@ -185,7 +197,14 @@ run_e2e_tests() {
         npx playwright install chromium 2>&1
     fi
 
-    npx playwright test 2>&1 || E2E_RESULT=1
+    # Build playwright command with optional reporter override
+    local pw_args="test"
+    if [[ $NO_REPORT -eq 1 ]]; then
+        pw_args="$pw_args --reporter=list"
+    fi
+
+    # Pass SKIP_WEBKIT to playwright config
+    SKIP_WEBKIT=$SKIP_WEBKIT npx playwright $pw_args 2>&1 || E2E_RESULT=1
 
     E2E_TIME=$((SECONDS - start_time))
 
@@ -267,6 +286,8 @@ main() {
     TOTAL_START_TIME=$SECONDS
     local mode_suffix=""
     [[ $FAIL_FAST -eq 1 ]] && mode_suffix=" (fail-fast)"
+    [[ $NO_REPORT -eq 1 ]] && mode_suffix="$mode_suffix (no-report)"
+    [[ $SKIP_WEBKIT -eq 1 ]] && mode_suffix="$mode_suffix (skip-webkit)"
     log_header "Test Runner - Level: $LEVEL$mode_suffix"
 
     case "$LEVEL" in
@@ -299,7 +320,7 @@ main() {
             check_fail_fast $E2E_RESULT
             ;;
         *)
-            echo "Usage: $0 {unit|integration|all|e2e} [--fail-fast|-x]"
+            echo "Usage: $0 {unit|integration|all|e2e} [--fail-fast|-x] [--no-report] [--skip-webkit]"
             echo ""
             echo "Levels:"
             echo "  unit        - Rust + Python unit tests (fast)"
@@ -309,11 +330,15 @@ main() {
             echo ""
             echo "Options:"
             echo "  --fail-fast, -x  - Exit on first test suite failure"
+            echo "  --no-report      - Skip Playwright HTML report (just show summary)"
+            echo "  --skip-webkit    - Skip WebKit browser tests (useful on Linux)"
             echo ""
             echo "Environment:"
             echo "  PRESERVE_TEST_ENV=1  - Keep test data after run"
             echo "  VERBOSE=1            - Show verbose output"
             echo "  FAIL_FAST=1          - Exit on first test suite failure"
+            echo "  NO_REPORT=1          - Skip Playwright HTML report"
+            echo "  SKIP_WEBKIT=1        - Skip WebKit browser tests"
             exit 1
             ;;
     esac

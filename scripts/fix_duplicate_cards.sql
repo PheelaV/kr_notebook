@@ -1,5 +1,7 @@
 -- Fix duplicate cards in app.db
--- Run this on production database after backing up!
+-- APPLIED: 2026-01-24 on local dev database (IDs: 861, 863, 805)
+-- APPLIED: 2026-01-24 on production raspberry (IDs: 197, 199, 141)
+-- NOTE: Card IDs differ between environments - verify before running!
 
 -- ============================================================
 -- FIX 1: 있다 (itda) - consolidate 3 duplicate cards into 1
