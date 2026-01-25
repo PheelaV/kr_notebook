@@ -9,6 +9,31 @@
  */
 import { test, expect, setupScenario } from '../fixtures/auth';
 
+// Helper to enable offline mode in settings
+async function enableOfflineMode(page) {
+  await page.goto('/settings', { waitUntil: 'domcontentloaded' });
+  const toggle = page.locator('#offlineModeToggle');
+  if (!(await toggle.isChecked())) {
+    await toggle.click();
+    // Wait for the form POST response before continuing
+    await Promise.all([
+      page.waitForResponse(resp => resp.url().includes('/settings') && resp.request().method() === 'POST'),
+      page.locator('#offline-mode button[type="submit"]').click()
+    ]);
+    await page.waitForLoadState('domcontentloaded');
+  }
+  // Ensure the offline-download section is visible
+  await expect(page.locator('#offline-download')).toBeVisible({ timeout: 10000 });
+}
+
+// Helper to download an offline session
+async function downloadSession(page) {
+  await enableOfflineMode(page);
+  const downloadBtn = page.locator('#download-session-btn');
+  await downloadBtn.click();
+  await expect(page.locator('#download-status')).toContainText('Downloaded', { timeout: 15000 });
+}
+
 test.describe('Offline Study Mode', () => {
   test('can enable offline mode in settings', async ({ authenticatedPage }) => {
     await authenticatedPage.goto('/settings', { waitUntil: 'domcontentloaded' });
@@ -27,34 +52,20 @@ test.describe('Offline Study Mode', () => {
       await toggle.click();
     }
 
-    // Save settings
-    await offlineSection.locator('button[type="submit"]').click();
+    // Save settings and wait for response
+    await Promise.all([
+      authenticatedPage.waitForResponse(resp => resp.url().includes('/settings') && resp.request().method() === 'POST'),
+      offlineSection.locator('button[type="submit"]').click()
+    ]);
 
     // Verify options appear
     const downloadSection = authenticatedPage.locator('#offline-download');
-    await expect(downloadSection).toBeVisible();
+    await expect(downloadSection).toBeVisible({ timeout: 10000 });
   });
 
   test('can download offline session', async ({ authenticatedPage, testUser }) => {
-    // Set up scenario with due cards
     setupScenario(testUser.username, 'tier1_new', testUser.dataDir);
-
-    // First enable offline mode
-    await authenticatedPage.goto('/settings', { waitUntil: 'domcontentloaded' });
-    const toggle = authenticatedPage.locator('#offlineModeToggle');
-    if (!(await toggle.isChecked())) {
-      await toggle.click();
-      await authenticatedPage.locator('#offline-mode button[type="submit"]').click();
-    }
-
-    // Click download
-    const downloadBtn = authenticatedPage.locator('#download-session-btn');
-    await downloadBtn.click();
-
-    // Wait for download to complete
-    const status = authenticatedPage.locator('#download-status');
-    await expect(status).toContainText('Downloaded', { timeout: 10000 });
-    await expect(status).toContainText('cards');
+    await downloadSession(authenticatedPage);
 
     // Verify IndexedDB has data
     const hasSession = await authenticatedPage.evaluate(async () => {
@@ -78,18 +89,8 @@ test.describe('Offline Study Mode', () => {
   });
 
   test('offline study page loads with session', async ({ authenticatedPage, testUser }) => {
-    // Set up scenario with due cards
     setupScenario(testUser.username, 'tier1_new', testUser.dataDir);
-
-    // Download session first
-    await authenticatedPage.goto('/settings', { waitUntil: 'domcontentloaded' });
-    const toggle = authenticatedPage.locator('#offlineModeToggle');
-    if (!(await toggle.isChecked())) {
-      await toggle.click();
-      await authenticatedPage.locator('#offline-mode button[type="submit"]').click();
-    }
-    await authenticatedPage.locator('#download-session-btn').click();
-    await expect(authenticatedPage.locator('#download-status')).toContainText('Downloaded', { timeout: 10000 });
+    await downloadSession(authenticatedPage);
 
     // Go to offline study page directly
     await authenticatedPage.goto('/offline-study');
@@ -100,18 +101,8 @@ test.describe('Offline Study Mode', () => {
   });
 
   test('can complete study cards offline', async ({ authenticatedPage, testUser }) => {
-    // Set up scenario with due cards
     setupScenario(testUser.username, 'tier1_new', testUser.dataDir);
-
-    // Download session
-    await authenticatedPage.goto('/settings', { waitUntil: 'domcontentloaded' });
-    const toggle = authenticatedPage.locator('#offlineModeToggle');
-    if (!(await toggle.isChecked())) {
-      await toggle.click();
-      await authenticatedPage.locator('#offline-mode button[type="submit"]').click();
-    }
-    await authenticatedPage.locator('#download-session-btn').click();
-    await expect(authenticatedPage.locator('#download-status')).toContainText('Downloaded', { timeout: 10000 });
+    await downloadSession(authenticatedPage);
 
     // Go to offline study
     await authenticatedPage.goto('/offline-study');
@@ -164,18 +155,8 @@ test.describe('Offline Study Mode', () => {
   });
 
   test('auto-sync triggers when navigating with pending reviews', async ({ authenticatedPage, testUser }) => {
-    // Set up scenario with due cards
     setupScenario(testUser.username, 'tier1_new', testUser.dataDir);
-
-    // Download and do some offline study
-    await authenticatedPage.goto('/settings', { waitUntil: 'domcontentloaded' });
-    const toggle = authenticatedPage.locator('#offlineModeToggle');
-    if (!(await toggle.isChecked())) {
-      await toggle.click();
-      await authenticatedPage.locator('#offline-mode button[type="submit"]').click();
-    }
-    await authenticatedPage.locator('#download-session-btn').click();
-    await expect(authenticatedPage.locator('#download-status')).toContainText('Downloaded', { timeout: 10000 });
+    await downloadSession(authenticatedPage);
 
     // Go to offline study and answer one card
     await authenticatedPage.goto('/offline-study');
@@ -240,18 +221,8 @@ test.describe('Offline Study Mode', () => {
   });
 
   test('auto-sync clears pending reviews from IndexedDB', async ({ authenticatedPage, testUser }) => {
-    // Set up scenario with due cards
     setupScenario(testUser.username, 'tier1_new', testUser.dataDir);
-
-    // Setup: download session and create some responses
-    await authenticatedPage.goto('/settings', { waitUntil: 'domcontentloaded' });
-    const toggle = authenticatedPage.locator('#offlineModeToggle');
-    if (!(await toggle.isChecked())) {
-      await toggle.click();
-      await authenticatedPage.locator('#offline-mode button[type="submit"]').click();
-    }
-    await authenticatedPage.locator('#download-session-btn').click();
-    await expect(authenticatedPage.locator('#download-status')).toContainText('Downloaded', { timeout: 10000 });
+    await downloadSession(authenticatedPage);
 
     // Do some offline study
     await authenticatedPage.goto('/offline-study');

@@ -18,9 +18,13 @@ async function enableOfflineMode(page) {
   const toggle = page.locator('#offlineModeToggle');
   if (!(await toggle.isChecked())) {
     await toggle.click();
-    await page.locator('#offline-mode button[type="submit"]').click();
-    // Wait for redirect and page render
-    await page.waitForLoadState('networkidle');
+    // Wait for the form POST response before continuing
+    await Promise.all([
+      page.waitForResponse(resp => resp.url().includes('/settings') && resp.request().method() === 'POST'),
+      page.locator('#offline-mode button[type="submit"]').click()
+    ]);
+    // Wait for page to fully render after redirect
+    await page.waitForLoadState('domcontentloaded');
   }
   // Ensure the offline-download section is visible (setting is saved and applied)
   await expect(page.locator('#offline-download')).toBeVisible({ timeout: 10000 });
@@ -295,8 +299,8 @@ test.describe('Test API', () => {
       window.OfflineSyncTestAPI.simulateOnline();
     });
 
-    // Small buffer to ensure event handler completes
-    await authenticatedPage.waitForTimeout(20);
+    // Buffer to ensure event handler completes (Firefox needs more time)
+    await authenticatedPage.waitForTimeout(100);
 
     // Timer should be active
     const timerActive = await authenticatedPage.evaluate(() => {
