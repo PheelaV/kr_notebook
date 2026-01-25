@@ -10,8 +10,34 @@
 
 'use strict';
 
+// Fetch timeout in milliseconds (10 seconds)
+const FETCH_TIMEOUT_MS = 10000;
+
+/**
+ * Fetch with timeout - prevents hanging requests from blocking the page.
+ * WebKit can hang on some requests that never resolve/reject.
+ * @param {Request|string} request - The request to fetch
+ * @param {Object} options - Fetch options
+ * @returns {Promise<Response>}
+ */
+function fetchWithTimeout(request, options) {
+  return new Promise(function(resolve, reject) {
+    var timeoutId = setTimeout(function() {
+      reject(new Error('Fetch timeout'));
+    }, FETCH_TIMEOUT_MS);
+
+    fetch(request, options).then(function(response) {
+      clearTimeout(timeoutId);
+      resolve(response);
+    }).catch(function(error) {
+      clearTimeout(timeoutId);
+      reject(error);
+    });
+  });
+}
+
 // Bump version to trigger update
-const CACHE_VERSION = '28';
+const CACHE_VERSION = '30';
 const CACHE_NAMES = {
   static: `kr-static-${CACHE_VERSION}`,
   pages: `kr-pages-${CACHE_VERSION}`,
@@ -114,22 +140,26 @@ self.addEventListener('install', function(event) {
       caches.open(CACHE_NAMES.static).then(function(cache) {
         return Promise.all(
           PRECACHE_STATIC.map(function(url) {
-            return fetch(url, { cache: 'reload' }).then(function(response) {
+            return fetchWithTimeout(url, { cache: 'reload' }).then(function(response) {
               if (response.ok) {
                 return cache.put(url, response);
               }
             }).catch(function(error) {
-              console.warn('[SW] Failed to precache:', url, error);
+              console.warn('[SW] Failed to precache:', url, error.message);
             });
           })
         );
       }),
-      // Precache CDN resources (may fail if offline during install)
+      // Precache CDN resources (may fail if offline during install, with timeout)
       caches.open(CACHE_NAMES.cdn).then(function(cache) {
         return Promise.all(
           PRECACHE_CDN.map(function(url) {
-            return cache.add(url).catch(function(error) {
-              console.warn('[SW] Failed to precache CDN resource:', url, error);
+            return fetchWithTimeout(url).then(function(response) {
+              if (response.ok) {
+                return cache.put(url, response);
+              }
+            }).catch(function(error) {
+              console.warn('[SW] Failed to precache CDN resource:', url, error.message);
             });
           })
         );
@@ -182,7 +212,7 @@ function cacheFirst(request, cacheName) {
       return cachedResponse;
     }
 
-    return fetch(request).then(function(networkResponse) {
+    return fetchWithTimeout(request).then(function(networkResponse) {
       if (networkResponse.ok) {
         var responseToCache = networkResponse.clone();
         caches.open(cacheName).then(function(cache) {
@@ -192,9 +222,9 @@ function cacheFirst(request, cacheName) {
       }
       return networkResponse;
     }).catch(function(error) {
-      // Network failed and not in cache - return empty response for CDN resources
-      // (prevents console errors when offline)
-      console.warn('[SW] Cache-first fetch failed:', request.url);
+      // Network failed, timed out, or not in cache - return empty response for CDN resources
+      // (prevents console errors when offline or when fetch hangs)
+      console.warn('[SW] Cache-first fetch failed:', request.url, error.message);
       return new Response('', { status: 503, statusText: 'Service Unavailable (offline)' });
     });
   });
@@ -207,14 +237,14 @@ function cacheFirst(request, cacheName) {
 function staleWhileRevalidate(request, cacheName) {
   return caches.open(cacheName).then(function(cache) {
     return cache.match(request).then(function(cachedResponse) {
-      // Start network fetch in background
-      var fetchPromise = fetch(request).then(function(networkResponse) {
+      // Start network fetch in background (with timeout to prevent hanging)
+      var fetchPromise = fetchWithTimeout(request).then(function(networkResponse) {
         if (networkResponse.ok) {
           cache.put(request, networkResponse.clone());
         }
         return networkResponse;
       }).catch(function(error) {
-        console.warn('[SW] Background fetch failed:', error);
+        console.warn('[SW] Background fetch failed:', error.message);
         return null;
       });
 
@@ -267,8 +297,8 @@ function handleHomePage(request) {
     return caches.match('/offline');
   }
 
-  // Online: try network first
-  return fetch(request).then(function(networkResponse) {
+  // Online: try network first (with timeout to prevent hanging)
+  return fetchWithTimeout(request).then(function(networkResponse) {
     // Cache the home page for faster future loads
     if (networkResponse.ok) {
       var responseToCache = networkResponse.clone();
@@ -278,7 +308,7 @@ function handleHomePage(request) {
     }
     return networkResponse;
   }).catch(function(error) {
-    console.warn('[SW] Home page fetch failed:', error);
+    console.warn('[SW] Home page fetch failed:', error.message);
     // Try cache, then offline page
     return caches.match(request).then(function(cached) {
       return cached || caches.match('/offline');
@@ -297,11 +327,11 @@ function networkFirstWithFallback(request) {
     });
   }
 
-  return fetch(request).then(function(networkResponse) {
+  return fetchWithTimeout(request).then(function(networkResponse) {
     return networkResponse;
   }).catch(function(error) {
-    console.warn('[SW] Network request failed:', error);
-    // Network failed - try cache, then offline page
+    console.warn('[SW] Network request failed:', error.message);
+    // Network failed or timed out - try cache, then offline page
     // (navigator.onLine is unreliable, especially with DevTools offline)
     return caches.match(request).then(function(cachedResponse) {
       return cachedResponse || caches.match('/offline');
@@ -359,8 +389,8 @@ self.addEventListener('fetch', function(event) {
         if (cachedResponse) {
           return cachedResponse;
         }
-        // Fallback to network if not cached
-        return fetch(event.request).catch(function() {
+        // Fallback to network if not cached (with timeout)
+        return fetchWithTimeout(event.request).catch(function() {
           return caches.match('/offline');
         });
       })
@@ -396,8 +426,8 @@ self.addEventListener('message', function(event) {
   if (event.data && event.data.type === 'PRECACHE_PAGES') {
     console.log('[SW] Precaching pages...');
     event.waitUntil(
-      // Try to get dynamic URLs from server first
-      fetch('/api/precache-urls')
+      // Try to get dynamic URLs from server first (with timeout)
+      fetchWithTimeout('/api/precache-urls')
         .then(function(response) {
           if (response.ok) {
             return response.json();
@@ -413,13 +443,13 @@ self.addEventListener('message', function(event) {
           return caches.open(CACHE_NAMES.pages).then(function(cache) {
             return Promise.all(
               urls.map(function(url) {
-                return fetch(url).then(function(response) {
+                return fetchWithTimeout(url).then(function(response) {
                   if (response.ok) {
                     console.log('[SW] Cached:', url);
                     return cache.put(url, response);
                   }
                 }).catch(function(error) {
-                  console.warn('[SW] Failed to precache:', url, error);
+                  console.warn('[SW] Failed to precache:', url, error.message);
                 });
               })
             );

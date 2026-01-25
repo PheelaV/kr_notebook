@@ -25,6 +25,18 @@ const OfflineSync = (function() {
   let STABILITY_DELAY_MS = 5000;
 
   /**
+   * Check if we're online.
+   * Allows test API to override isOnline() for E2E tests.
+   * @returns {boolean}
+   */
+  function isOnline() {
+    if (window.OfflineSyncTestAPI && window.OfflineSyncTestAPI._testOnlineState !== null) {
+      return window.OfflineSyncTestAPI._testOnlineState;
+    }
+    return navigator.onLine;
+  }
+
+  /**
    * Check if session is stale (older than SESSION_STALE_HOURS).
    * @param {Object} session - Session object with created_at timestamp
    * @returns {boolean}
@@ -49,7 +61,7 @@ const OfflineSync = (function() {
       return { success: false, error: 'Refresh already in progress' };
     }
 
-    if (!navigator.onLine) {
+    if (!isOnline()) {
       return { success: false, error: 'Offline' };
     }
 
@@ -107,7 +119,7 @@ const OfflineSync = (function() {
    */
   async function checkAndRefreshSession() {
     // Don't refresh if offline
-    if (!navigator.onLine) {
+    if (!isOnline()) {
       return;
     }
 
@@ -410,7 +422,7 @@ const OfflineSync = (function() {
    */
   async function checkAndNotify() {
     // Don't sync if offline
-    if (!navigator.onLine) {
+    if (!isOnline()) {
       return;
     }
 
@@ -587,13 +599,13 @@ const OfflineSync = (function() {
     // Check on page load (in case we're already online with pending sync)
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', function() {
-        if (navigator.onLine) {
+        if (isOnline()) {
           // Use stability timer on page load too
           handleOnline();
         }
       });
     } else {
-      if (navigator.onLine) {
+      if (isOnline()) {
         // Use stability timer on page load too
         handleOnline();
       }
@@ -630,15 +642,19 @@ window.OfflineSync = OfflineSync;
 window.OfflineSyncTestAPI = {
   /**
    * Simulate coming online (triggers stability timer → prompt).
+   * Also sets test-mode online state so isOnline() returns true.
    */
   simulateOnline: function() {
+    window.OfflineSyncTestAPI._testOnlineState = true;
     window.dispatchEvent(new Event('online'));
   },
 
   /**
    * Simulate going offline (cancels stability timer).
+   * Also sets test-mode online state so isOnline() returns false.
    */
   simulateOffline: function() {
+    window.OfflineSyncTestAPI._testOnlineState = false;
     window.dispatchEvent(new Event('offline'));
   },
 
@@ -704,7 +720,18 @@ window.OfflineSyncTestAPI = {
     return window.OfflineSyncTestAPI._isTimerActive || false;
   },
 
+  /**
+   * Reset test API state.
+   * Call between tests to ensure clean state.
+   */
+  reset: function() {
+    window.OfflineSyncTestAPI._testOnlineState = null;
+    window.OfflineSyncTestAPI._isTimerActive = false;
+    window.OfflineSyncTestAPI._stabilityDelayMs = 5000;
+  },
+
   // Internal tracking for test API
   _stabilityDelayMs: 5000,
-  _isTimerActive: false
+  _isTimerActive: false,
+  _testOnlineState: null  // null = use real navigator.onLine, true/false = override
 };

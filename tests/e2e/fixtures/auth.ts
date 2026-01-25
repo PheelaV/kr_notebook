@@ -236,10 +236,10 @@ export async function login(page: Page, user: TestUser): Promise<void> {
   await page.fill('[data-testid="username-input"]', user.username);
   await page.fill('[data-testid="password-input"]', user.password);
 
-  await Promise.all([
-    page.waitForURL('/'),
-    page.click('[data-testid="login-submit"]'),
-  ]);
+  // Click login and wait for redirect (WebKit-compatible)
+  await page.click('[data-testid="login-submit"]');
+  // Poll for URL change (more reliable than waitForURL in WebKit)
+  await page.waitForFunction(() => window.location.pathname === '/', { timeout: 30000 });
 }
 
 // Extended test fixture with authentication

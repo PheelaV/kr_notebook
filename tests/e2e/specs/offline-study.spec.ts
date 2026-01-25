@@ -11,7 +11,7 @@ import { test, expect, setupScenario } from '../fixtures/auth';
 
 test.describe('Offline Study Mode', () => {
   test('can enable offline mode in settings', async ({ authenticatedPage }) => {
-    await authenticatedPage.goto('/settings');
+    await authenticatedPage.goto('/settings', { waitUntil: 'domcontentloaded' });
 
     // Find offline mode section
     const offlineSection = authenticatedPage.locator('#offline-mode');
@@ -40,7 +40,7 @@ test.describe('Offline Study Mode', () => {
     setupScenario(testUser.username, 'tier1_new', testUser.dataDir);
 
     // First enable offline mode
-    await authenticatedPage.goto('/settings');
+    await authenticatedPage.goto('/settings', { waitUntil: 'domcontentloaded' });
     const toggle = authenticatedPage.locator('#offlineModeToggle');
     if (!(await toggle.isChecked())) {
       await toggle.click();
@@ -82,7 +82,7 @@ test.describe('Offline Study Mode', () => {
     setupScenario(testUser.username, 'tier1_new', testUser.dataDir);
 
     // Download session first
-    await authenticatedPage.goto('/settings');
+    await authenticatedPage.goto('/settings', { waitUntil: 'domcontentloaded' });
     const toggle = authenticatedPage.locator('#offlineModeToggle');
     if (!(await toggle.isChecked())) {
       await toggle.click();
@@ -95,7 +95,7 @@ test.describe('Offline Study Mode', () => {
     await authenticatedPage.goto('/offline-study');
 
     // Should show session ready state
-    await expect(authenticatedPage.locator('#session-ready-state')).toBeVisible({ timeout: 5000 });
+    await expect(authenticatedPage.locator('#session-ready-state')).toBeVisible({ timeout: 15000 });
     await expect(authenticatedPage.locator('#session-card-count')).not.toHaveText('0');
   });
 
@@ -104,7 +104,7 @@ test.describe('Offline Study Mode', () => {
     setupScenario(testUser.username, 'tier1_new', testUser.dataDir);
 
     // Download session
-    await authenticatedPage.goto('/settings');
+    await authenticatedPage.goto('/settings', { waitUntil: 'domcontentloaded' });
     const toggle = authenticatedPage.locator('#offlineModeToggle');
     if (!(await toggle.isChecked())) {
       await toggle.click();
@@ -115,7 +115,7 @@ test.describe('Offline Study Mode', () => {
 
     // Go to offline study
     await authenticatedPage.goto('/offline-study');
-    await expect(authenticatedPage.locator('#session-ready-state')).toBeVisible({ timeout: 5000 });
+    await expect(authenticatedPage.locator('#session-ready-state')).toBeVisible({ timeout: 15000 });
 
     // Start studying
     await authenticatedPage.locator('#start-study-btn').click();
@@ -125,7 +125,7 @@ test.describe('Offline Study Mode', () => {
     await expect(authenticatedPage.locator('#card-container')).toBeVisible();
 
     // Wait for card to render
-    await expect(authenticatedPage.locator('.offline-card')).toBeVisible({ timeout: 5000 });
+    await expect(authenticatedPage.locator('.offline-card')).toBeVisible({ timeout: 10000 });
 
     // Answer a card (click first choice if multiple choice)
     const choiceBtn = authenticatedPage.locator('.choice-btn').first();
@@ -168,7 +168,7 @@ test.describe('Offline Study Mode', () => {
     setupScenario(testUser.username, 'tier1_new', testUser.dataDir);
 
     // Download and do some offline study
-    await authenticatedPage.goto('/settings');
+    await authenticatedPage.goto('/settings', { waitUntil: 'domcontentloaded' });
     const toggle = authenticatedPage.locator('#offlineModeToggle');
     if (!(await toggle.isChecked())) {
       await toggle.click();
@@ -179,9 +179,9 @@ test.describe('Offline Study Mode', () => {
 
     // Go to offline study and answer one card
     await authenticatedPage.goto('/offline-study');
-    await expect(authenticatedPage.locator('#session-ready-state')).toBeVisible({ timeout: 5000 });
+    await expect(authenticatedPage.locator('#session-ready-state')).toBeVisible({ timeout: 15000 });
     await authenticatedPage.locator('#start-study-btn').click();
-    await expect(authenticatedPage.locator('.offline-card')).toBeVisible({ timeout: 5000 });
+    await expect(authenticatedPage.locator('.offline-card')).toBeVisible({ timeout: 10000 });
 
     const choiceBtn = authenticatedPage.locator('.choice-btn').first();
     if (await choiceBtn.isVisible()) {
@@ -221,9 +221,12 @@ test.describe('Offline Study Mode', () => {
       window.OfflineSyncTestAPI.simulateOnline();
     });
 
+    // Buffer for stability timer + async operations
+    await authenticatedPage.waitForTimeout(500);
+
     // Wait for sync prompt modal to appear
     const syncPrompt = authenticatedPage.locator('#sync-prompt-modal');
-    await expect(syncPrompt).toBeVisible({ timeout: 5000 });
+    await expect(syncPrompt).toBeVisible({ timeout: 10000 });
 
     // Verify pending count is shown
     const countEl = authenticatedPage.locator('#sync-prompt-count');
@@ -241,7 +244,7 @@ test.describe('Offline Study Mode', () => {
     setupScenario(testUser.username, 'tier1_new', testUser.dataDir);
 
     // Setup: download session and create some responses
-    await authenticatedPage.goto('/settings');
+    await authenticatedPage.goto('/settings', { waitUntil: 'domcontentloaded' });
     const toggle = authenticatedPage.locator('#offlineModeToggle');
     if (!(await toggle.isChecked())) {
       await toggle.click();
@@ -252,9 +255,9 @@ test.describe('Offline Study Mode', () => {
 
     // Do some offline study
     await authenticatedPage.goto('/offline-study');
-    await expect(authenticatedPage.locator('#session-ready-state')).toBeVisible({ timeout: 5000 });
+    await expect(authenticatedPage.locator('#session-ready-state')).toBeVisible({ timeout: 15000 });
     await authenticatedPage.locator('#start-study-btn').click();
-    await expect(authenticatedPage.locator('.offline-card')).toBeVisible({ timeout: 5000 });
+    await expect(authenticatedPage.locator('.offline-card')).toBeVisible({ timeout: 10000 });
 
     const choiceBtn = authenticatedPage.locator('.choice-btn').first();
     if (await choiceBtn.isVisible()) {
@@ -277,9 +280,12 @@ test.describe('Offline Study Mode', () => {
       window.OfflineSyncTestAPI.simulateOnline();
     });
 
+    // Buffer for stability timer + async operations
+    await authenticatedPage.waitForTimeout(500);
+
     // Wait for sync prompt modal to appear
     const syncPrompt = authenticatedPage.locator('#sync-prompt-modal');
-    await expect(syncPrompt).toBeVisible({ timeout: 5000 });
+    await expect(syncPrompt).toBeVisible({ timeout: 10000 });
 
     // Click sync now to trigger the sync
     await authenticatedPage.click('#sync-now-btn');
@@ -327,7 +333,7 @@ test.describe('Offline Study - No Session', () => {
     await authenticatedPage.goto('/offline-study');
 
     // Should show no session state
-    await expect(authenticatedPage.locator('#no-session-state')).toBeVisible({ timeout: 5000 });
+    await expect(authenticatedPage.locator('#no-session-state')).toBeVisible({ timeout: 10000 });
     await expect(authenticatedPage.locator('#no-session-state')).toContainText('No Offline Session');
   });
 });

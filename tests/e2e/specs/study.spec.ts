@@ -37,9 +37,12 @@ test.describe('Study Mode', () => {
       // Check if this is a text input card
       const textInput = authenticatedPage.locator('[data-testid="answer-input"]');
       if (await textInput.isVisible()) {
-        // Type an answer
+        // Type an answer and submit, waiting for HTMX response
         await textInput.fill('test');
-        await authenticatedPage.click('[data-testid="submit-answer"]');
+        await Promise.all([
+          authenticatedPage.waitForResponse(resp => resp.url().includes('/validate-answer')),
+          authenticatedPage.click('[data-testid="submit-answer"]')
+        ]);
 
         // Should show result
         await expect(authenticatedPage.locator('[data-testid="result-phase"]')).toBeVisible();
@@ -55,19 +58,31 @@ test.describe('Study Mode', () => {
       // Get the initial card front text
       const initialFront = await authenticatedPage.locator('[data-testid="card-front"]').textContent();
 
-      // Submit an answer
+      // Submit an answer, waiting for HTMX response
       const textInput = authenticatedPage.locator('[data-testid="answer-input"]');
       if (await textInput.isVisible()) {
         await textInput.fill('test');
-        await authenticatedPage.click('[data-testid="submit-answer"]');
+        await Promise.all([
+          authenticatedPage.waitForResponse(resp => resp.url().includes('/validate-answer')),
+          authenticatedPage.click('[data-testid="submit-answer"]')
+        ]);
       } else {
-        // Click first choice
+        // Click first choice then submit
         await authenticatedPage.locator('[data-testid="choice-option"]').first().click();
-        await authenticatedPage.click('[data-testid="submit-answer"]');
+        await Promise.all([
+          authenticatedPage.waitForResponse(resp => resp.url().includes('/validate-answer')),
+          authenticatedPage.click('[data-testid="submit-answer"]')
+        ]);
       }
 
-      // Click next card
-      await authenticatedPage.click('[data-testid="next-card"]');
+      // Wait for result phase to appear before clicking next
+      await expect(authenticatedPage.locator('[data-testid="result-phase"]')).toBeVisible();
+
+      // Click next card, waiting for HTMX response
+      await Promise.all([
+        authenticatedPage.waitForResponse(resp => resp.url().includes('/next-card')),
+        authenticatedPage.click('[data-testid="next-card"]')
+      ]);
 
       // Card should change (or show no more cards)
       const newFront = await authenticatedPage.locator('[data-testid="card-front"]').textContent();
@@ -144,11 +159,14 @@ test.describe('Study Mode', () => {
 
       await expect(authenticatedPage.locator('[data-testid="card-container"]')).toBeVisible();
 
-      // Complete a practice round
+      // Complete a practice round, waiting for HTMX response
       const textInput = authenticatedPage.locator('[data-testid="answer-input"]');
       if (await textInput.isVisible()) {
         await textInput.fill('test');
-        await authenticatedPage.click('[data-testid="submit-answer"]');
+        await Promise.all([
+          authenticatedPage.waitForResponse(resp => resp.url().includes('/practice-validate')),
+          authenticatedPage.click('[data-testid="submit-answer"]')
+        ]);
       }
 
       // Verify it's in practice mode (has back to study button)
