@@ -238,6 +238,13 @@ pub async fn offline_study_page(
     Html(template.render().unwrap_or_default())
 }
 
+/// Health check endpoint for backend reachability detection.
+/// Used by service worker and offline-sync.js to determine if backend is reachable
+/// (separate from general internet connectivity).
+pub async fn health_check() -> impl axum::response::IntoResponse {
+    axum::http::StatusCode::OK
+}
+
 /// Handler to serve the service worker from the root path
 /// Service workers must be served from the root to have full scope
 pub async fn service_worker() -> impl axum::response::IntoResponse {

@@ -119,6 +119,49 @@
   </div>
 
   <script>
+    // Auto-detect when backend becomes reachable and redirect
+    (function() {
+      var checkInterval = null;
+      var CHECK_INTERVAL_MS = 5000; // Check every 5 seconds
+      var PING_TIMEOUT_MS = 3000;
+
+      function checkBackendAndRedirect() {
+        // Use fetch with timeout to check if backend is reachable
+        var controller = new AbortController();
+        var timeoutId = setTimeout(function() { controller.abort(); }, PING_TIMEOUT_MS);
+
+        fetch('/api/health', {
+          method: 'HEAD',
+          signal: controller.signal,
+          cache: 'no-store'
+        }).then(function(response) {
+          clearTimeout(timeoutId);
+          if (response.ok) {
+            console.log('[Offline] Backend reachable, redirecting to home...');
+            // Stop checking
+            if (checkInterval) clearInterval(checkInterval);
+            // Redirect to home page
+            window.location.href = '/';
+          }
+        }).catch(function() {
+          clearTimeout(timeoutId);
+          // Still offline, continue checking
+        });
+      }
+
+      // Check immediately on page load
+      checkBackendAndRedirect();
+
+      // Check periodically
+      checkInterval = setInterval(checkBackendAndRedirect, CHECK_INTERVAL_MS);
+
+      // Also check when browser reports online
+      window.addEventListener('online', function() {
+        console.log('[Offline] Online event, checking backend...');
+        checkBackendAndRedirect();
+      });
+    })();
+
     // Check if offline study session is available in IndexedDB
     (async function() {
       try {

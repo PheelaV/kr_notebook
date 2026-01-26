@@ -25,14 +25,44 @@ const OfflineSync = (function() {
   let STABILITY_DELAY_MS = 5000;
 
   /**
-   * Check if we're online.
-   * Allows test API to override isOnline() for E2E tests.
-   * @returns {boolean}
+   * Check if we're online (backend reachable).
+   * Uses BackendPing to check if local server is reachable even when
+   * navigator.onLine is false (handles local server without internet case).
+   * Allows test API to override for E2E tests.
+   * @returns {Promise<boolean>}
    */
-  function isOnline() {
+  async function isOnline() {
+    // Allow test API to override
     if (window.OfflineSyncTestAPI && window.OfflineSyncTestAPI._testOnlineState !== null) {
       return window.OfflineSyncTestAPI._testOnlineState;
     }
+
+    // Use backend ping if available
+    if (window.BackendPing && typeof window.BackendPing.isBackendReachable === 'function') {
+      return await window.BackendPing.isBackendReachable();
+    }
+
+    // Fallback to navigator.onLine
+    return navigator.onLine;
+  }
+
+  /**
+   * Synchronous check if we're online.
+   * Uses cached state, falls back to navigator.onLine.
+   * @returns {boolean}
+   */
+  function isOnlineSync() {
+    // Allow test API to override
+    if (window.OfflineSyncTestAPI && window.OfflineSyncTestAPI._testOnlineState !== null) {
+      return window.OfflineSyncTestAPI._testOnlineState;
+    }
+
+    // Use backend ping sync check if available
+    if (window.BackendPing && typeof window.BackendPing.isReachableSync === 'function') {
+      return window.BackendPing.isReachableSync();
+    }
+
+    // Fallback to navigator.onLine
     return navigator.onLine;
   }
 
@@ -61,7 +91,7 @@ const OfflineSync = (function() {
       return { success: false, error: 'Refresh already in progress' };
     }
 
-    if (!isOnline()) {
+    if (!(await isOnline())) {
       return { success: false, error: 'Offline' };
     }
 
@@ -119,7 +149,7 @@ const OfflineSync = (function() {
    */
   async function checkAndRefreshSession() {
     // Don't refresh if offline
-    if (!isOnline()) {
+    if (!(await isOnline())) {
       return;
     }
 
@@ -422,7 +452,7 @@ const OfflineSync = (function() {
    */
   async function checkAndNotify() {
     // Don't sync if offline
-    if (!isOnline()) {
+    if (!(await isOnline())) {
       return;
     }
 
@@ -597,15 +627,16 @@ const OfflineSync = (function() {
     window.addEventListener('offline', handleOffline);
 
     // Check on page load (in case we're already online with pending sync)
+    // Uses isOnlineSync() for synchronous initial check
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', function() {
-        if (isOnline()) {
+        if (isOnlineSync()) {
           // Use stability timer on page load too
           handleOnline();
         }
       });
     } else {
-      if (isOnline()) {
+      if (isOnlineSync()) {
         // Use stability timer on page load too
         handleOnline();
       }

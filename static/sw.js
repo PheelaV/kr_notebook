@@ -10,6 +10,9 @@
 
 'use strict';
 
+// Import backend ping utility for reachability checks
+importScripts('/static/js/backend-ping.js');
+
 // Fetch timeout in milliseconds (10 seconds)
 const FETCH_TIMEOUT_MS = 10000;
 
@@ -37,7 +40,7 @@ function fetchWithTimeout(request, options) {
 }
 
 // Bump version to trigger update
-const CACHE_VERSION = '30';
+const CACHE_VERSION = '31';
 const CACHE_NAMES = {
   static: `kr-static-${CACHE_VERSION}`,
   pages: `kr-pages-${CACHE_VERSION}`,
@@ -54,6 +57,7 @@ const PRECACHE_STATIC = [
   '/static/js/offline-storage.js',
   '/static/js/offline-study.js',
   '/static/js/offline-sync.js',
+  '/static/js/backend-ping.js',
   '/static/js/vocabulary-search.js',
   '/static/wasm/offline_srs.js',
   '/static/wasm/offline_srs_bg.wasm',
@@ -172,7 +176,7 @@ self.addEventListener('install', function(event) {
 });
 
 /**
- * Activate event - clean up old caches
+ * Activate event - clean up old caches and probe backend reachability
  */
 self.addEventListener('activate', function(event) {
   console.log('[SW] Activating version', CACHE_VERSION);
@@ -193,6 +197,13 @@ self.addEventListener('activate', function(event) {
     }).then(function() {
       console.log('[SW] Taking control of clients');
       return self.clients.claim();
+    }).then(function() {
+      // Proactively ping backend to populate reachability cache
+      // This ensures isReachableSync() has data before first fetch
+      console.log('[SW] Probing backend reachability');
+      return BackendPing.isBackendReachable({ forcePing: true });
+    }).then(function(reachable) {
+      console.log('[SW] Backend reachable:', reachable);
     })
   );
 });
@@ -273,7 +284,8 @@ function staleWhileRevalidate(request, cacheName) {
  */
 function cacheFirstOffline(request, cacheName) {
   // If offline, go straight to cache - no network wait
-  if (!navigator.onLine) {
+  // Uses BackendPing to check if local server is reachable even when navigator.onLine is false
+  if (!BackendPing.isReachableSync()) {
     return caches.match(request).then(function(cachedResponse) {
       if (cachedResponse) {
         return cachedResponse;
@@ -293,7 +305,8 @@ function cacheFirstOffline(request, cacheName) {
  */
 function handleHomePage(request) {
   // If offline, immediately serve offline page
-  if (!navigator.onLine) {
+  // Uses BackendPing to check if local server is reachable even when navigator.onLine is false
+  if (!BackendPing.isReachableSync()) {
     return caches.match('/offline');
   }
 
@@ -321,7 +334,8 @@ function handleHomePage(request) {
  */
 function networkFirstWithFallback(request) {
   // If offline, immediately check cache
-  if (!navigator.onLine) {
+  // Uses BackendPing to check if local server is reachable even when navigator.onLine is false
+  if (!BackendPing.isReachableSync()) {
     return caches.match(request).then(function(cached) {
       return cached || caches.match('/offline');
     });
@@ -383,7 +397,8 @@ self.addEventListener('fetch', function(event) {
   }
 
   // Study page when offline - redirect to offline study page
-  if (OFFLINE_STUDY_PATTERN.test(url.pathname) && !navigator.onLine) {
+  // Uses BackendPing to check if local server is reachable even when navigator.onLine is false
+  if (OFFLINE_STUDY_PATTERN.test(url.pathname) && !BackendPing.isReachableSync()) {
     event.respondWith(
       caches.match('/offline-study').then(function(cachedResponse) {
         if (cachedResponse) {
@@ -411,6 +426,24 @@ self.addEventListener('fetch', function(event) {
   }
 
   // Default: let browser handle the request normally
+});
+
+/**
+ * Online event - invalidate backend ping cache and check reachability
+ */
+self.addEventListener('online', function() {
+  console.log('[SW] Online event - checking backend reachability');
+  BackendPing.invalidateCache();
+  // Trigger async ping to update cache
+  BackendPing.isBackendReachable({ forcePing: true });
+});
+
+/**
+ * Offline event - invalidate backend ping cache
+ */
+self.addEventListener('offline', function() {
+  console.log('[SW] Offline event - invalidating cache');
+  BackendPing.invalidateCache();
 });
 
 /**
