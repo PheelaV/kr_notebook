@@ -15,18 +15,32 @@ import { test, expect, setupScenario } from '../fixtures/auth';
 async function enableOfflineMode(page) {
   // Use domcontentloaded - settings page has async IndexedDB ops that delay 'load' in WebKit
   await page.goto('/settings', { waitUntil: 'domcontentloaded' });
+
+  // Wait for offline mode section to be visible and ready (WebKit is slower)
+  const offlineSection = page.locator('#offline-mode');
+  await expect(offlineSection).toBeVisible({ timeout: 10000 });
+
+  // Wait for browser support check to complete (match exact text from passing test)
+  const status = offlineSection.locator('#offline-status');
+  await expect(status).toContainText('All features supported');
+
   const toggle = page.locator('#offlineModeToggle');
   if (!(await toggle.isChecked())) {
-    await toggle.click();
-    // Wait for the form POST response before continuing
+    // Match the pattern from the passing test: scroll, delay, click with force
+    await toggle.scrollIntoViewIfNeeded();
+    await page.waitForTimeout(100);
+    await toggle.click({ force: true });
+    // Verify the checkbox is now checked with longer timeout for WebKit
+    await expect(toggle).toBeChecked({ timeout: 10000 });
+    // Small delay before form submission for WebKit
+    await page.waitForTimeout(100);
+    // Wait for the form POST response before continuing (matches passing test pattern)
     await Promise.all([
       page.waitForResponse(resp => resp.url().includes('/settings') && resp.request().method() === 'POST'),
       page.locator('#offline-mode button[type="submit"]').click()
     ]);
-    // Wait for page to fully render after redirect
-    await page.waitForLoadState('domcontentloaded');
   }
-  // Ensure the offline-download section is visible (setting is saved and applied)
+  // Ensure the offline-download section is visible (matches passing test)
   await expect(page.locator('#offline-download')).toBeVisible({ timeout: 10000 });
 }
 
