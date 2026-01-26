@@ -16,6 +16,8 @@ const OfflineSync = (function() {
   let notificationElement = null;
   let stabilityTimer = null;
   let syncPromptModal = null;
+  // Track if user chose to stay offline - prevents repeated prompts until actually going offline
+  let userChoseStayOffline = false;
 
   // Session is considered stale after 4 hours
   const SESSION_STALE_HOURS = 4;
@@ -474,6 +476,12 @@ const OfflineSync = (function() {
    * @param {number} pendingCount - Number of reviews pending sync
    */
   function showSyncPromptModal(pendingCount) {
+    // Don't show if user already chose to stay offline in this session
+    if (userChoseStayOffline) {
+      console.log('[OfflineSync] Skipping prompt - user previously chose to stay offline');
+      return;
+    }
+
     // Don't show if already showing
     if (syncPromptModal && document.body.contains(syncPromptModal)) {
       // Update count if modal already exists
@@ -512,6 +520,7 @@ const OfflineSync = (function() {
     // Bind button handlers
     syncPromptModal.querySelector('#sync-now-btn').addEventListener('click', async function() {
       hideSyncPromptModal();
+      userChoseStayOffline = false;  // Reset after sync
       await performAutoSync(pendingCount);
       // Refresh session after successful sync
       checkAndRefreshSession();
@@ -519,7 +528,8 @@ const OfflineSync = (function() {
 
     syncPromptModal.querySelector('#stay-offline-btn').addEventListener('click', function() {
       hideSyncPromptModal();
-      console.log('[OfflineSync] User chose to stay offline');
+      userChoseStayOffline = true;  // Remember choice to prevent repeated prompts
+      console.log('[OfflineSync] User chose to stay offline - will not prompt again until offline/online cycle');
     });
 
     // Close on backdrop click
@@ -611,6 +621,9 @@ const OfflineSync = (function() {
     if (window.OfflineSyncTestAPI) {
       window.OfflineSyncTestAPI._isTimerActive = false;
     }
+    // Reset "stay offline" choice when actually going offline
+    // This allows fresh prompt when coming back online after a real offline period
+    userChoseStayOffline = false;
     // Also hide sync prompt if showing
     hideSyncPromptModal();
   }

@@ -2,11 +2,23 @@
 
 This document describes the testing infrastructure for kr_notebook.
 
+## Prerequisites
+
+| Tool | Version | Tests |
+|------|---------|-------|
+| Rust | 1.80+ | Unit (Rust) |
+| Node.js | 18+ | Unit (JS), E2E |
+| Python | 3.12+ | Unit (Python), Integration |
+| uv | latest | Python package management |
+
+See [README.md → Development](../README.md#development) for installation instructions.
+
 ## Quick Reference
 
 | Type | Command | Location | Framework |
 |------|---------|----------|-----------|
-| Unit | `cargo test` | `src/` (inline) | Rust built-in |
+| Unit (Rust) | `cargo test` | `src/` (inline) | Rust built-in |
+| Unit (JS) | `node tests/js/offline-study.test.js` | `tests/js/` | Node.js |
 | Integration | `cd tests/integration && ./run_tests.sh` | `tests/integration/` | pytest + httpx |
 | E2E | `cd tests/e2e && npm test` | `tests/e2e/` | Playwright |
 
@@ -22,7 +34,11 @@ This document describes the testing infrastructure for kr_notebook.
 │ HTTP API testing, session handling, database state  │
 │ Single server on port 3100                          │
 ├─────────────────────────────────────────────────────┤
-│ Unit (cargo test)                                   │
+│ Unit - JS (Node.js)                                 │
+│ Offline study logic, card selection, validation     │
+│ Mock storage/WASM, no browser required              │
+├─────────────────────────────────────────────────────┤
+│ Unit - Rust (cargo test)                            │
 │ Pure functions, algorithms, data structures         │
 │ No server required                                  │
 └─────────────────────────────────────────────────────┘
@@ -65,6 +81,70 @@ mod tests {
     }
 }
 ```
+
+---
+
+## JavaScript Unit Tests
+
+**79 tests** for offline study logic using the real WASM module.
+
+### Running
+
+```bash
+cd tests/js && npm install             # First time setup
+cd tests/js && npm test                # Run all tests (Vitest)
+cd tests/js && npm run test:watch      # Watch mode
+```
+
+### Architecture
+
+Tests load the **real WASM module** for validation and SRS, while mocking browser-only APIs:
+
+```
+┌─────────────────────────────────────────────────────┐
+│ Test Code (Vitest in Node.js)                       │
+│                                                     │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────┐  │
+│  │ Mock Storage │  │ REAL WASM    │  │ Mock     │  │
+│  │ (in-memory)  │  │ (Rust code)  │  │ Events   │  │
+│  └──────────────┘  └──────────────┘  └──────────┘  │
+│         │                │                │        │
+│         │         loaded via              │        │
+│         │       initSync() +              │        │
+│         │      fs.readFileSync            │        │
+│         ▼                ▼                ▼        │
+├─────────────────────────────────────────────────────┤
+│ Production Code (offline-study.js)                  │
+│                                                     │
+│  IndexedDB         WASM Module      navigator      │
+│  (browser)         (browser)        .onLine        │
+└─────────────────────────────────────────────────────┘
+```
+
+### Mock Implementations (`offline-storage-interface.js`)
+
+| Mock | Purpose |
+|------|---------|
+| `createMockStorage()` | In-memory IndexedDB replacement |
+| `createMockConnectivity()` | Simulates online/offline events |
+
+The WASM module (`static/wasm/offline_srs_bg.wasm`) is loaded directly in Node.js, testing the actual Rust validation and FSRS algorithms.
+| `createMockConnectivity()` | Simulate online/offline events |
+
+### Test Coverage
+
+Tests use the **real WASM module** (Rust compiled to WebAssembly) for validation and SRS logic:
+
+| Suite | Tests | What's Tested |
+|-------|-------|---------------|
+| Card Selection | 3 | Due order, empty queue |
+| Sibling Exclusion | 3 | Front/back matching, fallback |
+| Reinforcement | 3 | Interleaving, empty main queue |
+| Answer Validation (WASM) | 28 | Exact, alternatives, brackets, suffixes, disambiguation, synonyms, typos, spelling, contractions |
+| Hint Generation (WASM) | 5 | Progressive reveal levels |
+| SRS Scheduling (WASM) | 17 | Learning steps, graduation, FSRS, focus mode, quality ratings |
+| Mock Storage | 7 | Session, responses, card state |
+| Mock Connectivity | 5 | Online/offline events |
 
 ---
 

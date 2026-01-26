@@ -2,18 +2,31 @@
 
 Thank you for your interest in contributing!
 
+## Prerequisites
+
+See [README.md → Development → Prerequisites](README.md#prerequisites) for required tools:
+- Rust 1.80+, Node.js 18+, Python 3.12+, uv, Tailwind CSS v4
+
+Quick test dependency setup:
+```bash
+cd tests/e2e && npm install && npx playwright install && cd ../..
+cd tests/js && npm install && cd ../..
+cd tests/integration && uv sync && cd ../..
+```
+
 ## How to Contribute
 
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feature/my-feature`)
 3. Make your changes
-4. Run tests (`./scripts/test.sh`)
+4. Run tests (`./scripts/test.sh unit` for fast feedback, `./scripts/test.sh all` before PR)
 5. Commit your changes with a descriptive message
 6. Push to your fork and open a Pull Request
 
 ## Code Style
 
 - Run `cargo clippy` before submitting
+- Run `cargo fmt` for consistent formatting
 - Follow existing code patterns in the codebase
 - Add tests for new functionality
 

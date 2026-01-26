@@ -128,13 +128,48 @@ The server starts at `http://localhost:3000`
 
 ### Development
 
+#### Prerequisites
+
+| Tool | Version | Purpose | Install |
+|------|---------|---------|---------|
+| Rust | 1.80+ | Backend, WASM | [rustup.rs](https://rustup.rs/) |
+| Node.js | 18+ | E2E tests, JS unit tests | [nodejs.org](https://nodejs.org/) |
+| Python | 3.12+ | Integration tests, tooling | System or [pyenv](https://github.com/pyenv/pyenv) |
+| uv | latest | Python package manager | `curl -LsSf https://astral.sh/uv/install.sh \| sh` |
+| Tailwind CSS | v4 | CSS compilation | [releases](https://github.com/tailwindlabs/tailwindcss/releases) |
+| wasm-pack | latest | WASM builds (optional) | `cargo install wasm-pack` |
+| cross | latest | ARM64 builds (optional) | `cargo install cross` |
+
+#### Quick Setup
+
+```bash
+# Clone and build
+git clone https://github.com/PheelaV/kr_notebook.git
+cd kr_notebook
+cargo build
+
+# Install test dependencies
+cd tests/e2e && npm install && npx playwright install && cd ../..
+cd tests/js && npm install && cd ../..
+cd tests/integration && uv sync && cd ../..
+cd py_scripts && uv sync && cd ..
+```
+
+#### Running
+
 ```bash
 # Hot reload
 cargo install cargo-watch
 cargo watch -x run
 
-# Tests
-cargo test
+# Tests (all)
+./scripts/test.sh
+
+# Tests (by level)
+./scripts/test.sh unit         # Rust + JS + Python unit tests
+./scripts/test.sh integration  # + Python integration tests
+./scripts/test.sh e2e          # E2E only (Playwright)
+./scripts/test.sh all          # Everything
 
 # Lint
 cargo clippy

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Test runner with 3 levels:
-#   1) unit        - Rust + Python unit tests (fast)
+#   1) unit        - Rust + JS + Python unit tests (fast)
 #   2) integration - Unit + Python integration tests
 #   3) all         - Unit + Integration + E2E (Playwright)
 #
@@ -61,11 +61,13 @@ done
 
 # Track results and timings
 RUST_UNIT_RESULT=0
+JS_UNIT_RESULT=0
 PYTHON_UNIT_RESULT=0
 INTEGRATION_RESULT=0
 E2E_RESULT=0
 
 RUST_UNIT_TIME=0
+JS_UNIT_TIME=0
 PYTHON_UNIT_TIME=0
 INTEGRATION_TIME=0
 E2E_TIME=0
@@ -131,6 +133,39 @@ run_rust_unit_tests() {
     fi
 
     return $RUST_UNIT_RESULT
+}
+
+# Run JavaScript unit tests (offline study logic)
+run_js_unit_tests() {
+    log_header "Running JavaScript Unit Tests (offline study)"
+    local start_time=$SECONDS
+
+    cd "$PROJECT_ROOT/tests/js"
+
+    # Check if Node.js is available
+    if ! command -v node &> /dev/null; then
+        log_error "Node.js not found, skipping JS tests"
+        JS_UNIT_RESULT=1
+        return $JS_UNIT_RESULT
+    fi
+
+    # Install dependencies if needed
+    if [[ ! -d "node_modules" ]]; then
+        log_info "Installing JS test dependencies..."
+        npm install --silent 2>&1
+    fi
+
+    npm test 2>&1 || JS_UNIT_RESULT=1
+
+    JS_UNIT_TIME=$((SECONDS - start_time))
+
+    if [[ $JS_UNIT_RESULT -eq 0 ]]; then
+        log_success "JavaScript unit tests passed ($(format_time $JS_UNIT_TIME))"
+    else
+        log_error "JavaScript unit tests failed ($(format_time $JS_UNIT_TIME))"
+    fi
+
+    return $JS_UNIT_RESULT
 }
 
 # Run Python unit tests (py_scripts)
@@ -228,28 +263,34 @@ print_summary() {
 
     case "$LEVEL" in
         unit)
-            total=2
+            total=3
             [[ $RUST_UNIT_RESULT -eq 0 ]] && ((passed++))
+            [[ $JS_UNIT_RESULT -eq 0 ]] && ((passed++))
             [[ $PYTHON_UNIT_RESULT -eq 0 ]] && ((passed++))
             printf "  %-20s %-10s %s\n" "Rust Unit Tests:" "$(result_icon $RUST_UNIT_RESULT)" "($(format_time $RUST_UNIT_TIME))"
+            printf "  %-20s %-10s %s\n" "JS Unit Tests:" "$(result_icon $JS_UNIT_RESULT)" "($(format_time $JS_UNIT_TIME))"
             printf "  %-20s %-10s %s\n" "Python Unit Tests:" "$(result_icon $PYTHON_UNIT_RESULT)" "($(format_time $PYTHON_UNIT_TIME))"
             ;;
         integration)
-            total=3
+            total=4
             [[ $RUST_UNIT_RESULT -eq 0 ]] && ((passed++))
+            [[ $JS_UNIT_RESULT -eq 0 ]] && ((passed++))
             [[ $PYTHON_UNIT_RESULT -eq 0 ]] && ((passed++))
             [[ $INTEGRATION_RESULT -eq 0 ]] && ((passed++))
             printf "  %-20s %-10s %s\n" "Rust Unit Tests:" "$(result_icon $RUST_UNIT_RESULT)" "($(format_time $RUST_UNIT_TIME))"
+            printf "  %-20s %-10s %s\n" "JS Unit Tests:" "$(result_icon $JS_UNIT_RESULT)" "($(format_time $JS_UNIT_TIME))"
             printf "  %-20s %-10s %s\n" "Python Unit Tests:" "$(result_icon $PYTHON_UNIT_RESULT)" "($(format_time $PYTHON_UNIT_TIME))"
             printf "  %-20s %-10s %s\n" "Integration Tests:" "$(result_icon $INTEGRATION_RESULT)" "($(format_time $INTEGRATION_TIME))"
             ;;
         all)
-            total=4
+            total=5
             [[ $RUST_UNIT_RESULT -eq 0 ]] && ((passed++))
+            [[ $JS_UNIT_RESULT -eq 0 ]] && ((passed++))
             [[ $PYTHON_UNIT_RESULT -eq 0 ]] && ((passed++))
             [[ $INTEGRATION_RESULT -eq 0 ]] && ((passed++))
             [[ $E2E_RESULT -eq 0 ]] && ((passed++))
             printf "  %-20s %-10s %s\n" "Rust Unit Tests:" "$(result_icon $RUST_UNIT_RESULT)" "($(format_time $RUST_UNIT_TIME))"
+            printf "  %-20s %-10s %s\n" "JS Unit Tests:" "$(result_icon $JS_UNIT_RESULT)" "($(format_time $JS_UNIT_TIME))"
             printf "  %-20s %-10s %s\n" "Python Unit Tests:" "$(result_icon $PYTHON_UNIT_RESULT)" "($(format_time $PYTHON_UNIT_TIME))"
             printf "  %-20s %-10s %s\n" "Integration Tests:" "$(result_icon $INTEGRATION_RESULT)" "($(format_time $INTEGRATION_TIME))"
             printf "  %-20s %-10s %s\n" "E2E Tests:" "$(result_icon $E2E_RESULT)" "($(format_time $E2E_TIME))"
@@ -294,12 +335,16 @@ main() {
         unit)
             run_rust_unit_tests || true
             check_fail_fast $RUST_UNIT_RESULT
+            run_js_unit_tests || true
+            check_fail_fast $JS_UNIT_RESULT
             run_python_unit_tests || true
             check_fail_fast $PYTHON_UNIT_RESULT
             ;;
         integration)
             run_rust_unit_tests || true
             check_fail_fast $RUST_UNIT_RESULT
+            run_js_unit_tests || true
+            check_fail_fast $JS_UNIT_RESULT
             run_python_unit_tests || true
             check_fail_fast $PYTHON_UNIT_RESULT
             run_integration_tests || true
@@ -308,6 +353,8 @@ main() {
         all)
             run_rust_unit_tests || true
             check_fail_fast $RUST_UNIT_RESULT
+            run_js_unit_tests || true
+            check_fail_fast $JS_UNIT_RESULT
             run_python_unit_tests || true
             check_fail_fast $PYTHON_UNIT_RESULT
             run_integration_tests || true
@@ -323,7 +370,7 @@ main() {
             echo "Usage: $0 {unit|integration|all|e2e} [--fail-fast|-x] [--no-report] [--skip-webkit]"
             echo ""
             echo "Levels:"
-            echo "  unit        - Rust + Python unit tests (fast)"
+            echo "  unit        - Rust + JS + Python unit tests (fast)"
             echo "  integration - Unit + Python integration tests"
             echo "  all         - Unit + Integration + E2E (default)"
             echo "  e2e         - E2E tests only (for debugging)"
