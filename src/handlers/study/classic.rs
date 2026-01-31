@@ -1,6 +1,7 @@
 //! Classic flip-card study mode handlers.
 
 use askama::Template;
+use axum::extract::State;
 use axum::response::{Html, IntoResponse};
 use axum::Form;
 
@@ -9,6 +10,7 @@ use crate::db::{self, LogOnError};
 use crate::domain::{ReviewQuality, StudyMode};
 use crate::handlers::NavContext;
 use crate::srs;
+use crate::state::AppState;
 
 use super::templates::{CardTemplate, NoCardsTemplate, ReviewForm, StudyTemplate};
 use super::{get_character_type, get_review_direction, get_tracked_character};
@@ -51,8 +53,19 @@ pub async fn study_start(auth: AuthContext) -> impl IntoResponse {
   }
 }
 
-pub async fn submit_review(auth: AuthContext, Form(form): Form<ReviewForm>) -> impl IntoResponse {
+pub async fn submit_review(
+  State(state): State<AppState>,
+  auth: AuthContext,
+  Form(form): Form<ReviewForm>,
+) -> impl IntoResponse {
   let conn = match auth.user_db.lock() {
+    Ok(conn) => conn,
+    Err(_) => {
+      return Html("<h1>Database Error</h1><p>Please refresh the page.</p>".to_string())
+    }
+  };
+
+  let app_conn = match state.auth_db.lock() {
     Ok(conn) => conn,
     Err(_) => {
       return Html("<h1>Database Error</h1><p>Please refresh the page.</p>".to_string())
@@ -122,6 +135,11 @@ pub async fn submit_review(auth: AuthContext, Form(form): Form<ReviewForm>) -> i
     };
     Html(template.render().unwrap_or_default())
   } else {
+    // Check for tier and pack lesson unlocks when no cards available
+    let _ = db::try_auto_unlock_tier(&conn).log_warn("Auto tier unlock failed");
+    let _ = db::try_auto_unlock_all_pack_lessons(&conn, &app_conn)
+      .log_warn("Auto lesson unlock failed");
+
     let template = NoCardsTemplate { nav: NavContext::from_auth(&auth) };
     Html(template.render().unwrap_or_default())
   }

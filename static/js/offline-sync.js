@@ -16,6 +16,8 @@ const OfflineSync = (function() {
   let notificationElement = null;
   let stabilityTimer = null;
   let syncPromptModal = null;
+  // Track if user chose to stay offline - prevents repeated prompts until actually going offline
+  let userChoseStayOffline = false;
 
   // Session is considered stale after 4 hours
   const SESSION_STALE_HOURS = 4;
@@ -23,6 +25,48 @@ const OfflineSync = (function() {
   const DEFAULT_SESSION_MINUTES = 30;
   // Wait for connection to be stable before prompting (configurable for tests)
   let STABILITY_DELAY_MS = 5000;
+
+  /**
+   * Check if we're online (backend reachable).
+   * Uses BackendPing to check if local server is reachable even when
+   * navigator.onLine is false (handles local server without internet case).
+   * Allows test API to override for E2E tests.
+   * @returns {Promise<boolean>}
+   */
+  async function isOnline() {
+    // Allow test API to override
+    if (window.OfflineSyncTestAPI && window.OfflineSyncTestAPI._testOnlineState !== null) {
+      return window.OfflineSyncTestAPI._testOnlineState;
+    }
+
+    // Use backend ping if available
+    if (window.BackendPing && typeof window.BackendPing.isBackendReachable === 'function') {
+      return await window.BackendPing.isBackendReachable();
+    }
+
+    // Fallback to navigator.onLine
+    return navigator.onLine;
+  }
+
+  /**
+   * Synchronous check if we're online.
+   * Uses cached state, falls back to navigator.onLine.
+   * @returns {boolean}
+   */
+  function isOnlineSync() {
+    // Allow test API to override
+    if (window.OfflineSyncTestAPI && window.OfflineSyncTestAPI._testOnlineState !== null) {
+      return window.OfflineSyncTestAPI._testOnlineState;
+    }
+
+    // Use backend ping sync check if available
+    if (window.BackendPing && typeof window.BackendPing.isReachableSync === 'function') {
+      return window.BackendPing.isReachableSync();
+    }
+
+    // Fallback to navigator.onLine
+    return navigator.onLine;
+  }
 
   /**
    * Check if session is stale (older than SESSION_STALE_HOURS).
@@ -49,7 +93,7 @@ const OfflineSync = (function() {
       return { success: false, error: 'Refresh already in progress' };
     }
 
-    if (!navigator.onLine) {
+    if (!(await isOnline())) {
       return { success: false, error: 'Offline' };
     }
 
@@ -107,7 +151,7 @@ const OfflineSync = (function() {
    */
   async function checkAndRefreshSession() {
     // Don't refresh if offline
-    if (!navigator.onLine) {
+    if (!(await isOnline())) {
       return;
     }
 
@@ -227,6 +271,8 @@ const OfflineSync = (function() {
       return {
         success: errors.length === 0,
         synced_count: result.synced_count,
+        skipped_count: result.skipped_count || 0,
+        skipped_cards: result.skipped_cards || [],
         total_count: totalCount,
         errors: errors
       };
@@ -289,25 +335,58 @@ const OfflineSync = (function() {
   function showSyncResult(result) {
     if (!notificationElement) return;
 
-    // Full success - all synced
+    // Full success - all synced (with possible skipped due to conflicts)
     if (result.success && result.synced_count > 0) {
+      var skippedInfo = result.skipped_count > 0
+        ? `<p class="text-sm text-gray-500 dark:text-gray-400">${result.skipped_count} skipped (already reviewed online)</p>`
+        : '';
       notificationElement.innerHTML = `
         <div class="flex items-center gap-3">
           <svg class="w-5 h-5 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
-          <p class="font-medium text-gray-900 dark:text-white">
-            Synced ${result.synced_count} review${result.synced_count === 1 ? '' : 's'}
-          </p>
+          <div>
+            <p class="font-medium text-gray-900 dark:text-white">
+              Synced ${result.synced_count} review${result.synced_count === 1 ? '' : 's'}
+            </p>
+            ${skippedInfo}
+          </div>
         </div>
       `;
-      setTimeout(hideNotification, 2000);
+      setTimeout(hideNotification, result.skipped_count > 0 ? 3000 : 2000);
     } else if (result.synced_count === 0 && result.total_count === 0) {
       // Nothing to sync, just hide
       hideNotification();
-    } else if (result.synced_count > 0 && result.errors.length > 0) {
-      // Partial success - some synced, some failed
-      var failedCount = result.total_count - result.synced_count;
+    } else if (result.synced_count === 0 && result.skipped_count > 0 && result.errors.length === 0) {
+      // All reviews were skipped due to conflicts (already reviewed online)
+      notificationElement.innerHTML = `
+        <div class="flex items-center gap-3">
+          <svg class="w-5 h-5 text-blue-600 dark:text-blue-400" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />
+          </svg>
+          <div>
+            <p class="font-medium text-gray-900 dark:text-white">
+              All ${result.skipped_count} reviews skipped
+            </p>
+            <p class="text-sm text-gray-500 dark:text-gray-400">
+              Cards were already reviewed online
+            </p>
+          </div>
+        </div>
+      `;
+      // Clear the skipped reviews from storage since they don't need retry
+      window.OfflineStorage.clearAll();
+      setTimeout(hideNotification, 3000);
+    } else if (result.synced_count > 0 && (result.errors.length > 0 || result.skipped_count > 0)) {
+      // Partial success - some synced, some failed or skipped
+      var failedCount = result.errors.length;
+      var statusParts = [];
+      if (result.skipped_count > 0) {
+        statusParts.push(`${result.skipped_count} skipped (reviewed online)`);
+      }
+      if (failedCount > 0) {
+        statusParts.push(`${failedCount} failed - will retry`);
+      }
       notificationElement.innerHTML = `
         <div class="flex items-center gap-3">
           <svg class="w-5 h-5 text-yellow-600 dark:text-yellow-400" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
@@ -318,7 +397,7 @@ const OfflineSync = (function() {
               Synced ${result.synced_count} of ${result.total_count} reviews
             </p>
             <p class="text-sm text-gray-500 dark:text-gray-400">
-              ${failedCount} failed - will retry next time
+              ${statusParts.join(', ')}
             </p>
           </div>
         </div>
@@ -375,7 +454,7 @@ const OfflineSync = (function() {
    */
   async function checkAndNotify() {
     // Don't sync if offline
-    if (!navigator.onLine) {
+    if (!(await isOnline())) {
       return;
     }
 
@@ -397,6 +476,12 @@ const OfflineSync = (function() {
    * @param {number} pendingCount - Number of reviews pending sync
    */
   function showSyncPromptModal(pendingCount) {
+    // Don't show if user already chose to stay offline in this session
+    if (userChoseStayOffline) {
+      console.log('[OfflineSync] Skipping prompt - user previously chose to stay offline');
+      return;
+    }
+
     // Don't show if already showing
     if (syncPromptModal && document.body.contains(syncPromptModal)) {
       // Update count if modal already exists
@@ -435,6 +520,7 @@ const OfflineSync = (function() {
     // Bind button handlers
     syncPromptModal.querySelector('#sync-now-btn').addEventListener('click', async function() {
       hideSyncPromptModal();
+      userChoseStayOffline = false;  // Reset after sync
       await performAutoSync(pendingCount);
       // Refresh session after successful sync
       checkAndRefreshSession();
@@ -442,7 +528,8 @@ const OfflineSync = (function() {
 
     syncPromptModal.querySelector('#stay-offline-btn').addEventListener('click', function() {
       hideSyncPromptModal();
-      console.log('[OfflineSync] User chose to stay offline');
+      userChoseStayOffline = true;  // Remember choice to prevent repeated prompts
+      console.log('[OfflineSync] User chose to stay offline - will not prompt again until offline/online cycle');
     });
 
     // Close on backdrop click
@@ -534,6 +621,9 @@ const OfflineSync = (function() {
     if (window.OfflineSyncTestAPI) {
       window.OfflineSyncTestAPI._isTimerActive = false;
     }
+    // Reset "stay offline" choice when actually going offline
+    // This allows fresh prompt when coming back online after a real offline period
+    userChoseStayOffline = false;
     // Also hide sync prompt if showing
     hideSyncPromptModal();
   }
@@ -550,15 +640,16 @@ const OfflineSync = (function() {
     window.addEventListener('offline', handleOffline);
 
     // Check on page load (in case we're already online with pending sync)
+    // Uses isOnlineSync() for synchronous initial check
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', function() {
-        if (navigator.onLine) {
+        if (isOnlineSync()) {
           // Use stability timer on page load too
           handleOnline();
         }
       });
     } else {
-      if (navigator.onLine) {
+      if (isOnlineSync()) {
         // Use stability timer on page load too
         handleOnline();
       }
@@ -595,15 +686,19 @@ window.OfflineSync = OfflineSync;
 window.OfflineSyncTestAPI = {
   /**
    * Simulate coming online (triggers stability timer → prompt).
+   * Also sets test-mode online state so isOnline() returns true.
    */
   simulateOnline: function() {
+    window.OfflineSyncTestAPI._testOnlineState = true;
     window.dispatchEvent(new Event('online'));
   },
 
   /**
    * Simulate going offline (cancels stability timer).
+   * Also sets test-mode online state so isOnline() returns false.
    */
   simulateOffline: function() {
+    window.OfflineSyncTestAPI._testOnlineState = false;
     window.dispatchEvent(new Event('offline'));
   },
 
@@ -669,7 +764,18 @@ window.OfflineSyncTestAPI = {
     return window.OfflineSyncTestAPI._isTimerActive || false;
   },
 
+  /**
+   * Reset test API state.
+   * Call between tests to ensure clean state.
+   */
+  reset: function() {
+    window.OfflineSyncTestAPI._testOnlineState = null;
+    window.OfflineSyncTestAPI._isTimerActive = false;
+    window.OfflineSyncTestAPI._stabilityDelayMs = 5000;
+  },
+
   // Internal tracking for test API
   _stabilityDelayMs: 5000,
-  _isTimerActive: false
+  _isTimerActive: false,
+  _testOnlineState: null  // null = use real navigator.onLine, true/false = override
 };

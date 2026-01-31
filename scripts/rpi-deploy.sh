@@ -1,6 +1,6 @@
 #!/bin/bash
 # Deploy kr_notebook to Raspberry Pi
-# Usage: ./scripts/rpi-deploy.sh [--no-tests] [--test-fail-fast] [--no-build] [--no-backup] [--debug] [--rollback]
+# Usage: ./scripts/rpi-deploy.sh [--no-tests] [--test-fail-fast] [--skip-webkit] [--no-build] [--no-backup] [--debug] [--rollback]
 
 set -e
 
@@ -22,6 +22,7 @@ DO_BACKUP=true
 DO_ROLLBACK=false
 DO_TESTS=true
 TEST_FAIL_FAST=false
+TEST_SKIP_WEBKIT=false
 PROFILE="--release"
 PROFILE_NAME="release"
 
@@ -31,6 +32,7 @@ for arg in "$@"; do
         --no-backup)      DO_BACKUP=false ;;
         --no-tests)       DO_TESTS=false ;;
         --test-fail-fast) TEST_FAIL_FAST=true ;;
+        --skip-webkit)    TEST_SKIP_WEBKIT=true ;;
         --debug)          PROFILE=""; PROFILE_NAME="debug" ;;
         --rollback)       DO_ROLLBACK=true ;;
     esac
@@ -231,7 +233,10 @@ if [ "$DO_TESTS" = true ]; then
     step_start
     TEST_ARGS="all"
     if [ "$TEST_FAIL_FAST" = true ]; then
-        TEST_ARGS="all --fail-fast"
+        TEST_ARGS="$TEST_ARGS --fail-fast"
+    fi
+    if [ "$TEST_SKIP_WEBKIT" = true ]; then
+        TEST_ARGS="$TEST_ARGS --skip-webkit"
     fi
     if ! "$SCRIPT_DIR/test.sh" $TEST_ARGS; then
         echo ""

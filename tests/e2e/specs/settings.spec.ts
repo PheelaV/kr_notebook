@@ -20,14 +20,14 @@ test.describe('Learning Settings', () => {
     const isNowChecked = await toggle.isChecked();
     expect(isNowChecked).toBe(!wasChecked);
 
-    // Submit the form
-    await authenticatedPage.click('[data-testid="settings-submit"]');
+    // Submit the form and wait for the POST response
+    await Promise.all([
+      authenticatedPage.waitForResponse(resp => resp.url().includes('/settings') && resp.request().method() === 'POST'),
+      authenticatedPage.click('[data-testid="settings-submit"]')
+    ]);
 
-    // Page should reload - wait for it
-    await authenticatedPage.waitForLoadState('networkidle');
-
-    // Verify the setting persisted
-    await authenticatedPage.goto('/settings');
+    // Wait for page to fully render after redirect
+    await authenticatedPage.waitForLoadState('domcontentloaded');
     const newToggle = authenticatedPage.locator('[data-testid="all-tiers-toggle"]');
     const finalState = await newToggle.isChecked();
     expect(finalState).toBe(!wasChecked);
@@ -61,12 +61,14 @@ test.describe('Learning Settings', () => {
     // Select 85% retention
     await retentionSelect.selectOption('85');
 
-    // Submit
-    await authenticatedPage.click('[data-testid="settings-submit"]');
-    await authenticatedPage.waitForLoadState('networkidle');
+    // Submit and wait for POST response
+    await Promise.all([
+      authenticatedPage.waitForResponse(resp => resp.url().includes('/settings') && resp.request().method() === 'POST'),
+      authenticatedPage.click('[data-testid="settings-submit"]')
+    ]);
 
-    // Verify it persisted
-    await authenticatedPage.goto('/settings');
+    // Wait for page to fully render after redirect
+    await authenticatedPage.waitForLoadState('domcontentloaded');
     const newSelect = authenticatedPage.locator('select[name="desired_retention"]');
     await expect(newSelect).toHaveValue('85');
   });
@@ -82,12 +84,14 @@ test.describe('Learning Settings', () => {
     const wasChecked = await focusCheckbox.isChecked();
     await focusCheckbox.click();
 
-    // Submit
-    await authenticatedPage.click('[data-testid="settings-submit"]');
-    await authenticatedPage.waitForLoadState('networkidle');
+    // Submit and wait for POST response
+    await Promise.all([
+      authenticatedPage.waitForResponse(resp => resp.url().includes('/settings') && resp.request().method() === 'POST'),
+      authenticatedPage.click('[data-testid="settings-submit"]')
+    ]);
 
-    // Verify it persisted
-    await authenticatedPage.goto('/settings');
+    // Wait for page to fully render after redirect
+    await authenticatedPage.waitForLoadState('domcontentloaded');
     const newCheckbox = authenticatedPage.locator('input[name="focus_mode"]');
     await expect(newCheckbox).toBeChecked({ checked: !wasChecked });
   });

@@ -230,6 +230,48 @@ pub fn get_next_upcoming_review_time(conn: &Connection) -> Result<Option<DateTim
     }))
 }
 
+/// Get the next upcoming review time (filtered) - includes pack cards
+/// Uses the same filter logic as get_due_count_filtered() for consistency
+pub fn get_next_upcoming_review_time_filtered(
+    conn: &Connection,
+    app_conn: &Connection,
+    user_id: i64,
+    filter: &StudyFilterMode,
+) -> Result<Option<DateTime<Utc>>> {
+    let now = Utc::now().to_rfc3339();
+    let (filter_clause, _, skip_tier_filter) =
+        build_filter_where_clause(conn, app_conn, user_id, filter)?;
+
+    let tier_clause = if skip_tier_filter {
+        String::new()
+    } else {
+        let effective_tiers = get_effective_tiers(conn)?;
+        if effective_tiers.is_empty() {
+            return Ok(None);
+        }
+        let tier_list = effective_tiers
+            .iter()
+            .map(|t| t.to_string())
+            .collect::<Vec<_>>()
+            .join(",");
+        format!("AND cd.tier IN ({})", tier_list)
+    };
+
+    let query = format!(
+        r#"SELECT MIN(COALESCE(cp.next_review, datetime('now'))) {}
+        WHERE COALESCE(cp.next_review, datetime('now')) > ?1
+        {} {}"#,
+        CARD_FROM, tier_clause, filter_clause
+    );
+    let result: Option<String> = conn.query_row(&query, params![now], |row| row.get(0))?;
+
+    Ok(result.and_then(|s| {
+        DateTime::parse_from_rfc3339(&s)
+            .ok()
+            .map(|dt| dt.with_timezone(&Utc))
+    }))
+}
+
 pub fn get_due_cards_interleaved(
     conn: &Connection,
     limit: usize,
@@ -655,6 +697,42 @@ pub fn update_card_after_fsrs_review(
     Ok(())
 }
 
+/// Restore a card's SRS state from pre-review backup (for override correction)
+pub fn restore_card_pre_review_state(
+    conn: &Connection,
+    card_id: i64,
+    pre_state: &crate::db::reviews::PreReviewState,
+) -> Result<()> {
+    #[cfg(feature = "profiling")]
+    crate::profile_log!(EventType::DbQuery {
+        operation: "restore_pre_state".into(),
+        table: "card_progress".into(),
+    });
+
+    conn.execute(
+        r#"
+        UPDATE card_progress SET
+            next_review = ?2,
+            learning_step = ?3,
+            repetitions = ?4,
+            fsrs_stability = ?5,
+            fsrs_difficulty = ?6,
+            fsrs_state = ?7
+        WHERE card_id = ?1
+        "#,
+        params![
+            card_id,
+            pre_state.next_review,
+            pre_state.learning_step,
+            pre_state.repetitions,
+            pre_state.fsrs_stability,
+            pre_state.fsrs_difficulty,
+            pre_state.fsrs_state,
+        ],
+    )?;
+    Ok(())
+}
+
 /// Convert a database row to a Card struct
 /// Column order: id(0), front(1), main_answer(2), description(3), card_type(4), tier(5),
 ///               audio_hint(6), is_reverse(7), pack_id(8), lesson(9),
@@ -810,6 +888,58 @@ pub fn get_due_count_filtered(
         WHERE COALESCE(cp.next_review, datetime('now')) <= ?1
         {} {}"#,
         CARD_FROM, tier_clause, filter_clause
+    );
+    conn.query_row(&query, params![now], |row| row.get(0))
+}
+
+/// Get available due card count with study filter applied, respecting daily new card limit
+///
+/// This function returns the count of cards that are actually available for study:
+/// - All due cards with total_reviews > 0 (review cards)
+/// - Due cards with total_reviews == 0 only if daily new card limit not reached
+pub fn get_available_due_count_filtered(
+    conn: &Connection,
+    app_conn: &Connection,
+    user_id: i64,
+    filter: &StudyFilterMode,
+    can_add_new: bool,
+) -> Result<i64> {
+    #[cfg(feature = "profiling")]
+    crate::profile_log!(EventType::DbQuery {
+        operation: "available_count_filtered".into(),
+        table: "cards".into(),
+    });
+
+    let now = Utc::now().to_rfc3339();
+    let (filter_clause, _, skip_tier_filter) = build_filter_where_clause(conn, app_conn, user_id, filter)?;
+
+    let tier_clause = if skip_tier_filter {
+        String::new()
+    } else {
+        let effective_tiers = get_effective_tiers(conn)?;
+        if effective_tiers.is_empty() {
+            return Ok(0);
+        }
+        let tier_list = effective_tiers
+            .iter()
+            .map(|t| t.to_string())
+            .collect::<Vec<_>>()
+            .join(",");
+        format!("AND cd.tier IN ({})", tier_list)
+    };
+
+    // If can_add_new is false, exclude cards that have never been reviewed (new cards)
+    let new_card_filter = if can_add_new {
+        String::new()
+    } else {
+        "AND COALESCE(cp.total_reviews, 0) > 0".to_string()
+    };
+
+    let query = format!(
+        r#"SELECT COUNT(*) {}
+        WHERE COALESCE(cp.next_review, datetime('now')) <= ?1
+        {} {} {}"#,
+        CARD_FROM, tier_clause, filter_clause, new_card_filter
     );
     conn.query_row(&query, params![now], |row| row.get(0))
 }
@@ -1100,10 +1230,10 @@ pub fn get_accessible_card_count(
     );
     let total_cards: i64 = conn.query_row(&query, [], |row| row.get(0))?;
 
-    // Count learned cards (repetitions >= 2)
+    // Count learned cards (graduated: learning_step >= 4)
     let query_learned = format!(
         r#"SELECT COUNT(*) {}
-        WHERE COALESCE(cp.repetitions, 0) >= 2 {}"#,
+        WHERE COALESCE(cp.learning_step, 0) >= 4 {}"#,
         CARD_FROM, filter_clause
     );
     let cards_learned: i64 = conn.query_row(&query_learned, [], |row| row.get(0))?;

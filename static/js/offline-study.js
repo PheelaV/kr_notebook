@@ -25,6 +25,20 @@ const OfflineStudy = (function() {
   let correctCount = 0;
   let cardsSinceReinforcement = 0; // Counter for interleaving reinforcement cards
 
+  // State for override functionality
+  let lastUserAnswer = '';
+  let lastValidation = null;
+  let lastPreState = null; // Card state before the review was processed
+
+  // State for "Show Last Card" feature
+  let lastCardData = null; // { card, userAnswer, isCorrect, validation, preState }
+  let lastCardMainAnswer = null; // For sibling exclusion
+
+  // State for MCQ double-click confirmation (matches interactive mode)
+  let selectedChoice = null;
+  let lastTapTime = 0;
+  let lastTapBtn = null;
+
   // DOM elements (populated on init)
   let elements = {};
 
@@ -98,7 +112,45 @@ const OfflineStudy = (function() {
     document.removeEventListener('keydown', handleKeyDown);
     document.addEventListener('keydown', handleKeyDown);
 
+    // Set up focus restoration on visibility/connectivity changes
+    document.removeEventListener('visibilitychange', handleVisibilityChange);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.removeEventListener('online', handleConnectivityChange);
+    window.removeEventListener('offline', handleConnectivityChange);
+    window.addEventListener('online', handleConnectivityChange);
+    window.addEventListener('offline', handleConnectivityChange);
+
     showNextCard();
+  }
+
+  /**
+   * Restore focus to the answer input if showing a card.
+   */
+  function restoreFocus() {
+    if (!isStudying) return;
+    const input = document.querySelector('.answer-input:not(:disabled)');
+    if (input && document.activeElement !== input) {
+      console.log('[OfflineStudy] Restoring focus to input');
+      input.focus();
+    }
+  }
+
+  /**
+   * Handle visibility change - restore focus when page becomes visible.
+   */
+  function handleVisibilityChange() {
+    if (document.visibilityState === 'visible') {
+      console.log('[OfflineStudy] Page visible - restoring focus');
+      setTimeout(restoreFocus, 50); // Small delay to let browser settle
+    }
+  }
+
+  /**
+   * Handle connectivity change - restore focus after network events.
+   */
+  function handleConnectivityChange() {
+    console.log('[OfflineStudy] Connectivity changed - restoring focus');
+    setTimeout(restoreFocus, 50); // Small delay to let browser settle
   }
 
   /**
@@ -106,22 +158,29 @@ const OfflineStudy = (function() {
    * @param {KeyboardEvent} e
    */
   function handleKeyDown(e) {
-    if (!isStudying) return;
+    if (!isStudying) {
+      console.log('[OfflineStudy] keydown ignored - not studying');
+      return;
+    }
 
     // Skip if focused on input or textarea
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
       // But allow Enter to submit from input
       if (e.code === 'Enter') {
+        console.log('[OfflineStudy] Enter pressed in input');
         const input = document.querySelector('.answer-input');
         if (input && input.value) {
           e.preventDefault();
+          console.log('[OfflineStudy] Submitting answer from Enter key');
           submitAnswer(input.value);
+        } else {
+          console.log('[OfflineStudy] No input value to submit');
         }
       }
       return;
     }
 
-    // Number keys 1-4 for multiple choice
+    // Number keys 1-4 for multiple choice - selects the choice
     var keyMap = {
       'Digit1': 0, 'Digit2': 1, 'Digit3': 2, 'Digit4': 3,
       'Numpad1': 0, 'Numpad2': 1, 'Numpad3': 2, 'Numpad4': 3
@@ -130,18 +189,31 @@ const OfflineStudy = (function() {
     if (keyMap[e.code] !== undefined) {
       e.preventDefault();
       var btn = document.querySelector('.choice-btn[data-choice="' + keyMap[e.code] + '"]');
-      if (btn) {
-        btn.click();
+      if (btn && btn.dataset.choice !== undefined) {
+        // Find the choice text from button content (not the number badge)
+        var choiceText = currentCard?.choices?.[keyMap[e.code]];
+        if (choiceText) {
+          selectChoice(choiceText, btn);
+        }
       }
       return;
     }
 
-    // Enter to advance to next card (when result is showing)
+    // Enter to submit selected choice or advance to next card
     if (e.code === 'Enter') {
       e.preventDefault();
+
+      // Check for continue button first (result showing)
       var continueBtn = document.querySelector('.continue-btn');
       if (continueBtn) {
         continueBtn.click();
+        return;
+      }
+
+      // Check for MCQ with selected choice
+      if (selectedChoice) {
+        console.log('[OfflineStudy] Enter pressed with selected choice');
+        submitSelectedChoice();
         return;
       }
     }
@@ -161,40 +233,94 @@ const OfflineStudy = (function() {
     isStudying = false;
     currentCard = null;
     document.removeEventListener('keydown', handleKeyDown);
+    document.removeEventListener('visibilitychange', handleVisibilityChange);
+    window.removeEventListener('online', handleConnectivityChange);
+    window.removeEventListener('offline', handleConnectivityChange);
+  }
+
+  /**
+   * Check if a card is a sibling of the last card (same main answer).
+   * @param {Object} card - Card to check
+   * @returns {boolean} True if sibling
+   */
+  function isSiblingOfLastCard(card) {
+    if (!lastCardMainAnswer) return false;
+    // Check if the card's back matches or contains the last answer
+    // This handles both exact matches and compound answers
+    return card.back === lastCardMainAnswer ||
+           card.front.includes(lastCardMainAnswer) ||
+           (card.back && lastCardMainAnswer && card.back.includes(lastCardMainAnswer));
+  }
+
+  /**
+   * Get a non-sibling card from a queue, moving siblings to end.
+   * @param {Array} queue - Queue to search
+   * @returns {Object|null} Non-sibling card or first card if all are siblings
+   */
+  function getNonSiblingFromQueue(queue) {
+    if (queue.length === 0) return null;
+    if (!lastCardMainAnswer) return queue.shift();
+
+    // Find first non-sibling card
+    for (let i = 0; i < queue.length; i++) {
+      if (!isSiblingOfLastCard(queue[i])) {
+        return queue.splice(i, 1)[0];
+      }
+    }
+
+    // All cards are siblings - return first one anyway (better than stuck)
+    console.log('[OfflineStudy] All cards are siblings, returning first available');
+    return queue.shift();
   }
 
   /**
    * Get the next card to study.
    * Interleaves reinforcement cards - shows one every 3 regular cards.
+   * Applies sibling exclusion to avoid showing related cards consecutively.
    * @returns {Object|null} Next card or null if done
    */
   function getNextCard() {
+    let nextCard = null;
+
     // If main queue is empty, use reinforcement queue
     if (cardQueue.length === 0 && reinforcementQueue.length > 0) {
       cardsSinceReinforcement = 0;
-      return reinforcementQueue.shift();
+      nextCard = getNonSiblingFromQueue(reinforcementQueue);
     }
-
     // If reinforcement queue has cards and we've done 3+ cards since last one, interleave
-    if (reinforcementQueue.length > 0 && cardsSinceReinforcement >= 3) {
+    else if (reinforcementQueue.length > 0 && cardsSinceReinforcement >= 3) {
       cardsSinceReinforcement = 0;
-      return reinforcementQueue.shift();
+      nextCard = getNonSiblingFromQueue(reinforcementQueue);
     }
-
     // Main queue
-    if (cardQueue.length > 0) {
+    else if (cardQueue.length > 0) {
       cardsSinceReinforcement++;
-      return cardQueue.shift();
+      nextCard = getNonSiblingFromQueue(cardQueue);
     }
 
-    // Both queues empty
-    return null;
+    return nextCard;
   }
 
   /**
    * Show the next card in the UI.
    */
   function showNextCard() {
+    // Save current card data for "Show Last Card" feature before moving on
+    if (currentCard && lastValidation !== null) {
+      lastCardData = {
+        card: currentCard,
+        userAnswer: lastUserAnswer,
+        isCorrect: lastValidation.is_correct,
+        validation: lastValidation,
+        preState: lastPreState
+      };
+      // Track main answer for sibling exclusion
+      lastCardMainAnswer = currentCard.back;
+
+      // Update the last card UI section
+      updateLastCardDisplay();
+    }
+
     currentCard = getNextCard();
     hintsUsed = 0;
 
@@ -204,6 +330,190 @@ const OfflineStudy = (function() {
     }
 
     renderCard(currentCard);
+  }
+
+  /**
+   * Update the "Show Last Card" section display.
+   */
+  function updateLastCardDisplay() {
+    if (!lastCardData) return;
+
+    const section = document.getElementById('last-card-section');
+    if (!section) return;
+
+    const { card, userAnswer, isCorrect, validation } = lastCardData;
+
+    // Show the section
+    section.classList.remove('hidden');
+
+    // Update content
+    document.getElementById('last-card-front').textContent = card.front;
+    document.getElementById('last-card-answer').textContent = card.back;
+
+    // Show user's wrong answer if incorrect
+    const userAnswerEl = document.getElementById('last-card-user-answer');
+    if (!isCorrect && userAnswer) {
+      userAnswerEl.classList.remove('hidden');
+      userAnswerEl.querySelector('.text-red-500').textContent = userAnswer;
+    } else {
+      userAnswerEl.classList.add('hidden');
+    }
+
+    // Show description if available
+    const descEl = document.getElementById('last-card-description');
+    if (card.description) {
+      descEl.textContent = card.description;
+      descEl.classList.remove('hidden');
+    } else {
+      descEl.classList.add('hidden');
+    }
+
+    // Show result
+    const resultEl = document.getElementById('last-card-result');
+    if (isCorrect) {
+      resultEl.textContent = validation.result === 'CloseEnough' ? 'Close enough!' : 'Correct!';
+      resultEl.className = 'mt-2 text-sm font-medium text-green-600 dark:text-green-400';
+    } else {
+      resultEl.textContent = 'Incorrect';
+      resultEl.className = 'mt-2 text-sm font-medium text-red-600 dark:text-red-400';
+    }
+
+    // Update suggested answer input for override
+    const suggestedInput = document.getElementById('last-card-suggested-answer');
+    if (suggestedInput) {
+      suggestedInput.value = userAnswer || '';
+    }
+
+    // Reset override section visibility
+    const overrideSection = document.getElementById('last-card-override-section');
+    const showOverrideBtn = document.getElementById('last-card-show-override-btn');
+    if (overrideSection) overrideSection.classList.add('hidden');
+    if (showOverrideBtn) showOverrideBtn.classList.remove('hidden');
+  }
+
+  /**
+   * Toggle the "Show Last Card" collapsible section.
+   */
+  function toggleLastCard() {
+    const content = document.getElementById('last-card-content');
+    const chevron = document.getElementById('last-card-chevron');
+    if (content && chevron) {
+      content.classList.toggle('hidden');
+      chevron.style.transform = content.classList.contains('hidden') ? '' : 'rotate(90deg)';
+    }
+  }
+
+  /**
+   * Show the override section in the "Show Last Card" panel.
+   */
+  function showLastCardOverrideSection() {
+    const overrideSection = document.getElementById('last-card-override-section');
+    const showBtn = document.getElementById('last-card-show-override-btn');
+    if (overrideSection) overrideSection.classList.remove('hidden');
+    if (showBtn) showBtn.classList.add('hidden');
+  }
+
+  /**
+   * Submit an override for the last card.
+   * @param {number} quality - Override quality (0=Wrong, 2=Hard, 4=Correct, 5=Easy)
+   */
+  async function submitLastCardOverride(quality) {
+    if (!lastCardData || !lastCardData.preState) return;
+
+    const { card, userAnswer, isCorrect, validation, preState } = lastCardData;
+    const suggestedAnswer = document.getElementById('last-card-suggested-answer')?.value || userAnswer;
+    const isCorrectOverride = quality >= 4;
+
+    // Calculate new state based on override quality
+    const cardState = JSON.stringify({
+      learning_step: preState.learning_step,
+      fsrs_stability: preState.fsrs_stability,
+      fsrs_difficulty: preState.fsrs_difficulty,
+      repetitions: card.repetitions || 0,
+      last_review: null
+    });
+
+    const newStateJson = wasm.calculate_next_review(
+      cardState,
+      quality,
+      session.desired_retention,
+      session.focus_mode
+    );
+    const newState = JSON.parse(newStateJson);
+
+    // Update stats if override changes correctness
+    if (isCorrectOverride && !isCorrect) {
+      correctCount++;
+      // Remove from reinforcement queue if present
+      const idx = reinforcementQueue.findIndex(c => c.card_id === card.card_id);
+      if (idx !== -1) {
+        reinforcementQueue.splice(idx, 1);
+      }
+    } else if (!isCorrectOverride && isCorrect) {
+      correctCount--;
+      // Add to reinforcement queue
+      reinforcementQueue.push({
+        ...card,
+        learning_step: newState.learning_step,
+        fsrs_stability: newState.fsrs_stability,
+        fsrs_difficulty: newState.fsrs_difficulty,
+        next_review: newState.next_review
+      });
+    }
+
+    // Store override response in IndexedDB
+    await window.OfflineStorage.addResponse({
+      session_id: session.session_id,
+      card_id: card.card_id,
+      quality: quality,
+      is_correct: isCorrectOverride,
+      hints_used: 0, // Hints from original answer are not preserved here
+      timestamp: new Date().toISOString(),
+      learning_step: newState.learning_step,
+      fsrs_stability: newState.fsrs_stability,
+      fsrs_difficulty: newState.fsrs_difficulty,
+      next_review: newState.next_review,
+      is_override: true,
+      user_answer: userAnswer,
+      original_result: validation.result,
+      suggested_answer: suggestedAnswer,
+      pre_learning_step: preState.learning_step,
+      pre_fsrs_stability: preState.fsrs_stability,
+      pre_fsrs_difficulty: preState.fsrs_difficulty,
+      pre_next_review: preState.next_review
+    });
+
+    // Update card state in session
+    await window.OfflineStorage.updateCardState(card.card_id, newState);
+
+    // Update pending count display
+    updatePendingCount();
+
+    // Update lastCardData to reflect the override
+    lastCardData.isCorrect = isCorrectOverride;
+    lastCardData.validation = { ...validation, is_correct: isCorrectOverride, quality };
+
+    // Update UI
+    const overrideSection = document.getElementById('last-card-override-section');
+    if (overrideSection) {
+      overrideSection.innerHTML = `
+        <div class="text-center text-sm text-indigo-600 dark:text-indigo-400">
+          <span>Override saved - will sync when online</span>
+        </div>
+      `;
+    }
+
+    // Update result display
+    const resultEl = document.getElementById('last-card-result');
+    if (resultEl) {
+      if (isCorrectOverride) {
+        resultEl.textContent = 'Overridden to Correct';
+        resultEl.className = 'mt-2 text-sm font-medium text-green-600 dark:text-green-400';
+      } else {
+        resultEl.textContent = 'Overridden to Wrong';
+        resultEl.className = 'mt-2 text-sm font-medium text-red-600 dark:text-red-400';
+      }
+    }
   }
 
   /**
@@ -272,11 +582,57 @@ const OfflineStudy = (function() {
   }
 
   /**
+   * Select a choice (first click) - highlights it but doesn't submit yet.
+   * Double-click on same choice OR Enter key submits the answer.
+   * @param {string} choice - The selected choice text
+   * @param {HTMLElement} btn - The button element
+   */
+  function selectChoice(choice, btn) {
+    const now = Date.now();
+    const isDoubleTap = (btn === lastTapBtn) && (now - lastTapTime < 400);
+
+    // Clear previous selection
+    const allBtns = document.querySelectorAll('.choice-btn');
+    allBtns.forEach(function(b) {
+      b.classList.remove('border-indigo-500', 'bg-indigo-100', 'dark:bg-indigo-900', 'selected');
+      b.classList.add('border-gray-300', 'dark:border-gray-600');
+    });
+
+    // Mark this button as selected
+    btn.classList.remove('border-gray-300', 'dark:border-gray-600');
+    btn.classList.add('border-indigo-500', 'bg-indigo-100', 'dark:bg-indigo-900', 'selected');
+    selectedChoice = choice;
+
+    // Enable submit button
+    const submitBtn = document.querySelector('.mcq-submit-btn');
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.classList.remove('bg-gray-400', 'cursor-not-allowed');
+      submitBtn.classList.add('bg-indigo-600', 'hover:bg-indigo-700');
+    }
+
+    // Double-tap: submit immediately
+    if (isDoubleTap) {
+      console.log('[OfflineStudy] Double-tap detected, submitting');
+      submitAnswer(choice);
+    }
+
+    lastTapTime = now;
+    lastTapBtn = btn;
+  }
+
+  /**
    * Render multiple choice options.
+   * Uses select-then-confirm pattern matching interactive mode.
    * @param {Array} choices - Answer choices
    * @returns {string} HTML string
    */
   function renderChoices(choices) {
+    // Reset MCQ selection state
+    selectedChoice = null;
+    lastTapTime = 0;
+    lastTapBtn = null;
+
     return `
       <div class="choices-grid grid grid-cols-2 gap-3">
         ${choices.map(function(choice, i) {
@@ -284,15 +640,31 @@ const OfflineStudy = (function() {
             <button type="button"
                     class="choice-btn px-4 py-3 border-2 border-gray-300 dark:border-gray-600 rounded-lg
                            hover:border-indigo-500 dark:hover:border-indigo-400 transition-colors
-                           text-lg font-medium"
-                    onclick="OfflineStudy.submitAnswer('${escapeHtml(choice)}')"
+                           text-lg font-medium relative"
+                    onclick="OfflineStudy.selectChoice('${escapeHtml(choice)}', this)"
                     data-choice="${i}">
+              <span class="absolute top-1 left-2 text-xs font-normal text-gray-400 dark:text-gray-500">${i + 1}</span>
               ${escapeHtml(choice)}
             </button>
           `;
         }).join('')}
       </div>
+      <button type="button" disabled
+              class="mcq-submit-btn w-full mt-3 px-4 py-3 bg-gray-400 text-white rounded-lg
+                     cursor-not-allowed font-medium transition-colors"
+              onclick="OfflineStudy.submitSelectedChoice()">
+        Check <span class="text-xs opacity-75">(Enter)</span>
+      </button>
     `;
+  }
+
+  /**
+   * Submit the currently selected choice.
+   */
+  function submitSelectedChoice() {
+    if (selectedChoice) {
+      submitAnswer(selectedChoice);
+    }
   }
 
   /**
@@ -340,14 +712,42 @@ const OfflineStudy = (function() {
    * @param {string} answer - User's answer
    */
   async function submitAnswer(answer) {
-    if (!currentCard || !wasm || !isStudying) return;
+    console.log('[OfflineStudy] submitAnswer called:', { answer, hasCard: !!currentCard, hasWasm: !!wasm, isStudying });
+
+    if (!currentCard || !wasm || !isStudying) {
+      console.log('[OfflineStudy] submitAnswer aborted - missing requirements');
+      return;
+    }
+
+    // Guard against double submission
+    if (elements.cardContainer?.querySelector('.result-section:not(.hidden)')) {
+      console.log('[OfflineStudy] submitAnswer aborted - already showing result');
+      return;
+    }
+
+    // Show loading state on submit button
+    const submitBtn = elements.cardContainer?.querySelector('.submit-btn');
+    if (submitBtn) {
+      submitBtn.innerHTML = '<span class="inline-block animate-spin mr-2">&#8635;</span>Processing...';
+      submitBtn.disabled = true;
+    }
 
     // Disable further input
     disableInput();
 
+    // Save pre-state for potential override
+    lastPreState = {
+      learning_step: currentCard.learning_step,
+      fsrs_stability: currentCard.fsrs_stability,
+      fsrs_difficulty: currentCard.fsrs_difficulty,
+      next_review: currentCard.next_review
+    };
+    lastUserAnswer = answer;
+
     // Validate answer using WASM
     const validationJson = wasm.validate_answer(answer, currentCard.back, hintsUsed > 0);
     const validation = JSON.parse(validationJson);
+    lastValidation = validation;
 
     // Calculate new SRS state using WASM
     const cardState = JSON.stringify({
@@ -384,25 +784,56 @@ const OfflineStudy = (function() {
       });
     }
 
-    // Store response in IndexedDB
-    await window.OfflineStorage.addResponse({
-      session_id: session.session_id,
-      card_id: currentCard.card_id,
-      quality: validation.quality,
-      is_correct: validation.is_correct,
-      hints_used: hintsUsed,
-      timestamp: new Date().toISOString(),
-      learning_step: newState.learning_step,
-      fsrs_stability: newState.fsrs_stability,
-      fsrs_difficulty: newState.fsrs_difficulty,
-      next_review: newState.next_review
-    });
+    // Store response in IndexedDB (with user answer for potential override)
+    try {
+      await window.OfflineStorage.addResponse({
+        session_id: session.session_id,
+        card_id: currentCard.card_id,
+        quality: validation.quality,
+        is_correct: validation.is_correct,
+        hints_used: hintsUsed,
+        timestamp: new Date().toISOString(),
+        learning_step: newState.learning_step,
+        fsrs_stability: newState.fsrs_stability,
+        fsrs_difficulty: newState.fsrs_difficulty,
+        next_review: newState.next_review,
+        // Store for potential override
+        user_answer: answer,
+        original_result: validation.result,
+        // Store pre-state for override restoration
+        pre_learning_step: lastPreState.learning_step,
+        pre_fsrs_stability: lastPreState.fsrs_stability,
+        pre_fsrs_difficulty: lastPreState.fsrs_difficulty,
+        pre_next_review: lastPreState.next_review
+      });
 
-    // Update card state in session (for consistency if card comes back in reinforcement)
-    await window.OfflineStorage.updateCardState(currentCard.card_id, newState);
+      // Update card state in session (for consistency if card comes back in reinforcement)
+      await window.OfflineStorage.updateCardState(currentCard.card_id, newState);
 
-    // Update pending count display
-    updatePendingCount();
+      // Update pending count display
+      updatePendingCount();
+      console.log('[OfflineStudy] Answer submitted successfully');
+    } catch (error) {
+      console.error('[OfflineStudy] Failed to store response:', error);
+      // Show error message to user
+      showStorageError('Failed to save your answer. Please try again.');
+    }
+  }
+
+  /**
+   * Show a storage error message to the user.
+   * @param {string} message - Error message
+   */
+  function showStorageError(message) {
+    const resultSection = elements.cardContainer?.querySelector('.result-section');
+    if (resultSection) {
+      const errorHtml = `
+        <div class="mt-4 p-3 bg-red-100 dark:bg-red-900/30 rounded-lg text-red-700 dark:text-red-300 text-sm">
+          <strong>Error:</strong> ${escapeHtml(message)}
+        </div>
+      `;
+      resultSection.insertAdjacentHTML('beforeend', errorHtml);
+    }
   }
 
   /**
@@ -450,6 +881,48 @@ const OfflineStudy = (function() {
         ${!isCorrect ? `<div class="correct-answer mt-2">Correct answer: <strong>${escapeHtml(currentCard.back)}</strong></div>` : ''}
         ${descriptionHtml}
       </div>
+
+      <!-- Override section (hidden initially) -->
+      <div id="override-section" class="hidden mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+        <div class="mb-3">
+          <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">
+            Your answer (edit if needed):
+          </label>
+          <input type="text" id="suggested-answer"
+                 class="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded
+                        bg-white dark:bg-gray-700 text-gray-900 dark:text-white
+                        focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                 value="${escapeHtml(lastUserAnswer)}"
+                 placeholder="What should be accepted?">
+        </div>
+
+        <p class="text-sm text-gray-600 dark:text-gray-400 mb-2">How would you rate your answer?</p>
+        <div class="flex flex-wrap justify-center gap-2">
+          <button type="button" onclick="OfflineStudy.submitOverride(0)"
+                  class="px-3 py-1.5 text-sm bg-red-100 hover:bg-red-200 dark:bg-red-900/30 dark:hover:bg-red-900/50 text-red-800 dark:text-red-300 rounded">
+            Wrong
+          </button>
+          <button type="button" onclick="OfflineStudy.submitOverride(2)"
+                  class="px-3 py-1.5 text-sm bg-yellow-100 hover:bg-yellow-200 dark:bg-yellow-900/30 dark:hover:bg-yellow-900/50 text-yellow-800 dark:text-yellow-300 rounded">
+            Hard
+          </button>
+          <button type="button" onclick="OfflineStudy.submitOverride(4)"
+                  class="px-3 py-1.5 text-sm bg-green-100 hover:bg-green-200 dark:bg-green-900/30 dark:hover:bg-green-900/50 text-green-800 dark:text-green-300 rounded">
+            Correct
+          </button>
+          <button type="button" onclick="OfflineStudy.submitOverride(5)"
+                  class="px-3 py-1.5 text-sm bg-blue-100 hover:bg-blue-200 dark:bg-blue-900/30 dark:hover:bg-blue-900/50 text-blue-800 dark:text-blue-300 rounded">
+            Easy
+          </button>
+        </div>
+      </div>
+
+      <!-- Toggle button -->
+      <button type="button" id="show-override-btn" onclick="OfflineStudy.showOverrideSection()"
+              class="mt-3 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 underline block mx-auto">
+        Override ruling
+      </button>
+
       <button type="button"
               class="continue-btn mt-4 w-full px-4 py-3 bg-indigo-600 text-white rounded-lg
                      hover:bg-indigo-700 transition-colors font-medium"
@@ -472,6 +945,113 @@ const OfflineStudy = (function() {
           btn.classList.add('border-red-500', 'bg-red-50', 'dark:bg-red-900/20');
         }
       });
+    }
+  }
+
+  /**
+   * Show the override section.
+   */
+  function showOverrideSection() {
+    const overrideSection = document.getElementById('override-section');
+    const showBtn = document.getElementById('show-override-btn');
+    if (overrideSection) {
+      overrideSection.classList.remove('hidden');
+    }
+    if (showBtn) {
+      showBtn.classList.add('hidden');
+    }
+  }
+
+  /**
+   * Submit an override for the current card.
+   * @param {number} quality - Override quality (0=Wrong, 2=Hard, 4=Correct, 5=Easy)
+   */
+  async function submitOverride(quality) {
+    if (!currentCard || !lastPreState) return;
+
+    const suggestedAnswer = document.getElementById('suggested-answer')?.value || lastUserAnswer;
+    const isCorrectOverride = quality >= 4; // Correct or Easy
+
+    // Calculate new state based on override quality
+    const cardState = JSON.stringify({
+      learning_step: lastPreState.learning_step,
+      fsrs_stability: lastPreState.fsrs_stability,
+      fsrs_difficulty: lastPreState.fsrs_difficulty,
+      repetitions: currentCard.repetitions || 0,
+      last_review: null
+    });
+
+    const newStateJson = wasm.calculate_next_review(
+      cardState,
+      quality,
+      session.desired_retention,
+      session.focus_mode
+    );
+    const newState = JSON.parse(newStateJson);
+
+    // Update stats if override changes correctness
+    if (isCorrectOverride && !lastValidation.is_correct) {
+      // Was marked wrong, now marked correct - fix stats
+      correctCount++;
+      // Remove from reinforcement queue if present
+      const idx = reinforcementQueue.findIndex(c => c.card_id === currentCard.card_id);
+      if (idx !== -1) {
+        reinforcementQueue.splice(idx, 1);
+      }
+    } else if (!isCorrectOverride && lastValidation.is_correct) {
+      // Was marked correct, now marked wrong - fix stats
+      correctCount--;
+      // Add to reinforcement queue
+      reinforcementQueue.push({
+        ...currentCard,
+        learning_step: newState.learning_step,
+        fsrs_stability: newState.fsrs_stability,
+        fsrs_difficulty: newState.fsrs_difficulty,
+        next_review: newState.next_review
+      });
+    }
+
+    // Store override response in IndexedDB
+    await window.OfflineStorage.addResponse({
+      session_id: session.session_id,
+      card_id: currentCard.card_id,
+      quality: quality,
+      is_correct: isCorrectOverride,
+      hints_used: hintsUsed,
+      timestamp: new Date().toISOString(),
+      learning_step: newState.learning_step,
+      fsrs_stability: newState.fsrs_stability,
+      fsrs_difficulty: newState.fsrs_difficulty,
+      next_review: newState.next_review,
+      // Override-specific fields
+      is_override: true,
+      user_answer: lastUserAnswer,
+      original_result: lastValidation.result,
+      suggested_answer: suggestedAnswer,
+      // Pre-state for server-side restoration
+      pre_learning_step: lastPreState.learning_step,
+      pre_fsrs_stability: lastPreState.fsrs_stability,
+      pre_fsrs_difficulty: lastPreState.fsrs_difficulty,
+      pre_next_review: lastPreState.next_review
+    });
+
+    // Update card state in session
+    await window.OfflineStorage.updateCardState(currentCard.card_id, newState);
+
+    // Update pending count display
+    updatePendingCount();
+
+    // Update UI to reflect override
+    const resultSection = elements.cardContainer.querySelector('.result-section');
+    if (resultSection) {
+      const overrideSection = document.getElementById('override-section');
+      if (overrideSection) {
+        overrideSection.innerHTML = `
+          <div class="text-center text-sm text-indigo-600 dark:text-indigo-400">
+            <span>Override saved - will sync when online</span>
+          </div>
+        `;
+      }
     }
   }
 
@@ -574,6 +1154,13 @@ const OfflineStudy = (function() {
     showNextCard: showNextCard,
     showHint: showHint,
     submitAnswer: submitAnswer,
+    selectChoice: selectChoice,
+    submitSelectedChoice: submitSelectedChoice,
+    showOverrideSection: showOverrideSection,
+    submitOverride: submitOverride,
+    toggleLastCard: toggleLastCard,
+    showLastCardOverrideSection: showLastCardOverrideSection,
+    submitLastCardOverride: submitLastCardOverride,
     getSessionInfo: getSessionInfo,
     isAvailable: isAvailable,
     updatePendingCount: updatePendingCount

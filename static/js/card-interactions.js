@@ -192,12 +192,18 @@
       }
     });
 
-    // Reset state after HTMX swaps
+    // Reset selection state after HTMX swaps
+    // NOTE: Don't call resetState() here - hints are initialized by inline script
+    // in the swapped content which runs BEFORE afterSwap fires. Calling resetState()
+    // would clear the hints array that was just populated by initHints().
     document.body.addEventListener('htmx:afterSwap', function(e) {
-      // Reset state if swapping involves card container
+      // Reset selection state if swapping involves card container
       var cardContainer = document.getElementById('card-container');
       if (cardContainer || e.detail.target.id === 'card-container') {
-        resetState();
+        // Only reset selection state, not hints (they're set by template script)
+        selectedAnswer = null;
+        lastTapTime = 0;
+        lastTapButton = null;
 
         // Auto-focus text input if present
         setTimeout(function() {

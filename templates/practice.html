@@ -6,15 +6,17 @@
 <div class="max-w-lg mx-auto" id="study-container" data-practice-mode="{{ mode }}" data-track-progress="{{ track_progress }}">
   {% if study_filters.len() > 2 %}
   <!-- Study filter dropdown (only shown when packs with lessons are enabled) -->
-  <div class="mb-4 flex items-center justify-between bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2">
-    <label for="practice-filter" class="text-sm text-gray-600 dark:text-gray-400 font-medium">Practice:</label>
-    <select id="practice-filter"
-            class="ml-2 text-sm bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-gray-700 dark:text-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            onchange="updatePracticeFilter(this.value)">
-      {% for filter in study_filters %}
-      <option value="{{ filter.id }}" {% if filter.is_selected %}selected{% endif %}>{{ filter.label }}</option>
-      {% endfor %}
-    </select>
+  <div class="mb-4 flex flex-wrap items-center gap-2 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2">
+    <div class="flex items-center gap-2 min-w-0 flex-1">
+      <label for="practice-filter" class="text-sm text-gray-600 dark:text-gray-400 font-medium shrink-0">Practice:</label>
+      <select id="practice-filter"
+              class="min-w-0 flex-1 text-sm bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-gray-700 dark:text-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 truncate"
+              onchange="updatePracticeFilter(this.value)">
+        {% for filter in study_filters %}
+        <option value="{{ filter.id }}" {% if filter.is_selected %}selected{% endif %}>{{ filter.label }}</option>
+        {% endfor %}
+      </select>
+    </div>
   </div>
   <script>
     function updatePracticeFilter(value) {
@@ -200,8 +202,13 @@
 
       const result = resultEl?.dataset.result || 'unknown';
 
+      // Capture session_id from the form
+      const sessionInput = container.querySelector('input[name="session_id"]');
+      const sessionId = sessionInput ? sessionInput.value : '';
+
       window.lastCardData = {
         cardId: container.dataset.cardId,
+        sessionId: sessionId,
         front: front.textContent.trim(),
         answer: answerEl ? answerEl.textContent.trim() : '',
         userAnswer: userAnswerEl ? userAnswerEl.textContent.trim() : '',
@@ -281,6 +288,7 @@
     try {
       const params = new URLSearchParams({
         card_id: window.lastCardData.cardId,
+        session_id: window.lastCardData.sessionId || '',
         quality: quality,
         suggested_answer: suggestedAnswer,
         card_front: window.lastCardData.front || '',

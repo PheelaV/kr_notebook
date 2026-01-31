@@ -13,23 +13,44 @@ import { test, expect, setupScenario } from '../fixtures/auth';
 
 // Helper to enable offline mode in settings
 async function enableOfflineMode(page) {
-  await page.goto('/settings');
+  // Use domcontentloaded - settings page has async IndexedDB ops that delay 'load' in WebKit
+  await page.goto('/settings', { waitUntil: 'domcontentloaded' });
+
+  // Wait for offline mode section to be visible and ready (WebKit is slower)
+  const offlineSection = page.locator('#offline-mode');
+  await expect(offlineSection).toBeVisible({ timeout: 10000 });
+
+  // Wait for browser support check to complete (match exact text from passing test)
+  const status = offlineSection.locator('#offline-status');
+  await expect(status).toContainText('All features supported');
+
   const toggle = page.locator('#offlineModeToggle');
   if (!(await toggle.isChecked())) {
-    await toggle.click();
-    await page.locator('#offline-mode button[type="submit"]').click();
-    await page.waitForLoadState('networkidle');
+    // Match the pattern from the passing test: scroll, delay, click with force
+    await toggle.scrollIntoViewIfNeeded();
+    await page.waitForTimeout(100);
+    await toggle.click({ force: true });
+    // Verify the checkbox is now checked with longer timeout for WebKit
+    await expect(toggle).toBeChecked({ timeout: 10000 });
+    // Small delay before form submission for WebKit
+    await page.waitForTimeout(100);
+    // Wait for the form POST response before continuing (matches passing test pattern)
+    await Promise.all([
+      page.waitForResponse(resp => resp.url().includes('/settings') && resp.request().method() === 'POST'),
+      page.locator('#offline-mode button[type="submit"]').click()
+    ]);
   }
+  // Ensure the offline-download section is visible (matches passing test)
+  await expect(page.locator('#offline-download')).toBeVisible({ timeout: 10000 });
 }
 
 // Helper to download an offline session
 async function downloadSession(page) {
-  await page.goto('/settings');
+  // enableOfflineMode navigates to /settings and ensures offline mode is enabled
   await enableOfflineMode(page);
 
-  // Wait for download button to be ready
+  // Download button should be visible now (enableOfflineMode waits for #offline-download)
   const downloadBtn = page.locator('#download-session-btn');
-  await expect(downloadBtn).toBeVisible();
   await downloadBtn.click();
 
   // Wait for download to complete
@@ -80,8 +101,12 @@ test.describe('Offline Sync Prompt', () => {
       window.OfflineSyncTestAPI.simulateOnline();
     });
 
+    // Buffer for stability timer (100ms) + async getPendingCount + modal render
+    // Firefox/WebKit are significantly slower than Chrome
+    await authenticatedPage.waitForTimeout(500);
+
     // Wait for prompt to appear
-    await expect(authenticatedPage.locator('#sync-prompt-modal')).toBeVisible({ timeout: 5000 });
+    await expect(authenticatedPage.locator('#sync-prompt-modal')).toBeVisible({ timeout: 10000 });
 
     // Verify pending count is shown
     const countEl = authenticatedPage.locator('#sync-prompt-count');
@@ -103,6 +128,9 @@ test.describe('Offline Sync Prompt', () => {
     await authenticatedPage.evaluate(() => {
       window.OfflineSyncTestAPI.simulateOnline();
     });
+
+    // Small buffer to ensure event handler completes
+    await authenticatedPage.waitForTimeout(50);
 
     // Verify timer is active
     const timerActive = await authenticatedPage.evaluate(() => {
@@ -225,8 +253,8 @@ test.describe('Manual Offline Mode', () => {
     await authenticatedPage.locator('#download-session-btn').click();
     await expect(authenticatedPage.locator('#download-status')).toContainText('Downloaded', { timeout: 15000 });
 
-    // Now enter offline section should be visible
-    await expect(authenticatedPage.locator('#enter-offline-section')).toBeVisible();
+    // Now enter offline section should be visible (may take time for UI to poll IndexedDB)
+    await expect(authenticatedPage.locator('#enter-offline-section')).toBeVisible({ timeout: 10000 });
   });
 
   test('enter offline mode button navigates to offline study', async ({ authenticatedPage }) => {
@@ -275,9 +303,9 @@ test.describe('Test API', () => {
   test('test API can simulate online/offline events', async ({ authenticatedPage }) => {
     await authenticatedPage.goto('/');
 
-    // Set short delay
+    // Set delay longer than our buffer wait so timer is still active when we check
     await authenticatedPage.evaluate(() => {
-      window.OfflineSyncTestAPI.setStabilityDelay(50);
+      window.OfflineSyncTestAPI.setStabilityDelay(2000);
     });
 
     // Simulate online
@@ -285,7 +313,10 @@ test.describe('Test API', () => {
       window.OfflineSyncTestAPI.simulateOnline();
     });
 
-    // Timer should be active
+    // Buffer to ensure event handler completes (Firefox needs more time)
+    await authenticatedPage.waitForTimeout(100);
+
+    // Timer should be active (2000ms delay hasn't elapsed yet)
     const timerActive = await authenticatedPage.evaluate(() => {
       return window.OfflineSyncTestAPI.isStabilityTimerActive();
     });

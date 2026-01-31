@@ -1,0 +1,14 @@
+{
+  "name": "kr-js-unit-tests",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Unit tests for JavaScript offline study logic",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
+  },
+  "devDependencies": {
+    "vitest": "^2.0.0"
+  }
+}

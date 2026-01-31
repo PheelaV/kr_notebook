@@ -397,6 +397,18 @@ fn generate_valid_answers(parsed: &ParsedAnswer) -> (Vec<String>, Vec<String>) {
     }
   }
 
+  // Accept "core + info" when grammar info is present (e.g., "that (thing)" → accept "that thing")
+  // This allows users to type the full phrase including parenthetical content
+  if let Some(ref info) = parsed.info {
+    let normalized_info = normalize_answer(info);
+    if !normalized_info.is_empty() {
+      let with_info = format!("{} {}", normalized_core, normalized_info);
+      if !partial_answers.contains(&with_info) {
+        partial_answers.push(with_info);
+      }
+    }
+  }
+
   // Generate full answers (with disambiguation if present)
   let full_answers = if let Some(ref disambig) = parsed.disambiguation {
     let mut full = Vec::new();
@@ -917,11 +929,16 @@ mod tests {
 
   #[test]
   fn test_info_ignored() {
-    // (info) syntax - ignored in validation
+    // (info) syntax - info alone is not valid, core is required
     assert_eq!(validate_answer("that", "that (far)"), AnswerResult::Correct);
     assert_eq!(validate_answer("far", "that (far)"), AnswerResult::Incorrect);
     assert_eq!(validate_answer("run", "run (verb)"), AnswerResult::Correct);
     assert_eq!(validate_answer("verb", "run (verb)"), AnswerResult::Incorrect);
+
+    // User types full phrase including info content - should be accepted
+    assert_eq!(validate_answer("that far", "that (far)"), AnswerResult::Correct);
+    assert_eq!(validate_answer("run verb", "run (verb)"), AnswerResult::Correct);
+    assert_eq!(validate_answer("that thing", "that (thing)"), AnswerResult::Correct);
 
     // Korean with romanization hint
     assert_eq!(validate_answer("소파", "소파 (so-pa)"), AnswerResult::Correct);
@@ -1083,5 +1100,100 @@ mod tests {
     // Info alone should NOT match
     assert_eq!(validate_answer("thing", "this (thing)"), AnswerResult::Incorrect);
     assert_eq!(validate_answer("formal", "I, me (formal)"), AnswerResult::Incorrect);
+  }
+
+  // ============================================================================
+  // User feedback validation tests (Track E)
+  // These tests are based on real user override feedback
+  // ============================================================================
+
+  #[test]
+  fn test_user_feedback_parenthetical_formatting() {
+    // User feedback: "that thing (far)" vs expected "that (thing, far)"
+    // The formatting differs but the semantic content is equivalent
+    // User's answer has "thing" outside parens, expected has it inside
+
+    // Current behavior: "that (thing, far)" parses as core="that" with info="thing, far"
+    // User's answer "that thing (far)" should be accepted as correct
+
+    // Test the expected answer parsing
+    let parsed = parse_answer_grammar("that (thing, far)");
+    assert_eq!(parsed.core, "that");
+    assert_eq!(parsed.info, Some("thing, far".to_string()));
+
+    // Verify valid answers include "core + info" form
+    let (full, _partial) = generate_valid_answers(&parsed);
+    assert!(full.contains(&"that thing far".to_string()),
+      "full_answers should contain 'that thing far', got: {:?}", full);
+
+    // Now test the actual validation
+    assert_eq!(validate_answer("that thing far", "that (thing, far)"), AnswerResult::Correct);
+
+    // User types "that thing" - this is neither core ("that") nor core+full info ("that thing far")
+    // Since "thing" alone isn't a recognized answer, this is Incorrect
+    // (If we want to accept partial info, that would be a separate feature)
+    assert_eq!(validate_answer("that thing", "that (thing, far)"), AnswerResult::Incorrect);
+
+    // Core alone is still correct
+    assert_eq!(validate_answer("that", "that (thing, far)"), AnswerResult::Correct);
+  }
+
+  #[test]
+  fn test_user_feedback_typo_in_answer_with_parens() {
+    // User feedback: "tha thing (far)" is a typo of "that thing (far)"
+    // Expected: "that (thing, far)"
+    // This should be CloseEnough (typo tolerance)
+
+    // "tha thing far" vs "that thing far" is 1 edit distance
+    // Since we parse and normalize, "tha" vs "that" = 1 edit
+    assert_eq!(validate_answer("tha thing far", "that (thing, far)"), AnswerResult::CloseEnough);
+
+    // Just "tha" vs "that" core - 1 edit distance, should be CloseEnough
+    assert_eq!(validate_answer("tha", "that (thing, far)"), AnswerResult::CloseEnough);
+  }
+
+  #[test]
+  fn test_user_feedback_저것_formatting() {
+    // Real case: 저것 card
+    // Expected: "that (thing, far)"
+    // User typed: "that thing (far)"
+    // User overrode to Easy - their answer should have been accepted
+
+    // The issue is parenthetical placement differs
+    // "that (thing, far)" - info is "thing, far"
+    // "that thing (far)" - user included "thing" in core, "far" in parens
+
+    // After parsing user input:
+    let user_parsed = parse_answer_grammar("that thing (far)");
+    assert_eq!(user_parsed.core, "that thing");
+    assert_eq!(user_parsed.info, Some("far".to_string()));
+
+    // The normalized user core "that thing" should match expected core + part of info
+    // This is tricky - we need to accept semantic equivalence
+
+    // For now, test that "that thing far" (all as one) is accepted
+    assert_eq!(validate_answer("that thing far", "that (thing, far)"), AnswerResult::Correct);
+  }
+
+  #[test]
+  fn test_verbose_answer_should_accept_short_form() {
+    // User feedback: 안 card
+    // Expected: "adverb that makes verbs or adjectives negative"
+    // User typed: "not"
+    // This is a DATA issue - the main_answer is too verbose
+    // The correct fix is to change main_answer to "not"
+    // But we can also test that very verbose answers accept core meanings
+
+    // This test documents the current behavior
+    // "not" vs "adverb that makes verbs or adjectives negative" - no match
+    // This is expected to fail because the strings are too different
+    assert_eq!(
+      validate_answer("not", "adverb that makes verbs or adjectives negative"),
+      AnswerResult::Incorrect
+    );
+
+    // The proper fix is in the data source, not the validation logic
+    // After fixing the data, the answer should be:
+    assert_eq!(validate_answer("not", "not"), AnswerResult::Correct);
   }
 }

@@ -112,12 +112,13 @@ pub async fn download_session(
     // Parse filter mode
     let filter = parse_filter_mode(&request.filter_mode);
 
-    // Get available cards
+    // Get available cards (no sibling exclusion for batch download)
     let all_cards = super::get_available_study_cards_filtered(
         &conn,
         &app_conn,
         auth.user_id,
         &filter,
+        None, // No last_card_id for batch download
     );
 
     if all_cards.is_empty() {
@@ -215,6 +216,17 @@ pub struct SyncReview {
     pub fsrs_difficulty: Option<f64>,
     /// ISO8601 timestamp
     pub next_review: String,
+    // Override fields (optional)
+    #[serde(default)]
+    pub is_override: bool,
+    pub user_answer: Option<String>,
+    pub original_result: Option<String>,
+    pub suggested_answer: Option<String>,
+    // Pre-state for override restoration
+    pub pre_learning_step: Option<i64>,
+    pub pre_fsrs_stability: Option<f64>,
+    pub pre_fsrs_difficulty: Option<f64>,
+    pub pre_next_review: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -226,7 +238,15 @@ pub struct SyncSessionRequest {
 #[derive(Debug, Serialize)]
 pub struct SyncSessionResponse {
     pub synced_count: usize,
+    pub skipped_count: usize,
+    pub skipped_cards: Vec<SkippedCard>,
     pub errors: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SkippedCard {
+    pub card_id: i64,
+    pub reason: String,
 }
 
 /// Sync offline study session results back to the server.
@@ -234,10 +254,11 @@ pub struct SyncSessionResponse {
 /// POST /api/study/sync-offline
 pub async fn sync_session(
     auth: AuthContext,
-    State(_state): State<AppState>,
+    State(state): State<AppState>,
     Json(request): Json<SyncSessionRequest>,
 ) -> impl IntoResponse {
     let conn = auth.user_db.lock().unwrap();
+    let app_conn = state.auth_db.lock().unwrap();
 
     // Verify session exists and belongs to user (by being in their DB)
     let session_exists: bool = conn
@@ -265,19 +286,89 @@ pub async fn sync_session(
         .log_warn_default("Failed to get focus_mode for sync");
 
     let mut synced_count = 0;
+    let mut skipped_cards = Vec::new();
     let mut errors = Vec::new();
+
+    // Get offline session download time for conflict detection
+    let session_download_time: Option<DateTime<Utc>> = conn
+        .query_row(
+            "SELECT created_at FROM offline_sessions WHERE session_id = ?1",
+            [&request.session_id],
+            |row| {
+                let ts: String = row.get(0)?;
+                Ok(chrono::DateTime::parse_from_rfc3339(&ts)
+                    .map(|dt| dt.with_timezone(&Utc))
+                    .ok())
+            },
+        )
+        .ok()
+        .flatten();
 
     // Sort reviews by timestamp for correct ordering
     let mut reviews = request.reviews;
     reviews.sort_by(|a, b| a.timestamp.cmp(&b.timestamp));
 
+    // Begin transaction for atomic sync
+    if let Err(e) = conn.execute("BEGIN IMMEDIATE", []) {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({
+                "error": format!("Failed to begin transaction: {}", e)
+            })),
+        )
+            .into_response();
+    }
+
     // Process each review with server-side FSRS calculation
     for review in &reviews {
-        // Parse review timestamp
+        // Parse review timestamp - reject invalid timestamps instead of using current time
         let review_time: DateTime<Utc> = match chrono::DateTime::parse_from_rfc3339(&review.timestamp) {
             Ok(dt) => dt.with_timezone(&Utc),
-            Err(_) => Utc::now(),
+            Err(e) => {
+                errors.push(format!("Card {}: invalid timestamp '{}': {}", review.card_id, review.timestamp, e));
+                continue;
+            }
         };
+
+        // Validate timestamp is within reasonable bounds
+        // Allow tolerance for clock skew and offline study (reviews can be timestamped
+        // slightly ahead if synced shortly after the review was made)
+        let now = Utc::now();
+        let tolerance = chrono::Duration::minutes(5);
+        if let Some(download_time) = session_download_time {
+            if review_time < download_time - tolerance {
+                errors.push(format!(
+                    "Card {}: review timestamp {} is before session download {}",
+                    review.card_id, review_time, download_time
+                ));
+                continue;
+            }
+        }
+        if review_time > now + tolerance {
+            errors.push(format!(
+                "Card {}: review timestamp {} is in the future",
+                review.card_id, review_time
+            ));
+            continue;
+        }
+
+        // CONFLICT DETECTION: Check if card was reviewed online after session download
+        let last_online_review = get_last_review_time(&conn, review.card_id);
+        if let (Some(download_time), Some(last_review)) = (session_download_time, last_online_review) {
+            if last_review > download_time {
+                // Card was reviewed online after this offline session was downloaded
+                // Skip to avoid resetting progress
+                skipped_cards.push(SkippedCard {
+                    card_id: review.card_id,
+                    reason: format!(
+                        "Card reviewed online at {} (after session download at {})",
+                        last_review.format("%H:%M:%S"),
+                        download_time.format("%H:%M:%S")
+                    ),
+                });
+                continue;
+            }
+        }
 
         // Get current card progress (for FSRS input state)
         let card_state = get_card_progress_for_sync(&conn, review.card_id);
@@ -315,6 +406,9 @@ pub async fn sync_session(
             review_time,
         );
 
+        // Use server-calculated quality for is_correct to ensure consistency
+        let is_correct_from_quality = review.quality >= 2;
+
         // Update card_progress with server-calculated SRS state
         let update_result = conn.execute(
             r#"
@@ -324,28 +418,28 @@ pub async fn sync_session(
                 fsrs_stability, fsrs_difficulty, fsrs_state
             ) VALUES (
                 ?1, 2.5, 0, ?2, ?3,
-                1, ?4, ?5,
-                ?6, ?7, ?8
+                0, 0, ?4,
+                ?5, ?6, ?7
             )
             ON CONFLICT(card_id) DO UPDATE SET
                 repetitions = ?2,
                 next_review = ?3,
                 total_reviews = total_reviews + 1,
-                correct_reviews = correct_reviews + ?4,
-                learning_step = ?5,
-                fsrs_stability = ?6,
-                fsrs_difficulty = ?7,
-                fsrs_state = ?8
+                correct_reviews = correct_reviews + ?8,
+                learning_step = ?4,
+                fsrs_stability = ?5,
+                fsrs_difficulty = ?6,
+                fsrs_state = ?7
             "#,
             rusqlite::params![
                 review.card_id,
                 fsrs_result.repetitions,
                 fsrs_result.next_review.to_rfc3339(),
-                if review.is_correct { 1 } else { 0 },
                 fsrs_result.learning_step,
                 fsrs_result.stability,
                 fsrs_result.difficulty,
                 fsrs_result.state.as_str(),
+                if is_correct_from_quality { 1 } else { 0 },
             ],
         );
 
@@ -354,24 +448,69 @@ pub async fn sync_session(
             continue;
         }
 
+        // Determine study mode (Offline or Override)
+        let study_mode = if review.is_override { "Override" } else { "Offline" };
+
         // Insert review log
         let log_result = conn.execute(
             r#"
             INSERT INTO review_logs (
                 card_id, quality, reviewed_at, is_correct, study_mode, hints_used
-            ) VALUES (?1, ?2, ?3, ?4, 'Offline', ?5)
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
             "#,
             rusqlite::params![
                 review.card_id,
                 review.quality,
                 review_time.to_rfc3339(),
                 if review.is_correct { 1 } else { 0 },
+                study_mode,
                 review.hints_used,
             ],
         );
 
         if let Err(e) = log_result {
             errors.push(format!("Review log for card {}: {}", review.card_id, e));
+        }
+
+        // For overrides, insert validation suggestion for admin review
+        if review.is_override {
+            if let Some(ref suggested) = review.suggested_answer {
+                // Get card info from app.db for the suggestion
+                let card_info: Option<(String, String)> = app_conn
+                    .query_row(
+                        r#"
+                        SELECT front, main_answer
+                        FROM card_definitions
+                        WHERE id = ?1
+                        "#,
+                        [review.card_id],
+                        |row| Ok((row.get(0)?, row.get(1)?)),
+                    )
+                    .ok();
+
+                if let Some((card_front, expected_answer)) = card_info {
+                    let _ = app_conn.execute(
+                        r#"
+                        INSERT INTO validation_suggestions (
+                            card_id, card_front, expected_answer, user_answer,
+                            suggested_answer, user_quality, username, created_at,
+                            original_result
+                        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+                        "#,
+                        rusqlite::params![
+                            review.card_id,
+                            card_front,
+                            expected_answer,
+                            review.user_answer.as_deref().unwrap_or(""),
+                            suggested,
+                            review.quality,
+                            &auth.username,
+                            review_time.to_rfc3339(),
+                            review.original_result.as_deref().unwrap_or(""),
+                        ],
+                    );
+                }
+            }
         }
 
         synced_count += 1;
@@ -383,8 +522,29 @@ pub async fn sync_session(
         rusqlite::params![Utc::now().to_rfc3339(), &request.session_id],
     );
 
+    // Commit transaction
+    if let Err(e) = conn.execute("COMMIT", []) {
+        // Try to rollback on commit failure
+        let _ = conn.execute("ROLLBACK", []);
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({
+                "error": format!("Failed to commit transaction: {}", e)
+            })),
+        )
+            .into_response();
+    }
+
+    // Check for tier and pack lesson unlocks after syncing reviews
+    let _ = db::try_auto_unlock_tier(&conn).log_warn("Auto tier unlock failed");
+    let _ = db::try_auto_unlock_all_pack_lessons(&conn, &app_conn)
+        .log_warn("Auto lesson unlock failed");
+
+    let skipped_count = skipped_cards.len();
     let response = SyncSessionResponse {
         synced_count,
+        skipped_count,
+        skipped_cards,
         errors,
     };
 
@@ -481,4 +641,20 @@ fn get_card_progress_for_sync(conn: &rusqlite::Connection, card_id: i64) -> Card
         },
     )
     .unwrap_or_default()
+}
+
+/// Get the timestamp of the most recent review for a card
+fn get_last_review_time(conn: &rusqlite::Connection, card_id: i64) -> Option<DateTime<Utc>> {
+    conn.query_row(
+        "SELECT reviewed_at FROM review_logs WHERE card_id = ?1 ORDER BY reviewed_at DESC LIMIT 1",
+        [card_id],
+        |row| {
+            let ts: String = row.get(0)?;
+            Ok(chrono::DateTime::parse_from_rfc3339(&ts)
+                .map(|dt| dt.with_timezone(&Utc))
+                .ok())
+        },
+    )
+    .ok()
+    .flatten()
 }

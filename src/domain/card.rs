@@ -90,7 +90,7 @@ pub struct Card {
   pub repetitions: i64,
   pub next_review: DateTime<Utc>,
 
-  // Learning steps (Anki-style: 0=new, 1-4=learning, 5+=graduated to SM-2)
+  // Learning steps: 0-3=learning, 4+=graduated to FSRS
   pub learning_step: i64,
 
   // FSRS fields (optional - None means card hasn't been migrated yet)

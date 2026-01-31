@@ -155,6 +155,17 @@ class DbManager:
         """Set a user's role (user or admin)."""
         self._run("set-role", username, role)
 
+    def set_setting(self, username: str, key: str, value: str) -> None:
+        """Set a user setting in their learning.db."""
+        import sqlite3
+        learning_db = self.data_dir / "users" / username / "learning.db"
+        with sqlite3.connect(learning_db) as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+                (key, value)
+            )
+            conn.commit()
+
 
 class TestClient:
     """HTTP client wrapper with session/cookie management."""

@@ -67,7 +67,13 @@ fn build_tailwind() {
 
     let status = Command::new("tailwindcss")
         .current_dir(&manifest_dir)
-        .args(["-i", "src/input.css", "-o", "static/css/styles.css", "--minify"])
+        .args([
+            "-i",
+            "src/input.css",
+            "-o",
+            "static/css/styles.css",
+            "--minify",
+        ])
         .status();
 
     match status {
@@ -103,8 +109,10 @@ fn main() {
     println!("cargo:rerun-if-changed=static/js/sw-register.js");
     println!("cargo:rerun-if-changed=static/js/offline-storage.js");
     println!("cargo:rerun-if-changed=static/js/offline-sync.js");
+    println!("cargo:rerun-if-changed=static/js/offline-detect.js");
     println!("cargo:rerun-if-changed=static/js/offline-study.js");
     println!("cargo:rerun-if-changed=static/js/vocabulary-search.js");
+    println!("cargo:rerun-if-changed=static/js/backend-ping.js");
     println!("cargo:rerun-if-changed=static/sw.js");
     println!("cargo:rerun-if-changed=src/input.css");
     println!("cargo:rerun-if-changed=tailwind.config.js");
@@ -130,6 +138,7 @@ fn main() {
     let offline_sync_hash = hash_file(Path::new("static/js/offline-sync.js"));
     let offline_study_hash = hash_file(Path::new("static/js/offline-study.js"));
     let vocabulary_search_hash = hash_file(Path::new("static/js/vocabulary-search.js"));
+    let backend_ping_hash = hash_file(Path::new("static/js/backend-ping.js"));
 
     // Write generated code to OUT_DIR
     let out_dir = std::env::var("OUT_DIR").unwrap();
@@ -151,8 +160,18 @@ pub const OFFLINE_SYNC_JS_HASH: &str = "{}";
 /// Hash of offline-study.js for cache busting
 pub const OFFLINE_STUDY_JS_HASH: &str = "{}";
 /// Hash of vocabulary-search.js for cache busting
-pub const VOCABULARY_SEARCH_JS_HASH: &str = "{}";"#,
-            js_hash, css_hash, sw_register_hash, sw_hash, offline_storage_hash, offline_sync_hash, offline_study_hash, vocabulary_search_hash
+pub const VOCABULARY_SEARCH_JS_HASH: &str = "{}";
+/// Hash of backend-ping.js for cache busting
+pub const BACKEND_PING_JS_HASH: &str = "{}";"#,
+            js_hash,
+            css_hash,
+            sw_register_hash,
+            sw_hash,
+            offline_storage_hash,
+            offline_sync_hash,
+            offline_study_hash,
+            vocabulary_search_hash,
+            backend_ping_hash
         ),
     )
     .unwrap();

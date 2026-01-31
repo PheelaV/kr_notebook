@@ -290,10 +290,18 @@ pub async fn practice_next(
 
 /// Validate answer in practice mode (optionally logs to stats)
 pub async fn practice_validate(
+  State(state): State<AppState>,
   auth: AuthContext,
   Form(form): Form<PracticeValidateForm>,
 ) -> impl IntoResponse {
   let conn = match auth.user_db.lock() {
+    Ok(conn) => conn,
+    Err(_) => {
+      return Html("<h1>Database Error</h1><p>Please refresh the page.</p>".to_string())
+    }
+  };
+
+  let app_conn = match state.auth_db.lock() {
     Ok(conn) => conn,
     Err(_) => {
       return Html("<h1>Database Error</h1><p>Please refresh the page.</p>".to_string())
@@ -337,6 +345,11 @@ pub async fn practice_validate(
     let tracked_char = get_tracked_character(&card);
     let char_type = get_character_type(&card);
     let _ = db::update_character_stats(&conn, tracked_char, char_type, is_correct);
+
+    // Check for tier and pack lesson unlocks
+    let _ = db::try_auto_unlock_tier(&conn).log_warn("Auto tier unlock failed");
+    let _ = db::try_auto_unlock_all_pack_lessons(&conn, &app_conn)
+      .log_warn("Auto lesson unlock failed");
   }
 
   let is_korean = is_korean(&card.main_answer);

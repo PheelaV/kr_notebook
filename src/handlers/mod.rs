@@ -105,6 +105,10 @@ pub async fn index(State(state): State<AppState>, auth: AuthContext) -> Html<Str
   // Check for auto tier unlock
   let unlocked_tier = db::try_auto_unlock_tier(&conn).log_warn("Auto tier unlock failed").flatten();
 
+  // Check for auto pack lesson unlock
+  let _ = db::try_auto_unlock_all_pack_lessons(&conn, &app_conn)
+    .log_warn("Auto lesson unlock failed");
+
   #[cfg(feature = "profiling")]
   if let Some(tier) = unlocked_tier {
     crate::profile_log!(EventType::TierUnlock {
@@ -115,10 +119,15 @@ pub async fn index(State(state): State<AppState>, auth: AuthContext) -> Html<Str
 
   let accelerated_mode = db::get_all_tiers_unlocked(&conn).log_warn_default("Failed to get all_tiers_unlocked");
 
+  // Check if we can introduce new cards (daily limit)
+  let can_add_new = db::can_introduce_new_card(&conn).unwrap_or(true);
+
   // Use filtered counts to include vocabulary pack cards (with permission check)
+  // Use get_available_due_count_filtered to respect daily new card limit
   let filter = db::StudyFilterMode::All;
-  let due_count = db::get_due_count_filtered(&conn, &app_conn, auth.user_id, &filter).log_warn_default("Failed to get due count");
-  let unreviewed_count = if accelerated_mode {
+  let due_count = db::get_available_due_count_filtered(&conn, &app_conn, auth.user_id, &filter, can_add_new)
+    .log_warn_default("Failed to get due count");
+  let unreviewed_count = if accelerated_mode && can_add_new {
     db::get_unreviewed_today_count_filtered(&conn, &app_conn, auth.user_id, &filter).log_warn_default("Failed to get unreviewed count")
   } else {
     0
@@ -129,7 +138,8 @@ pub async fn index(State(state): State<AppState>, auth: AuthContext) -> Html<Str
 
   // Always fetch next upcoming review time (for cards not yet due)
   // This allows the UI to show a countdown even when there are cards currently due
-  let next_review_time = db::get_next_upcoming_review_time(&conn)
+  // Uses filtered version to include vocabulary pack cards (matches due_count logic)
+  let next_review_time = db::get_next_upcoming_review_time_filtered(&conn, &app_conn, auth.user_id, &filter)
     .log_warn("Failed to get next review time")
     .flatten();
 
@@ -226,6 +236,13 @@ pub async fn offline_study_page(
     let nav = auth.as_ref().map(|a| NavContext::from_auth(a)).unwrap_or_default();
     let template = OfflineStudyTemplate { css_url, nav };
     Html(template.render().unwrap_or_default())
+}
+
+/// Health check endpoint for backend reachability detection.
+/// Used by service worker and offline-sync.js to determine if backend is reachable
+/// (separate from general internet connectivity).
+pub async fn health_check() -> impl axum::response::IntoResponse {
+    axum::http::StatusCode::OK
 }
 
 /// Handler to serve the service worker from the root path

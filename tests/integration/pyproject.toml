@@ -9,6 +9,7 @@ dependencies = [
     "httpx>=0.28.0",
     "rich>=13.0.0",
     "pytest-xdist>=3.8.0",
+    "pytest-rerunfailures>=16.1",
 ]
 
 [dependency-groups]
@@ -23,6 +24,7 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
+addopts = "--reruns=2 --reruns-delay=1"
 
 [tool.ruff]
 line-length = 100

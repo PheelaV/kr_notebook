@@ -481,7 +481,7 @@ pub fn get_lesson_progress(
 
     let learning: i64 = conn.query_row(
         &format!(
-            "SELECT COUNT(*) {} WHERE cd.pack_id = ?1 AND cd.lesson = ?2 AND COALESCE(cp.total_reviews, 0) > 0 AND COALESCE(cp.repetitions, 0) < 2",
+            "SELECT COUNT(*) {} WHERE cd.pack_id = ?1 AND cd.lesson = ?2 AND COALESCE(cp.total_reviews, 0) > 0 AND COALESCE(cp.learning_step, 0) < 4",
             LESSON_FROM
         ),
         params![pack_id, lesson],
@@ -490,7 +490,7 @@ pub fn get_lesson_progress(
 
     let learned: i64 = conn.query_row(
         &format!(
-            "SELECT COUNT(*) {} WHERE cd.pack_id = ?1 AND cd.lesson = ?2 AND COALESCE(cp.repetitions, 0) >= 2",
+            "SELECT COUNT(*) {} WHERE cd.pack_id = ?1 AND cd.lesson = ?2 AND COALESCE(cp.learning_step, 0) >= 4",
             LESSON_FROM
         ),
         params![pack_id, lesson],

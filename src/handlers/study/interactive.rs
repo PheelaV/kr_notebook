@@ -140,8 +140,8 @@ pub async fn study_start_interactive(
   let filter_mode = super::parse_filter_mode(&current_filter);
   let stats = db::get_session_stats(&conn, &app_conn, auth.user_id, &filter_mode).unwrap_or_default();
 
-  // Get available cards using existing logic
-  let available_cards = get_available_study_cards(&conn, &app_conn, auth.user_id);
+  // Get available cards using existing logic, with sibling exclusion
+  let available_cards = get_available_study_cards(&conn, &app_conn, auth.user_id, study_session.last_card_id);
 
   // Use weighted selection
   let selected_card_id = if !available_cards.is_empty() {
@@ -212,7 +212,11 @@ pub async fn study_start_interactive(
       return Html(template.render().unwrap_or_default()).into_response();
     }
 
-  // No cards available
+  // No cards available - check for tier and pack lesson unlocks
+  let _ = db::try_auto_unlock_tier(&conn).log_warn("Auto tier unlock failed");
+  let _ = db::try_auto_unlock_all_pack_lessons(&conn, &app_conn)
+    .log_warn("Auto lesson unlock failed");
+
   let template = StudyInteractiveTemplate {
     card_id: 0,
     front: String::new(),
@@ -327,6 +331,16 @@ pub async fn validate_answer_handler(
       study_session.add_failed_card(card.id);
     }
 
+    // Capture pre-review state BEFORE updating SRS (for override restoration)
+    let pre_state = db::PreReviewState {
+      next_review: Some(card.next_review.to_rfc3339()),
+      learning_step: Some(card.learning_step),
+      repetitions: Some(card.repetitions),
+      fsrs_stability: card.fsrs_stability,
+      fsrs_difficulty: card.fsrs_difficulty,
+      fsrs_state: card.fsrs_state.as_ref().map(|s| s.as_str().to_owned()),
+    };
+
     // Update SRS based on FSRS or SM-2
     let use_fsrs = db::get_use_fsrs(&conn).log_warn_default("Failed to get FSRS setting");
     let focus_mode = db::is_focus_mode_active(&conn).unwrap_or(false);
@@ -376,9 +390,9 @@ pub async fn validate_answer_handler(
       );
     }
 
-    // Log review with enhanced tracking
+    // Log review with pre-state for override restoration
     let direction = get_review_direction(&card);
-    if let Err(e) = db::insert_review_log_enhanced(
+    if let Err(e) = db::insert_review_log_with_pre_state(
       &conn,
       card.id,
       quality,
@@ -387,6 +401,7 @@ pub async fn validate_answer_handler(
       direction,
       None,
       form.hints_used.into(),
+      Some(&pre_state),
     ) {
       tracing::error!("Failed to insert review log for card {}: {}", card.id, e);
     }
@@ -479,8 +494,8 @@ pub async fn next_card_interactive(
   };
   let mut study_session = session::get_session(&session_id);
 
-  // Get available cards and select next using weighted selection
-  let available_cards = get_available_study_cards(&conn, &app_conn, auth.user_id);
+  // Get available cards and select next using weighted selection, with sibling exclusion
+  let available_cards = get_available_study_cards(&conn, &app_conn, auth.user_id, study_session.last_card_id);
 
   let selected_card_id = if !available_cards.is_empty() {
     select_next_card(&conn, &mut study_session, &available_cards)
@@ -602,8 +617,8 @@ pub async fn submit_review_interactive(
   // NOTE: Review is now recorded during validation, so we skip the SRS update here.
   // This handler is kept for backwards compatibility but only fetches next card.
 
-  // Get available cards and select next using weighted selection
-  let available_cards = get_available_study_cards(&conn, &app_conn, auth.user_id);
+  // Get available cards and select next using weighted selection, with sibling exclusion
+  let available_cards = get_available_study_cards(&conn, &app_conn, auth.user_id, study_session.last_card_id);
 
   let selected_card_id = if !available_cards.is_empty() {
     select_next_card(&conn, &mut study_session, &available_cards)
@@ -770,6 +785,8 @@ pub struct OverrideForm {
   pub card_id: i64,
   pub quality: u8,
   #[serde(default)]
+  pub session_id: String,
+  #[serde(default)]
   pub suggested_answer: String,
   #[serde(default)]
   pub card_front: String,
@@ -820,29 +837,90 @@ pub async fn override_ruling_handler(
     }
   };
 
-  // 1. Record corrective review in user's learning.db
   let is_correct = form.quality >= 2;
-  if let Err(e) = db::insert_review_log_enhanced(
-    &user_conn,
-    form.card_id,
-    form.quality,
-    is_correct,
-    StudyMode::Override,
-    ReviewDirection::KrToRom, // Default direction for overrides
-    None, // response_time_ms
-    0,    // hints_used
-  ) {
-    tracing::error!("Failed to record override review: {}", e);
-    return StatusCode::INTERNAL_SERVER_ERROR;
+
+  // FIX 1: Update reinforcement queue if session_id provided
+  if !form.session_id.is_empty() {
+    let mut study_session = session::get_session(&form.session_id);
+    if is_correct {
+      // Remove from reinforcement queue if user overrode to correct
+      study_session.remove_from_reinforcement(form.card_id);
+      session::update_session(&form.session_id, study_session);
+      tracing::debug!("Removed card {} from reinforcement queue (override to correct)", form.card_id);
+    }
   }
 
-  // 2. Update card SRS state
-  if let Err(e) = update_card_srs_for_override(&user_conn, &card, form.quality) {
-    tracing::error!("Failed to update SRS for override: {}", e);
-    // Continue anyway - review was logged
+  // FIX 2: Get original review timestamp for SRS calculation
+  let original_review_time = db::get_latest_review_time(&user_conn, form.card_id)
+    .ok()
+    .flatten();
+
+  // For correct overrides, restore pre-review state then apply corrected quality
+  if is_correct {
+    match db::get_latest_review_pre_state(&user_conn, form.card_id) {
+      Ok(Some(pre_state)) => {
+        // Restore the card's state to before the review was applied
+        if let Err(e) = db::restore_card_pre_review_state(&user_conn, form.card_id, &pre_state) {
+          tracing::error!("Failed to restore pre-review state: {}", e);
+          // Fall back to recalculation
+          if let Err(e) = update_card_srs_for_override(&user_conn, &card, form.quality) {
+            tracing::error!("Failed to update SRS for override: {}", e);
+          }
+        } else {
+          // After restoring, apply the corrected quality using original timestamp
+          if let Ok(Some(restored_card)) = db::get_card_by_id(&user_conn, form.card_id) {
+            if let Err(e) = update_card_srs_for_override_at(&user_conn, &restored_card, form.quality, original_review_time) {
+              tracing::error!("Failed to update SRS for override with timestamp: {}", e);
+            }
+          }
+          tracing::info!(
+            "Restored pre-review state for card {} and applied quality {} (override)",
+            form.card_id,
+            form.quality
+          );
+        }
+      }
+      Ok(None) => {
+        // No pre-review state available (old review), fall back to recalculation
+        tracing::debug!("No pre-review state for card {}, using recalculation", form.card_id);
+        if let Err(e) = update_card_srs_for_override_at(&user_conn, &card, form.quality, original_review_time) {
+          tracing::error!("Failed to update SRS for override: {}", e);
+        }
+      }
+      Err(e) => {
+        tracing::error!("Failed to get pre-review state: {}", e);
+        if let Err(e) = update_card_srs_for_override(&user_conn, &card, form.quality) {
+          tracing::error!("Failed to update SRS for override: {}", e);
+        }
+      }
+    }
+  } else {
+    // User confirmed answer was wrong - recalculate SRS as usual
+    if let Err(e) = update_card_srs_for_override(&user_conn, &card, form.quality) {
+      tracing::error!("Failed to update SRS for override: {}", e);
+    }
   }
 
-  // 3. Save suggestion to app.db for admin review (sanitized)
+  // FIX 3: Update the existing review log quality instead of creating a new one
+  if let Err(e) = db::update_latest_review_quality(&user_conn, form.card_id, form.quality, is_correct) {
+    tracing::warn!("Failed to update existing review log: {}, will create override entry", e);
+    // Fall back to creating an override log entry if update fails
+    if let Err(e) = db::insert_review_log_enhanced(
+      &user_conn,
+      form.card_id,
+      form.quality,
+      is_correct,
+      StudyMode::Override,
+      ReviewDirection::KrToRom,
+      None,
+      0,
+    ) {
+      tracing::error!("Failed to record override review: {}", e);
+      return StatusCode::INTERNAL_SERVER_ERROR;
+    }
+  }
+
+  // Save suggestion to app.db for admin review (sanitized)
   if let Ok(app_conn) = state.auth_db.lock() {
     if let Err(e) = save_validation_suggestion(&app_conn, &form, &auth.username) {
       tracing::error!("Failed to save validation suggestion: {}", e);
@@ -909,6 +987,17 @@ fn update_card_srs_for_override(
   card: &Card,
   quality: u8,
 ) -> rusqlite::Result<()> {
+  update_card_srs_for_override_at(conn, card, quality, None)
+}
+
+/// Update card SRS state based on override quality, using a specific base timestamp
+/// If `base_time` is Some, the next_review is calculated relative to that time instead of now
+fn update_card_srs_for_override_at(
+  conn: &rusqlite::Connection,
+  card: &Card,
+  quality: u8,
+  base_time: Option<chrono::DateTime<Utc>>,
+) -> rusqlite::Result<()> {
   // Use FSRS or SM-2 based on user setting
   let use_fsrs = db::get_use_fsrs(conn).unwrap_or(true);
   let focus_mode = db::is_focus_mode_active(conn).unwrap_or(false);
@@ -916,7 +1005,13 @@ fn update_card_srs_for_override(
   if use_fsrs {
     let desired_retention =
       db::get_desired_retention(conn).log_warn_default("Failed to get desired retention");
-    let result = srs::calculate_fsrs_review(card, quality, desired_retention, focus_mode);
+    let mut result = srs::calculate_fsrs_review(card, quality, desired_retention, focus_mode);
+
+    // If we have an original base time, adjust next_review relative to it
+    if let Some(original_time) = base_time {
+      let interval = result.next_review - Utc::now();
+      result.next_review = original_time + interval;
+    }
 
     db::update_card_after_fsrs_review(
       conn,
@@ -938,13 +1033,21 @@ fn update_card_srs_for_override(
       card.learning_step,
     );
 
+    // If we have an original base time, adjust next_review relative to it
+    let next_review = if let Some(original_time) = base_time {
+      let interval = result.next_review - Utc::now();
+      original_time + interval
+    } else {
+      result.next_review
+    };
+
     db::update_card_after_review(
       conn,
       card.id,
       result.ease_factor,
       result.interval_days,
       result.learning_step,
-      result.next_review,
+      next_review,
       result.repetitions,
       quality >= 2,
     )?;

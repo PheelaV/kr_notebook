@@ -154,7 +154,8 @@ async fn main() {
         // Offline / Service Worker routes
         .route("/offline", get(handlers::offline_page))
         .route("/offline-study", get(handlers::offline_study_page))
-        .route("/sw.js", get(handlers::service_worker));
+        .route("/sw.js", get(handlers::service_worker))
+        .route("/api/health", get(handlers::health_check));
 
     // Protected routes (auth required - AuthContext extractor handles this)
     let protected_routes = Router::new()
