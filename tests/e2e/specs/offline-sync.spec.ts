@@ -236,6 +236,120 @@ test.describe('Offline Sync Prompt', () => {
   });
 });
 
+test.describe('Bug 5: Prompt Cooldown After Dismissal', () => {
+  test.beforeEach(async ({ authenticatedPage, testUser }) => {
+    setupScenario(testUser.username, 'tier1_new', testUser.dataDir);
+    await downloadSession(authenticatedPage);
+  });
+
+  test('Later button closes modal and sets cooldown', async ({ authenticatedPage }) => {
+    // Add a pending review
+    await addPendingReview(authenticatedPage);
+
+    // Force show prompt
+    await authenticatedPage.evaluate(() => {
+      window.OfflineSyncTestAPI.forceShowSyncPrompt();
+    });
+
+    await expect(authenticatedPage.locator('#sync-prompt-modal')).toBeVisible();
+
+    // Click Later button (new button from Bug 5 fix)
+    await authenticatedPage.click('#later-btn');
+
+    // Modal should close
+    await expect(authenticatedPage.locator('#sync-prompt-modal')).toBeHidden();
+
+    // Verify cooldown was set in localStorage
+    const cooldownSet = await authenticatedPage.evaluate(() => {
+      const dismissedAt = localStorage.getItem('offlineSync_promptDismissedAt');
+      return dismissedAt !== null && Date.now() - parseInt(dismissedAt, 10) < 60000; // Set within last minute
+    });
+    expect(cooldownSet).toBe(true);
+  });
+
+  test('prompt does not reappear during cooldown period', async ({ authenticatedPage }) => {
+    // Add a pending review
+    await addPendingReview(authenticatedPage);
+
+    // Set cooldown (simulate recent dismissal)
+    await authenticatedPage.evaluate(() => {
+      localStorage.setItem('offlineSync_promptDismissedAt', Date.now().toString());
+    });
+
+    // Set short stability delay
+    await authenticatedPage.evaluate(() => {
+      window.OfflineSyncTestAPI.setStabilityDelay(100);
+    });
+
+    // Simulate coming online
+    await authenticatedPage.evaluate(() => {
+      window.OfflineSyncTestAPI.simulateOnline();
+    });
+
+    // Wait for stability timer
+    await authenticatedPage.waitForTimeout(500);
+
+    // Modal should NOT appear (cooldown active)
+    await expect(authenticatedPage.locator('#sync-prompt-modal')).toBeHidden();
+  });
+
+  test('prompt appears after cooldown expires', async ({ authenticatedPage }) => {
+    // Add a pending review
+    await addPendingReview(authenticatedPage);
+
+    // Set expired cooldown (16 minutes ago)
+    await authenticatedPage.evaluate(() => {
+      const sixteenMinutesAgo = Date.now() - (16 * 60 * 1000);
+      localStorage.setItem('offlineSync_promptDismissedAt', sixteenMinutesAgo.toString());
+    });
+
+    // Set short stability delay
+    await authenticatedPage.evaluate(() => {
+      window.OfflineSyncTestAPI.setStabilityDelay(100);
+    });
+
+    // Simulate coming online
+    await authenticatedPage.evaluate(() => {
+      window.OfflineSyncTestAPI.simulateOnline();
+    });
+
+    // Wait for stability timer
+    await authenticatedPage.waitForTimeout(500);
+
+    // Modal should appear (cooldown expired)
+    await expect(authenticatedPage.locator('#sync-prompt-modal')).toBeVisible({ timeout: 10000 });
+  });
+
+  test('backdrop click dismisses and sets cooldown', async ({ authenticatedPage }) => {
+    // Add a pending review
+    await addPendingReview(authenticatedPage);
+
+    // Clear any existing cooldown
+    await authenticatedPage.evaluate(() => {
+      localStorage.removeItem('offlineSync_promptDismissedAt');
+    });
+
+    // Force show prompt
+    await authenticatedPage.evaluate(() => {
+      window.OfflineSyncTestAPI.forceShowSyncPrompt();
+    });
+
+    await expect(authenticatedPage.locator('#sync-prompt-modal')).toBeVisible();
+
+    // Click on backdrop (outside the modal content)
+    await authenticatedPage.locator('#sync-prompt-modal').click({ position: { x: 10, y: 10 } });
+
+    // Modal should close
+    await expect(authenticatedPage.locator('#sync-prompt-modal')).toBeHidden();
+
+    // Verify cooldown was set
+    const cooldownSet = await authenticatedPage.evaluate(() => {
+      return localStorage.getItem('offlineSync_promptDismissedAt') !== null;
+    });
+    expect(cooldownSet).toBe(true);
+  });
+});
+
 test.describe('Manual Offline Mode', () => {
   test.beforeEach(async ({ authenticatedPage, testUser }) => {
     // Set up scenario with cards
