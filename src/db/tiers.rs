@@ -245,6 +245,17 @@ pub fn can_introduce_new_card(conn: &Connection) -> Result<bool> {
     Ok(today_count < limit)
 }
 
+/// Get remaining new card slots for today
+/// Returns u32::MAX if limit is 0 (unlimited), otherwise returns (limit - today_count)
+pub fn get_remaining_new_card_slots(conn: &Connection) -> Result<u32> {
+    let limit = get_daily_new_cards_limit(conn)?;
+    if limit == 0 {
+        return Ok(u32::MAX); // Unlimited
+    }
+    let today_count = count_new_cards_today(conn)?;
+    Ok(limit.saturating_sub(today_count))
+}
+
 // ==================== Session Stats ====================
 
 /// Stats about the current study session
@@ -969,5 +980,111 @@ mod tests {
     fn test_count_new_cards_today_empty() {
         let conn = setup_test_db();
         assert_eq!(count_new_cards_today(&conn).unwrap(), 0);
+    }
+
+    // Helper to create a test database with settings and review_logs tables
+    fn setup_test_db_with_settings() -> Connection {
+        let conn = setup_test_db();
+        conn.execute(
+            "CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT)",
+            [],
+        )
+        .unwrap();
+        conn
+    }
+
+    #[test]
+    fn test_get_remaining_new_card_slots_unlimited() {
+        let conn = setup_test_db_with_settings();
+        // Default daily_new_cards is 20, but if explicitly set to 0, it's unlimited
+        conn.execute(
+            "INSERT INTO settings (key, value) VALUES ('daily_new_cards', '0')",
+            [],
+        )
+        .unwrap();
+
+        assert_eq!(get_remaining_new_card_slots(&conn).unwrap(), u32::MAX);
+    }
+
+    #[test]
+    fn test_get_remaining_new_card_slots_default_limit() {
+        let conn = setup_test_db_with_settings();
+        // No setting = default limit of 20, no cards studied today
+        assert_eq!(get_remaining_new_card_slots(&conn).unwrap(), 20);
+    }
+
+    #[test]
+    fn test_get_remaining_new_card_slots_partial_used() {
+        let conn = setup_test_db_with_settings();
+        let today = chrono::Local::now().format("%Y-%m-%dT%H:%M:%S").to_string();
+
+        // Set limit to 10
+        conn.execute(
+            "INSERT INTO settings (key, value) VALUES ('daily_new_cards', '10')",
+            [],
+        )
+        .unwrap();
+
+        // Study 3 new cards today
+        for card_id in 1..=3 {
+            conn.execute(
+                "INSERT INTO review_logs (card_id, quality, reviewed_at) VALUES (?1, 4, ?2)",
+                params![card_id, today],
+            )
+            .unwrap();
+        }
+
+        // 10 - 3 = 7 remaining
+        assert_eq!(get_remaining_new_card_slots(&conn).unwrap(), 7);
+    }
+
+    #[test]
+    fn test_get_remaining_new_card_slots_at_limit() {
+        let conn = setup_test_db_with_settings();
+        let today = chrono::Local::now().format("%Y-%m-%dT%H:%M:%S").to_string();
+
+        // Set limit to 3
+        conn.execute(
+            "INSERT INTO settings (key, value) VALUES ('daily_new_cards', '3')",
+            [],
+        )
+        .unwrap();
+
+        // Study 3 new cards today (exactly at limit)
+        for card_id in 1..=3 {
+            conn.execute(
+                "INSERT INTO review_logs (card_id, quality, reviewed_at) VALUES (?1, 4, ?2)",
+                params![card_id, today],
+            )
+            .unwrap();
+        }
+
+        // 3 - 3 = 0 remaining
+        assert_eq!(get_remaining_new_card_slots(&conn).unwrap(), 0);
+    }
+
+    #[test]
+    fn test_get_remaining_new_card_slots_over_limit() {
+        let conn = setup_test_db_with_settings();
+        let today = chrono::Local::now().format("%Y-%m-%dT%H:%M:%S").to_string();
+
+        // Set limit to 2
+        conn.execute(
+            "INSERT INTO settings (key, value) VALUES ('daily_new_cards', '2')",
+            [],
+        )
+        .unwrap();
+
+        // Study 5 new cards today (somehow over limit)
+        for card_id in 1..=5 {
+            conn.execute(
+                "INSERT INTO review_logs (card_id, quality, reviewed_at) VALUES (?1, 4, ?2)",
+                params![card_id, today],
+            )
+            .unwrap();
+        }
+
+        // Should saturate at 0, not underflow
+        assert_eq!(get_remaining_new_card_slots(&conn).unwrap(), 0);
     }
 }

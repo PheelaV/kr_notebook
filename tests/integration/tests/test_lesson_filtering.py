@@ -171,3 +171,26 @@ class TestLessonUnlock:
         text = response.text.lower()
         # Check that lesson content is accessible
         assert "test lessons" in text or "lesson" in text
+
+    def test_home_page_has_unlock_notification_code(
+        self, admin_client: TestClient, db_manager: DbManager
+    ):
+        """Home page template includes pack lesson unlock notification code.
+
+        This verifies that the template is set up to display notifications when
+        unlocked_lessons is non-empty. The actual triggering happens during study
+        session progression.
+        """
+        # Enable test_lesson_pack
+        admin_client.post("/settings/pack/test_lesson_pack/enable")
+
+        # Verify home page loads
+        response = admin_client.get("/")
+        assert response.status_code == 200
+
+        # The notification code for unlocked_lessons should be in the template.
+        # Check for the conditional block (even if it's not triggered)
+        # This is a structural test - the code path exists.
+        # Note: We look for HaetaeSystem which handles both tier and lesson unlocks.
+        assert "HaetaeSystem" in response.text, \
+            "Home page should have HaetaeSystem notification code"

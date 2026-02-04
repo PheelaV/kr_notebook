@@ -191,5 +191,20 @@
     }
   });
   {% endif %}
+
+  {% if !unlocked_lessons.is_empty() %}
+  // Show pack lesson unlock notification via HaetaeSystem
+  document.addEventListener('DOMContentLoaded', function() {
+    if (window.HaetaeSystem) {
+      {% for (pack_id, lesson) in &unlocked_lessons %}
+      window.HaetaeSystem.showSpeechBubble(
+        'Lesson {{ lesson }} Unlocked!',
+        'New cards are available to study',
+        4000
+      );
+      {% endfor %}
+    }
+  });
+  {% endif %}
 </script>
 {% endblock %}

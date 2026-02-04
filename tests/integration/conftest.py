@@ -166,6 +166,65 @@ class DbManager:
             )
             conn.commit()
 
+    def unlock_lesson(self, username: str, pack_id: str, lesson: int) -> None:
+        """Unlock a lesson for a user in their learning.db."""
+        import sqlite3
+        from datetime import datetime
+        learning_db = self.data_dir / "users" / username / "learning.db"
+        with sqlite3.connect(learning_db) as conn:
+            conn.execute(
+                """INSERT OR REPLACE INTO pack_lesson_progress (pack_id, lesson, unlocked, unlocked_at)
+                   VALUES (?, ?, 1, ?)""",
+                (pack_id, lesson, datetime.now().isoformat())
+            )
+            conn.commit()
+
+    def enable_pack_for_user(self, username: str, pack_id: str) -> None:
+        """Enable a pack for a user by inserting into enabled_packs."""
+        import sqlite3
+        from datetime import datetime
+        learning_db = self.data_dir / "users" / username / "learning.db"
+        with sqlite3.connect(learning_db) as conn:
+            conn.execute(
+                """INSERT OR REPLACE INTO enabled_packs (pack_id, enabled_at, cards_created, config)
+                   VALUES (?, ?, 1, NULL)""",
+                (pack_id, datetime.now().isoformat())
+            )
+            conn.commit()
+
+    def graduate_pack_lesson_cards(self, username: str, pack_id: str, lesson: int) -> None:
+        """Graduate all cards in a pack lesson for a user.
+
+        Sets learning_step >= 4 to mark cards as graduated.
+        """
+        import sqlite3
+        from datetime import datetime, timedelta
+        learning_db = self.data_dir / "users" / username / "learning.db"
+        app_db = self.data_dir / "app.db"
+
+        with sqlite3.connect(learning_db) as conn:
+            # Attach app.db to get card IDs
+            conn.execute(f"ATTACH DATABASE '{app_db}' AS app")
+
+            # Get card IDs for this pack and lesson
+            cards = conn.execute(
+                """SELECT id FROM app.card_definitions
+                   WHERE pack_id = ? AND lesson = ?""",
+                (pack_id, lesson)
+            ).fetchall()
+
+            # Graduate each card
+            future_review = (datetime.now() + timedelta(days=7)).isoformat()
+            for (card_id,) in cards:
+                conn.execute(
+                    """INSERT OR REPLACE INTO card_progress
+                       (card_id, learning_step, total_reviews, ease_factor, next_review)
+                       VALUES (?, 4, 4, 2.5, ?)""",
+                    (card_id, future_review)
+                )
+
+            conn.commit()
+
 
 class TestClient:
     """HTTP client wrapper with session/cookie management."""
@@ -296,16 +355,39 @@ def test_server(
     """Spawn an isolated test server with ephemeral data directory.
 
     This fixture:
-    1. Creates a fresh test data directory
-    2. Initializes the test environment via db-manager
-    3. Spawns a server with the isolated DATA_DIR and worker-specific port
-    4. Yields the server URL
-    5. Terminates the server and cleans up (unless PRESERVE_TEST_ENV is set)
+    1. Kills any stale processes on the test port (from previous interrupted runs)
+    2. Creates a fresh test data directory
+    3. Initializes the test environment via db-manager
+    4. Spawns a server with the isolated DATA_DIR and worker-specific port
+    5. Yields the server URL
+    6. Terminates the server and cleans up (unless PRESERVE_TEST_ENV is set)
 
     With pytest-xdist, each worker gets its own server on a unique port.
+
+    Environment variables:
+        PRESERVE_TEST_ENV: If set, keeps the test data directory after tests complete.
+                          Useful for debugging test failures.
+                          Example: PRESERVE_TEST_ENV=1 uv run pytest -v
     """
     worker_id = get_worker_id(request)
     port = get_worker_port(worker_id)
+
+    # Kill any stale processes on the test port (from previous interrupted runs)
+    try:
+        lsof_result = subprocess.run(
+            ["lsof", "-ti", f":{port}"],
+            capture_output=True,
+            text=True,
+        )
+        if lsof_result.stdout.strip():
+            for pid in lsof_result.stdout.strip().split('\n'):
+                try:
+                    os.kill(int(pid), signal.SIGTERM)
+                    time.sleep(0.5)  # Give process time to terminate
+                except (ProcessLookupError, ValueError):
+                    pass
+    except FileNotFoundError:
+        pass  # lsof not available on this system
 
     # Clean up any existing test directory
     if test_data_dir.exists():
@@ -320,7 +402,11 @@ def test_server(
         text=True,
     )
     if init_result.returncode != 0:
-        pytest.fail(f"Failed to initialize test environment: {init_result.stderr}")
+        pytest.fail(
+            f"Failed to initialize test environment:\n"
+            f"stdout: {init_result.stdout}\n"
+            f"stderr: {init_result.stderr}"
+        )
 
     # Copy test lesson pack fixture to test environment for lesson filtering tests
     test_pack_src = project_root / "tests" / "integration" / "fixtures" / "test_lesson_pack"
