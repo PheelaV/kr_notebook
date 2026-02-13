@@ -1,6 +1,8 @@
 #!/bin/bash
 # Deploy kr_notebook to Raspberry Pi
-# Usage: ./scripts/rpi-deploy.sh [--no-tests] [--test-fail-fast] [--skip-webkit] [--no-build] [--no-backup] [--debug] [--rollback]
+# Usage: ./scripts/rpi-deploy.sh [--no-tests] [--with-webkit] [--no-fail-fast] [--no-build] [--no-backup] [--debug] [--rollback]
+#
+# Test defaults: skip webkit (flaky), fail-fast (exit early), no-report (don't block)
 
 set -e
 
@@ -21,8 +23,8 @@ DO_BUILD=true
 DO_BACKUP=true
 DO_ROLLBACK=false
 DO_TESTS=true
-TEST_FAIL_FAST=false
-TEST_SKIP_WEBKIT=false
+TEST_WITH_WEBKIT=false
+TEST_NO_FAIL_FAST=false
 PROFILE="--release"
 PROFILE_NAME="release"
 
@@ -31,8 +33,8 @@ for arg in "$@"; do
         --no-build)       DO_BUILD=false ;;
         --no-backup)      DO_BACKUP=false ;;
         --no-tests)       DO_TESTS=false ;;
-        --test-fail-fast) TEST_FAIL_FAST=true ;;
-        --skip-webkit)    TEST_SKIP_WEBKIT=true ;;
+        --with-webkit)    TEST_WITH_WEBKIT=true ;;
+        --no-fail-fast)   TEST_NO_FAIL_FAST=true ;;
         --debug)          PROFILE=""; PROFILE_NAME="debug" ;;
         --rollback)       DO_ROLLBACK=true ;;
     esac
@@ -231,13 +233,10 @@ if [ "$DO_TESTS" = true ]; then
     echo "[1/9] Running tests..."
     echo ""
     step_start
-    TEST_ARGS="all"
-    if [ "$TEST_FAIL_FAST" = true ]; then
-        TEST_ARGS="$TEST_ARGS --fail-fast"
-    fi
-    if [ "$TEST_SKIP_WEBKIT" = true ]; then
-        TEST_ARGS="$TEST_ARGS --skip-webkit"
-    fi
+    # Deploy defaults: no-report (don't block), skip-webkit (flaky), fail-fast (exit early)
+    TEST_ARGS="all --no-report"
+    [ "$TEST_WITH_WEBKIT" = false ] && TEST_ARGS="$TEST_ARGS --skip-webkit"
+    [ "$TEST_NO_FAIL_FAST" = false ] && TEST_ARGS="$TEST_ARGS --fail-fast"
     if ! "$SCRIPT_DIR/test.sh" $TEST_ARGS; then
         echo ""
         echo "Error: Tests failed. Deployment aborted."

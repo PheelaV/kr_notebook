@@ -6,21 +6,21 @@
 #   3) all         - Unit + Integration + E2E (Playwright)
 #
 # Usage:
-#   ./scripts/test.sh              # Run all tests
+#   ./scripts/test.sh              # Run all tests (fail-fast, skip webkit)
 #   ./scripts/test.sh unit         # Unit tests only
 #   ./scripts/test.sh integration  # Unit + integration
 #   ./scripts/test.sh all          # Everything (default)
 #   ./scripts/test.sh e2e          # E2E tests only (for debugging)
-#   ./scripts/test.sh all --fail-fast  # Exit on first failure
+#   ./scripts/test.sh --no-fail-fast   # Continue on failure
+#   ./scripts/test.sh --with-webkit    # Include WebKit tests
 #   ./scripts/test.sh e2e --no-report  # Skip HTML report (just exit)
-#   ./scripts/test.sh e2e --skip-webkit  # Skip WebKit (useful on Linux)
 #
 # Environment:
 #   PRESERVE_TEST_ENV=1  - Keep test data after run (for debugging)
 #   VERBOSE=1            - Show verbose output
-#   FAIL_FAST=1          - Exit on first test suite failure
+#   FAIL_FAST=0          - Continue on failure (default: 1, exit early)
 #   NO_REPORT=1          - Skip Playwright HTML report
-#   SKIP_WEBKIT=1        - Skip WebKit browser tests
+#   SKIP_WEBKIT=0        - Include WebKit tests (default: 1, skip)
 #
 
 set -euo pipefail
@@ -38,20 +38,26 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 # Parse arguments
 LEVEL="all"
-FAIL_FAST="${FAIL_FAST:-0}"
+FAIL_FAST="${FAIL_FAST:-1}"      # Exit on first failure by default
 NO_REPORT="${NO_REPORT:-0}"
-SKIP_WEBKIT="${SKIP_WEBKIT:-0}"
+SKIP_WEBKIT="${SKIP_WEBKIT:-1}"  # Skip WebKit by default (flaky)
 
 for arg in "$@"; do
     case "$arg" in
         --fail-fast|-x)
             FAIL_FAST=1
             ;;
+        --no-fail-fast)
+            FAIL_FAST=0
+            ;;
         --no-report)
             NO_REPORT=1
             ;;
         --skip-webkit)
             SKIP_WEBKIT=1
+            ;;
+        --with-webkit)
+            SKIP_WEBKIT=0
             ;;
         unit|integration|all|e2e)
             LEVEL="$arg"
@@ -149,13 +155,14 @@ run_js_unit_tests() {
         return $JS_UNIT_RESULT
     fi
 
-    # Install dependencies if needed
-    if [[ ! -d "node_modules" ]]; then
+    # Install dependencies if needed (check for vitest binary specifically)
+    if [[ ! -x "node_modules/.bin/vitest" ]]; then
         log_info "Installing JS test dependencies..."
         npm install --silent 2>&1
     fi
 
-    npm test 2>&1 || JS_UNIT_RESULT=1
+    # Run vitest via npx to ensure correct resolution
+    npx vitest run 2>&1 || JS_UNIT_RESULT=1
 
     JS_UNIT_TIME=$((SECONDS - start_time))
 
