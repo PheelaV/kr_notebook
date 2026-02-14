@@ -944,6 +944,70 @@ pub fn get_available_due_count_filtered(
     conn.query_row(&query, params![now], |row| row.get(0))
 }
 
+/// Get due card count with study filter applied, capping new cards at a limit
+///
+/// This function returns a more accurate count that reflects what users can actually study:
+/// - All due cards with total_reviews > 0 (review cards) - no limit
+/// - New cards (total_reviews == 0) capped at `remaining_new_slots`
+///
+/// This prevents showing misleading counts like "78 due" when daily limit only allows 5 new cards.
+pub fn get_due_count_with_new_limit(
+    conn: &Connection,
+    app_conn: &Connection,
+    user_id: i64,
+    filter: &StudyFilterMode,
+    remaining_new_slots: u32,
+) -> Result<i64> {
+    #[cfg(feature = "profiling")]
+    crate::profile_log!(EventType::DbQuery {
+        operation: "due_count_with_new_limit".into(),
+        table: "cards".into(),
+    });
+
+    let now = Utc::now().to_rfc3339();
+    let (filter_clause, _, skip_tier_filter) = build_filter_where_clause(conn, app_conn, user_id, filter)?;
+
+    let tier_clause = if skip_tier_filter {
+        String::new()
+    } else {
+        let effective_tiers = get_effective_tiers(conn)?;
+        if effective_tiers.is_empty() {
+            return Ok(0);
+        }
+        let tier_list = effective_tiers
+            .iter()
+            .map(|t| t.to_string())
+            .collect::<Vec<_>>()
+            .join(",");
+        format!("AND cd.tier IN ({})", tier_list)
+    };
+
+    // Count review cards (already started, no limit)
+    let review_query = format!(
+        r#"SELECT COUNT(*) {}
+        WHERE COALESCE(cp.next_review, datetime('now')) <= ?1
+        AND COALESCE(cp.total_reviews, 0) > 0
+        {} {}"#,
+        CARD_FROM, tier_clause, filter_clause
+    );
+    let review_count: i64 = conn.query_row(&review_query, params![now], |row| row.get(0))?;
+
+    // Count new cards (never reviewed), capped at remaining_new_slots
+    let new_query = format!(
+        r#"SELECT COUNT(*) {}
+        WHERE COALESCE(cp.next_review, datetime('now')) <= ?1
+        AND COALESCE(cp.total_reviews, 0) = 0
+        {} {}"#,
+        CARD_FROM, tier_clause, filter_clause
+    );
+    let new_count: i64 = conn.query_row(&new_query, params![now], |row| row.get(0))?;
+
+    // Cap new cards at remaining slots
+    let capped_new = std::cmp::min(new_count, remaining_new_slots as i64);
+
+    Ok(review_count + capped_new)
+}
+
 /// Get due cards interleaved with study filter applied
 pub fn get_due_cards_interleaved_filtered(
     conn: &Connection,

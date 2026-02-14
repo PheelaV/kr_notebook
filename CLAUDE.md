@@ -87,6 +87,25 @@ docker compose up -d                              # Start app
 docker compose run --rm py-tools kr-scraper lesson1  # Run Python tools
 ```
 
+### Debugging with Production Data
+
+To investigate bugs with real user data, fetch the database from production and run locally:
+
+```bash
+# 1. Fetch production data (from Raspberry Pi)
+scp -r pi@rpi:/path/to/data ./MY_LOCAL_debug/
+
+# 2. Run server with production data
+DATA_DIR=./MY_LOCAL_debug cargo run
+
+# 3. Or use db-manager to inspect
+cd py_scripts
+uv run db-manager info --user <username> --data-dir ../MY_LOCAL_debug
+uv run db-manager list-users --data-dir ../MY_LOCAL_debug
+```
+
+The `MY_LOCAL_*` prefix is gitignored. This workflow preserves user privacy (data stays local) while enabling reproduction of reported bugs.
+
 ## Architecture
 
 ### Dual-Database Design

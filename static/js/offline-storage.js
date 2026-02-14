@@ -397,6 +397,64 @@ const OfflineStorage = (function() {
     };
   }
 
+  // Session progress persistence (uses localStorage for synchronous save on beforeunload)
+  const PROGRESS_KEY = 'offlineStudy_sessionProgress';
+
+  /**
+   * Save session progress to localStorage.
+   * Called on beforeunload/pagehide to persist counters across navigation.
+   * @param {Object} progress - { sessionId, totalReviewed, correctCount, cardQueueIds, reinforcementQueueIds }
+   */
+  function saveSessionProgress(progress) {
+    try {
+      var data = {
+        ...progress,
+        savedAt: Date.now()
+      };
+      localStorage.setItem(PROGRESS_KEY, JSON.stringify(data));
+      console.log('[OfflineStorage] Session progress saved:', progress.totalReviewed, 'reviewed');
+    } catch (e) {
+      console.warn('[OfflineStorage] Failed to save session progress:', e);
+    }
+  }
+
+  /**
+   * Get saved session progress from localStorage.
+   * @returns {Object|null} Saved progress or null if none/expired
+   */
+  function getSessionProgress() {
+    try {
+      var data = localStorage.getItem(PROGRESS_KEY);
+      if (!data) return null;
+
+      var progress = JSON.parse(data);
+
+      // Expire progress after 1 hour (session likely stale)
+      var ageMs = Date.now() - progress.savedAt;
+      if (ageMs > 60 * 60 * 1000) {
+        clearSessionProgress();
+        return null;
+      }
+
+      return progress;
+    } catch (e) {
+      console.warn('[OfflineStorage] Failed to get session progress:', e);
+      return null;
+    }
+  }
+
+  /**
+   * Clear saved session progress.
+   * Called after sync or session complete.
+   */
+  function clearSessionProgress() {
+    try {
+      localStorage.removeItem(PROGRESS_KEY);
+    } catch (e) {
+      // Ignore errors
+    }
+  }
+
   // Public API
   return {
     openDatabase: openDatabase,
@@ -411,7 +469,11 @@ const OfflineStorage = (function() {
     clearAll: clearAll,
     clearSyncedResponses: clearSyncedResponses,
     updateCardState: updateCardState,
-    prepareSyncPayload: prepareSyncPayload
+    prepareSyncPayload: prepareSyncPayload,
+    // Session progress persistence
+    saveSessionProgress: saveSessionProgress,
+    getSessionProgress: getSessionProgress,
+    clearSessionProgress: clearSessionProgress
   };
 })();
 

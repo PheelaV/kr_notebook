@@ -25,8 +25,9 @@ const CARDS_PER_MINUTE: f64 = 1.5;
 
 #[derive(Debug, Deserialize)]
 pub struct DownloadSessionRequest {
-    /// Desired session duration in minutes
-    pub duration_minutes: u32,
+    /// Desired session duration in minutes. If omitted or 0, uses saved user preference.
+    #[serde(default)]
+    pub duration_minutes: Option<u32>,
     /// Filter mode: "all", "hangul", "pack:X", "pack:X:lesson:N"
     #[serde(default = "default_filter")]
     pub filter_mode: String,
@@ -106,8 +107,18 @@ pub async fn download_session(
     let focus_mode = db::is_focus_mode_enabled(&conn)
         .log_warn_default("Failed to get focus_mode");
 
-    // Calculate target card count
-    let target_cards = (request.duration_minutes as f64 * CARDS_PER_MINUTE).ceil() as usize;
+    // Calculate target card count, falling back to saved preference if not specified
+    let duration_minutes = request
+        .duration_minutes
+        .filter(|&d| d > 0)
+        .unwrap_or_else(|| {
+            db::get_setting(&conn, "offline_session_duration")
+                .ok()
+                .flatten()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(30u32)
+        });
+    let target_cards = (duration_minutes as f64 * CARDS_PER_MINUTE).ceil() as usize;
 
     // Parse filter mode
     let filter = parse_filter_mode(&request.filter_mode);

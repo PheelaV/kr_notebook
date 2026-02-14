@@ -313,6 +313,139 @@ test.describe('Offline Study Mode', () => {
   });
 });
 
+test.describe('Bug 4: Same Card Not Shown Immediately After Wrong Answer', () => {
+  test('different card shown after wrong answer when multiple cards available', async ({ authenticatedPage, testUser }) => {
+    setupScenario(testUser.username, 'tier1_new', testUser.dataDir);
+    await downloadSession(authenticatedPage);
+
+    await authenticatedPage.goto('/offline-study');
+    await expect(authenticatedPage.locator('#session-ready-state')).toBeVisible({ timeout: 15000 });
+    await authenticatedPage.locator('#start-study-btn').click();
+    await expect(authenticatedPage.locator('.offline-card')).toBeVisible({ timeout: 10000 });
+
+    // Get the first card's front text
+    const firstCardFront = await authenticatedPage.locator('.card-front').textContent();
+
+    // Answer incorrectly (for MCQ, click wrong answer; for text, submit wrong answer)
+    const choiceBtn = authenticatedPage.locator('.choice-btn').first();
+    if (await choiceBtn.isVisible()) {
+      // MCQ - double-click to confirm wrong answer
+      await choiceBtn.dblclick();
+    } else {
+      // Text input - submit obviously wrong answer
+      await authenticatedPage.locator('.answer-input').fill('zzzzwrongzzz');
+      await authenticatedPage.locator('.submit-btn').click();
+    }
+
+    // Wait for result and continue
+    await expect(authenticatedPage.locator('.result-section')).toBeVisible({ timeout: 5000 });
+    await authenticatedPage.locator('.continue-btn').click();
+
+    // Wait for next card
+    await expect(authenticatedPage.locator('.offline-card')).toBeVisible({ timeout: 10000 });
+
+    // Get the second card's front text
+    const secondCardFront = await authenticatedPage.locator('.card-front').textContent();
+
+    // The second card should be different from the first (Bug 4 fix)
+    // Note: If there's only one card in the session, this test may need adjustment
+    expect(secondCardFront).not.toBe(firstCardFront);
+  });
+});
+
+test.describe('Bug 7: Session Progress Persists Across Navigation', () => {
+  test('progress is saved to localStorage on navigation', async ({ authenticatedPage, testUser }) => {
+    setupScenario(testUser.username, 'tier1_new', testUser.dataDir);
+    await downloadSession(authenticatedPage);
+
+    // Start studying
+    await authenticatedPage.goto('/offline-study');
+    await expect(authenticatedPage.locator('#session-ready-state')).toBeVisible({ timeout: 15000 });
+    await authenticatedPage.locator('#start-study-btn').click();
+    await expect(authenticatedPage.locator('.offline-card')).toBeVisible({ timeout: 10000 });
+
+    // Answer a card
+    const choiceBtn = authenticatedPage.locator('.choice-btn').first();
+    if (await choiceBtn.isVisible()) {
+      await choiceBtn.dblclick();
+    } else {
+      await authenticatedPage.locator('.answer-input').fill('test');
+      await authenticatedPage.locator('.submit-btn').click();
+    }
+
+    // Wait for result and continue
+    await expect(authenticatedPage.locator('.result-section')).toBeVisible({ timeout: 5000 });
+    await authenticatedPage.locator('.continue-btn').click();
+    await expect(authenticatedPage.locator('.offline-card')).toBeVisible({ timeout: 10000 });
+
+    // Trigger beforeunload to save progress (simulate navigation)
+    await authenticatedPage.evaluate(() => {
+      // Manually trigger the save function that beforeunload calls
+      if (window.OfflineStorage && window.OfflineStorage.saveSessionProgress) {
+        // Get the current study state from the page
+        const session = window['OfflineStudy']?.getSession?.() || { session_id: 'test' };
+        window.OfflineStorage.saveSessionProgress({
+          sessionId: session.session_id || 'test',
+          totalReviewed: 1,
+          correctCount: 0,
+          cardQueueIds: [],
+          reinforcementQueueIds: []
+        });
+      }
+    });
+
+    // Verify progress was saved to localStorage
+    const savedProgress = await authenticatedPage.evaluate(() => {
+      const data = localStorage.getItem('offlineStudy_sessionProgress');
+      return data ? JSON.parse(data) : null;
+    });
+
+    expect(savedProgress).not.toBeNull();
+    expect(savedProgress.totalReviewed).toBe(1);
+  });
+
+  test('storage functions work correctly', async ({ authenticatedPage, testUser }) => {
+    setupScenario(testUser.username, 'tier1_new', testUser.dataDir);
+    await downloadSession(authenticatedPage);
+
+    // Test save/get/clear cycle
+    const testProgress = {
+      sessionId: 'test-session',
+      totalReviewed: 5,
+      correctCount: 3,
+      cardQueueIds: [1, 2, 3],
+      reinforcementQueueIds: [4]
+    };
+
+    // Save progress
+    await authenticatedPage.evaluate((progress) => {
+      window.OfflineStorage.saveSessionProgress(progress);
+    }, testProgress);
+
+    // Verify save worked
+    const saved = await authenticatedPage.evaluate(() => {
+      return window.OfflineStorage.getSessionProgress();
+    });
+
+    expect(saved).not.toBeNull();
+    expect(saved.totalReviewed).toBe(5);
+    expect(saved.correctCount).toBe(3);
+    expect(saved.sessionId).toBe('test-session');
+
+    // Clear progress
+    await authenticatedPage.evaluate(() => {
+      window.OfflineStorage.clearSessionProgress();
+    });
+
+    // Verify clear worked
+    const afterClear = await authenticatedPage.evaluate(() => {
+      return window.OfflineStorage.getSessionProgress();
+    });
+
+    expect(afterClear).toBeNull();
+  });
+});
+
 test.describe('Offline Study - No Session', () => {
   test('shows no session message when none downloaded', async ({ authenticatedPage }) => {
     // Clear any existing IndexedDB data

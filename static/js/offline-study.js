@@ -33,6 +33,7 @@ const OfflineStudy = (function() {
   // State for "Show Last Card" feature
   let lastCardData = null; // { card, userAnswer, isCorrect, validation, preState }
   let lastCardMainAnswer = null; // For sibling exclusion
+  let lastShownCardId = null; // Prevent showing same card immediately after wrong answer
 
   // State for MCQ double-click confirmation (matches interactive mode)
   let selectedChoice = null;
@@ -88,16 +89,81 @@ const OfflineStudy = (function() {
 
   /**
    * Initialize card queues from session.
+   * Restores progress if returning from navigation away.
    */
   function initializeQueues() {
-    // Start with all cards, prioritized by due date
-    cardQueue = session.cards.slice().sort(function(a, b) {
-      return new Date(a.next_review) - new Date(b.next_review);
+    // Check for saved progress from previous navigation
+    var savedProgress = window.OfflineStorage.getSessionProgress();
+
+    if (savedProgress && savedProgress.sessionId === session.session_id) {
+      // Restore progress - rebuild queues from saved card IDs
+      console.log('[OfflineStudy] Restoring progress:', savedProgress.totalReviewed, 'reviewed');
+
+      var cardMap = {};
+      session.cards.forEach(function(card) {
+        cardMap[card.card_id] = card;
+      });
+
+      // Restore main queue (cards not yet reviewed)
+      cardQueue = (savedProgress.cardQueueIds || [])
+        .map(function(id) { return cardMap[id]; })
+        .filter(function(c) { return c !== undefined; });
+
+      // Restore reinforcement queue
+      reinforcementQueue = (savedProgress.reinforcementQueueIds || [])
+        .map(function(id) { return cardMap[id]; })
+        .filter(function(c) { return c !== undefined; });
+
+      // Restore counters
+      totalReviewed = savedProgress.totalReviewed || 0;
+      correctCount = savedProgress.correctCount || 0;
+      cardsSinceReinforcement = savedProgress.cardsSinceReinforcement || 0;
+
+      // Clear saved progress (now restored)
+      window.OfflineStorage.clearSessionProgress();
+    } else {
+      // Fresh start - no saved progress or different session
+      cardQueue = session.cards.slice().sort(function(a, b) {
+        return new Date(a.next_review) - new Date(b.next_review);
+      });
+      reinforcementQueue = [];
+      totalReviewed = 0;
+      correctCount = 0;
+      cardsSinceReinforcement = 0;
+
+      // Clear any stale progress from different session
+      window.OfflineStorage.clearSessionProgress();
+    }
+
+    lastShownCardId = null; // Reset to allow any card on first draw
+  }
+
+  /**
+   * Save current session progress to localStorage.
+   * Called on beforeunload/pagehide to persist counters across navigation.
+   */
+  function saveProgress() {
+    if (!session || !isStudying) return;
+
+    // Save card IDs in queues so we can restore queue state
+    var cardQueueIds = cardQueue.map(function(c) { return c.card_id; });
+    var reinforcementQueueIds = reinforcementQueue.map(function(c) { return c.card_id; });
+
+    window.OfflineStorage.saveSessionProgress({
+      sessionId: session.session_id,
+      totalReviewed: totalReviewed,
+      correctCount: correctCount,
+      cardQueueIds: cardQueueIds,
+      reinforcementQueueIds: reinforcementQueueIds,
+      cardsSinceReinforcement: cardsSinceReinforcement
     });
-    reinforcementQueue = [];
-    totalReviewed = 0;
-    correctCount = 0;
-    cardsSinceReinforcement = 0;
+  }
+
+  /**
+   * Handle page unload - save progress before navigating away.
+   */
+  function handleBeforeUnload() {
+    saveProgress();
   }
 
   /**
@@ -119,6 +185,12 @@ const OfflineStudy = (function() {
     window.removeEventListener('offline', handleConnectivityChange);
     window.addEventListener('online', handleConnectivityChange);
     window.addEventListener('offline', handleConnectivityChange);
+
+    // Set up progress persistence on navigation away
+    window.removeEventListener('beforeunload', handleBeforeUnload);
+    window.removeEventListener('pagehide', handleBeforeUnload);
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    window.addEventListener('pagehide', handleBeforeUnload);
 
     showNextCard();
   }
@@ -254,29 +326,47 @@ const OfflineStudy = (function() {
 
   /**
    * Get a non-sibling card from a queue, moving siblings to end.
+   * Also excludes the card that was just shown to prevent immediate repetition.
    * @param {Array} queue - Queue to search
-   * @returns {Object|null} Non-sibling card or first card if all are siblings
+   * @param {number|null} excludeCardId - Card ID to exclude (the one just shown)
+   * @returns {Object|null} Valid card or null if only excluded card available
    */
-  function getNonSiblingFromQueue(queue) {
+  function getNonSiblingFromQueue(queue, excludeCardId) {
     if (queue.length === 0) return null;
-    if (!lastCardMainAnswer) return queue.shift();
 
-    // Find first non-sibling card
+    // Find first valid card (not excluded, not sibling)
     for (let i = 0; i < queue.length; i++) {
-      if (!isSiblingOfLastCard(queue[i])) {
+      var card = queue[i];
+      // Skip if this is the exact same card that was just shown
+      if (excludeCardId !== null && card.card_id === excludeCardId) {
+        continue;
+      }
+      // Skip siblings (different cards with related content)
+      if (lastCardMainAnswer && isSiblingOfLastCard(card)) {
+        continue;
+      }
+      // Found a valid card
+      return queue.splice(i, 1)[0];
+    }
+
+    // All cards are siblings or excluded - return first non-excluded
+    for (let i = 0; i < queue.length; i++) {
+      if (excludeCardId === null || queue[i].card_id !== excludeCardId) {
+        console.log('[OfflineStudy] All cards are siblings, returning first available');
         return queue.splice(i, 1)[0];
       }
     }
 
-    // All cards are siblings - return first one anyway (better than stuck)
-    console.log('[OfflineStudy] All cards are siblings, returning first available');
-    return queue.shift();
+    // All cards are the excluded card - return null (prevents immediate repeat)
+    console.log('[OfflineStudy] Only excluded card available, returning null');
+    return null;
   }
 
   /**
    * Get the next card to study.
    * Interleaves reinforcement cards - shows one every 3 regular cards.
    * Applies sibling exclusion to avoid showing related cards consecutively.
+   * Prevents showing the same card immediately after a wrong answer.
    * @returns {Object|null} Next card or null if done
    */
   function getNextCard() {
@@ -285,17 +375,17 @@ const OfflineStudy = (function() {
     // If main queue is empty, use reinforcement queue
     if (cardQueue.length === 0 && reinforcementQueue.length > 0) {
       cardsSinceReinforcement = 0;
-      nextCard = getNonSiblingFromQueue(reinforcementQueue);
+      nextCard = getNonSiblingFromQueue(reinforcementQueue, lastShownCardId);
     }
     // If reinforcement queue has cards and we've done 3+ cards since last one, interleave
     else if (reinforcementQueue.length > 0 && cardsSinceReinforcement >= 3) {
       cardsSinceReinforcement = 0;
-      nextCard = getNonSiblingFromQueue(reinforcementQueue);
+      nextCard = getNonSiblingFromQueue(reinforcementQueue, lastShownCardId);
     }
     // Main queue
     else if (cardQueue.length > 0) {
       cardsSinceReinforcement++;
-      nextCard = getNonSiblingFromQueue(cardQueue);
+      nextCard = getNonSiblingFromQueue(cardQueue, lastShownCardId);
     }
 
     return nextCard;
@@ -329,6 +419,9 @@ const OfflineStudy = (function() {
       return;
     }
 
+    // Track which card was just shown to prevent immediate repeat
+    lastShownCardId = currentCard.card_id;
+
     renderCard(currentCard);
   }
 
@@ -348,7 +441,7 @@ const OfflineStudy = (function() {
 
     // Update content
     document.getElementById('last-card-front').textContent = card.front;
-    document.getElementById('last-card-answer').textContent = card.back;
+    document.getElementById('last-card-answer').innerHTML = formatAnswerDisplay(card.back);
 
     // Show user's wrong answer if incorrect
     const userAnswerEl = document.getElementById('last-card-user-answer');
@@ -878,7 +971,11 @@ const OfflineStudy = (function() {
       <div class="result-display ${resultClass} text-center">
         ${resultIcon}
         <div class="text-xl font-bold mt-2">${resultText}</div>
-        ${!isCorrect ? `<div class="correct-answer mt-2">Correct answer: <strong>${escapeHtml(currentCard.back)}</strong></div>` : ''}
+        <div class="text-xl text-gray-600 dark:text-gray-300 mt-2">
+          ${!isCorrect ? `<span class="text-gray-500 dark:text-gray-400">You answered: </span><span class="text-red-500">${escapeHtml(lastUserAnswer)}</span><br>` : ''}
+          <span class="text-gray-500 dark:text-gray-400">Correct answer: </span>
+          <span class="text-indigo-600 dark:text-indigo-400 font-semibold">${formatAnswerDisplay(currentCard.back)}</span>
+        </div>
         ${descriptionHtml}
       </div>
 
@@ -899,18 +996,22 @@ const OfflineStudy = (function() {
         <p class="text-sm text-gray-600 dark:text-gray-400 mb-2">How would you rate your answer?</p>
         <div class="flex flex-wrap justify-center gap-2">
           <button type="button" onclick="OfflineStudy.submitOverride(0)"
+                  title="Reset card to beginning. You'll see it again soon."
                   class="px-3 py-1.5 text-sm bg-red-100 hover:bg-red-200 dark:bg-red-900/30 dark:hover:bg-red-900/50 text-red-800 dark:text-red-300 rounded">
             Wrong
           </button>
           <button type="button" onclick="OfflineStudy.submitOverride(2)"
+                  title="Correct but difficult. Shorter interval, stays at current step."
                   class="px-3 py-1.5 text-sm bg-yellow-100 hover:bg-yellow-200 dark:bg-yellow-900/30 dark:hover:bg-yellow-900/50 text-yellow-800 dark:text-yellow-300 rounded">
             Hard
           </button>
           <button type="button" onclick="OfflineStudy.submitOverride(4)"
+                  title="Your answer was actually right."
                   class="px-3 py-1.5 text-sm bg-green-100 hover:bg-green-200 dark:bg-green-900/30 dark:hover:bg-green-900/50 text-green-800 dark:text-green-300 rounded">
             Correct
           </button>
           <button type="button" onclick="OfflineStudy.submitOverride(5)"
+                  title="Too easy. Push further out."
                   class="px-3 py-1.5 text-sm bg-blue-100 hover:bg-blue-200 dark:bg-blue-900/30 dark:hover:bg-blue-900/50 text-blue-800 dark:text-blue-300 rounded">
             Easy
           </button>
@@ -1062,6 +1163,9 @@ const OfflineStudy = (function() {
     isStudying = false;
     document.removeEventListener('keydown', handleKeyDown);
 
+    // Clear saved progress - session is complete
+    window.OfflineStorage.clearSessionProgress();
+
     if (!elements.cardContainer) return;
 
     const accuracy = totalReviewed > 0 ? Math.round((correctCount / totalReviewed) * 100) : 0;
@@ -1114,6 +1218,87 @@ const OfflineStudy = (function() {
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#039;');
+  }
+
+  /**
+   * Format answer display with visual markers for grammar syntax.
+   * Mirrors the Rust format_answer_display filter (src/filters.rs).
+   *
+   * Transforms:
+   * - [a, b, c] → styled variant marker
+   * - word(s) → styled optional suffix
+   * - (info) (space before) → styled info marker
+   * - <context> → styled disambiguation marker
+   *
+   * @param {string} answer - Raw answer string
+   * @returns {string} HTML string with styled markers
+   */
+  function formatAnswerDisplay(answer) {
+    if (!answer) return '';
+    var result = '';
+    var chars = Array.from(answer);
+    var i = 0;
+
+    function findClosing(start, open, close) {
+      var depth = 0;
+      for (var j = start; j < chars.length; j++) {
+        if (chars[j] === open) depth++;
+        else if (chars[j] === close) {
+          depth--;
+          if (depth === 0) return j;
+        }
+      }
+      return -1;
+    }
+
+    while (i < chars.length) {
+      if (chars[i] === '[') {
+        var end = findClosing(i, '[', ']');
+        if (end !== -1) {
+          var content = escapeHtml(chars.slice(i, end + 1).join(''));
+          result += '<span class="variant-marker" title="Acceptable variants">' + content + '</span>';
+          i = end + 1;
+        } else {
+          result += escapeHtml(chars[i]);
+          i++;
+        }
+      } else if (chars[i] === '<') {
+        var end = findClosing(i, '<', '>');
+        if (end !== -1) {
+          var content = escapeHtml(chars.slice(i + 1, end).join(''));
+          result += '<span class="disambig-marker" title="Disambiguation">&lt;' + content + '&gt;</span>';
+          i = end + 1;
+        } else {
+          result += '&lt;';
+          i++;
+        }
+      } else if (chars[i] === '(') {
+        var end = findClosing(i, '(', ')');
+        if (end !== -1) {
+          var content = escapeHtml(chars.slice(i, end + 1).join(''));
+          var hasSpaceBefore = i > 0 && chars[i - 1] === ' ';
+          if (hasSpaceBefore) {
+            result += '<span class="info-marker" title="Additional info">' + content + '</span>';
+          } else if (i > 0) {
+            result += '<span class="variant-marker" title="Optional suffix">' + content + '</span>';
+          } else {
+            result += '<span class="info-marker" title="Additional info">' + content + '</span>';
+          }
+          i = end + 1;
+        } else {
+          result += escapeHtml(chars[i]);
+          i++;
+        }
+      } else if (chars[i] === '>') {
+        result += '&gt;';
+        i++;
+      } else {
+        result += escapeHtml(chars[i]);
+        i++;
+      }
+    }
+
+    return result;
   }
 
   /**

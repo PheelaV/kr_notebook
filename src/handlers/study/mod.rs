@@ -219,8 +219,9 @@ pub(crate) fn get_available_study_cards_filtered(
   let accelerated =
     db::get_all_tiers_unlocked(conn).log_warn_default("Failed to get accelerated mode setting");
 
-  // Check if we can introduce new cards (daily limit)
-  let can_add_new = db::can_introduce_new_card(conn).unwrap_or(true);
+  // Check if we can introduce new cards (daily limit + freeze toggle)
+  let frozen = db::is_introductions_frozen(conn).unwrap_or(false);
+  let can_add_new = !frozen && db::can_introduce_new_card(conn).unwrap_or(true);
 
   let mut cards = Vec::new();
 

@@ -602,7 +602,7 @@ fn calculate_scheduling(
 
     // In learning phase (step 0-3): use learning steps
     if card_state.learning_step < GRADUATING_STEP {
-        return calculate_learning_phase(card_state, is_correct, now, learning_steps);
+        return calculate_learning_phase(card_state, quality, is_correct, now, learning_steps);
     }
 
     // Graduated but failed: return to learning phase
@@ -616,6 +616,7 @@ fn calculate_scheduling(
 
 fn calculate_learning_phase(
     card_state: &CardState,
+    quality: u8,
     is_correct: bool,
     now: DateTime<Utc>,
     learning_steps: &[i64; 4],
@@ -627,6 +628,22 @@ fn calculate_learning_phase(
             stability: card_state.stability.unwrap_or(0.0),
             difficulty: card_state.difficulty.unwrap_or(5.0),
             learning_step: 0,
+            repetitions: 0,
+            state: "Learning".to_string(),
+        };
+    }
+
+    // Hard (quality=2) in learning phase: stay at current step, don't advance
+    // This gives the card another chance at the same interval
+    if quality == 2 {
+        let current_step = card_state.learning_step as usize;
+        let minutes = learning_steps[current_step];
+        let next_review = now + chrono::Duration::minutes(minutes);
+        return SchedulingResult {
+            next_review: next_review.to_rfc3339(),
+            stability: card_state.stability.unwrap_or(0.0),
+            difficulty: card_state.difficulty.unwrap_or(5.0),
+            learning_step: card_state.learning_step,
             repetitions: 0,
             state: "Learning".to_string(),
         };
@@ -943,6 +960,38 @@ mod tests {
 
         let result = calculate_scheduling(&card_state, 4, 0.9, false);
         assert_eq!(result.learning_step, 1);
+        assert_eq!(result.state, "Learning");
+    }
+
+    #[test]
+    fn test_scheduling_learning_phase_hard_stays_at_step() {
+        // Hard (quality=2) in learning phase should NOT advance the step
+        let card_state = CardState {
+            learning_step: 1,
+            stability: None,
+            difficulty: None,
+            repetitions: 0,
+            next_review: Utc::now().to_rfc3339(),
+        };
+
+        let result = calculate_scheduling(&card_state, 2, 0.9, false);
+        assert_eq!(result.learning_step, 1, "Hard should stay at current step");
+        assert_eq!(result.state, "Learning");
+    }
+
+    #[test]
+    fn test_scheduling_learning_phase_hard_at_step_0() {
+        // Hard at step 0 should stay at step 0
+        let card_state = CardState {
+            learning_step: 0,
+            stability: None,
+            difficulty: None,
+            repetitions: 0,
+            next_review: Utc::now().to_rfc3339(),
+        };
+
+        let result = calculate_scheduling(&card_state, 2, 0.9, false);
+        assert_eq!(result.learning_step, 0, "Hard at step 0 should stay at step 0");
         assert_eq!(result.state, "Learning");
     }
 

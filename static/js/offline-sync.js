@@ -25,6 +25,10 @@ const OfflineSync = (function() {
   const DEFAULT_SESSION_MINUTES = 30;
   // Wait for connection to be stable before prompting (configurable for tests)
   let STABILITY_DELAY_MS = 5000;
+  // Cooldown before showing sync prompt again after dismissal (15 minutes)
+  const PROMPT_COOLDOWN_MS = 15 * 60 * 1000;
+  // localStorage key for tracking prompt dismissal
+  const PROMPT_DISMISSAL_KEY = 'offlineSync_promptDismissedAt';
 
   /**
    * Check if we're online (backend reachable).
@@ -107,7 +111,6 @@ const OfflineSync = (function() {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          duration_minutes: DEFAULT_SESSION_MINUTES,
           filter_mode: 'all'
         }),
         credentials: 'same-origin'
@@ -340,6 +343,11 @@ const OfflineSync = (function() {
       var skippedInfo = result.skipped_count > 0
         ? `<p class="text-sm text-gray-500 dark:text-gray-400">${result.skipped_count} skipped (already reviewed online)</p>`
         : '';
+      // Clarify cards vs responses when they differ (explains deduplication)
+      var cardWord = result.synced_count === 1 ? 'card' : 'cards';
+      var countText = result.total_count > result.synced_count
+        ? `${result.synced_count} ${cardWord} synced`
+        : `Synced ${result.synced_count} ${cardWord}`;
       notificationElement.innerHTML = `
         <div class="flex items-center gap-3">
           <svg class="w-5 h-5 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
@@ -347,7 +355,7 @@ const OfflineSync = (function() {
           </svg>
           <div>
             <p class="font-medium text-gray-900 dark:text-white">
-              Synced ${result.synced_count} review${result.synced_count === 1 ? '' : 's'}
+              ${countText}
             </p>
             ${skippedInfo}
           </div>
@@ -394,7 +402,7 @@ const OfflineSync = (function() {
           </svg>
           <div>
             <p class="font-medium text-gray-900 dark:text-white">
-              Synced ${result.synced_count} of ${result.total_count} reviews
+              Synced ${result.synced_count} of ${result.total_count} cards
             </p>
             <p class="text-sm text-gray-500 dark:text-gray-400">
               ${statusParts.join(', ')}
@@ -472,6 +480,36 @@ const OfflineSync = (function() {
   }
 
   /**
+   * Check if sync prompt cooldown has passed.
+   * @returns {boolean} True if prompt can be shown (cooldown passed or never dismissed)
+   */
+  function isPromptCooldownPassed() {
+    try {
+      var dismissedAt = localStorage.getItem(PROMPT_DISMISSAL_KEY);
+      if (!dismissedAt) {
+        return true; // Never dismissed
+      }
+      var elapsed = Date.now() - parseInt(dismissedAt, 10);
+      return elapsed >= PROMPT_COOLDOWN_MS;
+    } catch (e) {
+      // localStorage not available
+      return true;
+    }
+  }
+
+  /**
+   * Set the prompt dismissal timestamp (starts cooldown).
+   */
+  function setPromptDismissed() {
+    try {
+      localStorage.setItem(PROMPT_DISMISSAL_KEY, Date.now().toString());
+      console.log('[OfflineSync] Prompt dismissed - cooldown started (15 min)');
+    } catch (e) {
+      // localStorage not available
+    }
+  }
+
+  /**
    * Create and show the sync prompt modal.
    * @param {number} pendingCount - Number of reviews pending sync
    */
@@ -479,6 +517,12 @@ const OfflineSync = (function() {
     // Don't show if user already chose to stay offline in this session
     if (userChoseStayOffline) {
       console.log('[OfflineSync] Skipping prompt - user previously chose to stay offline');
+      return;
+    }
+
+    // Don't show if cooldown hasn't passed (recently dismissed)
+    if (!isPromptCooldownPassed()) {
+      console.log('[OfflineSync] Skipping prompt - cooldown not passed (15 min)');
       return;
     }
 
@@ -504,13 +548,18 @@ const OfflineSync = (function() {
         <p class="text-gray-600 dark:text-gray-300 mb-4">
           You have <span id="sync-prompt-count" class="font-semibold text-indigo-600 dark:text-indigo-400">${pendingCount}</span> pending review${pendingCount === 1 ? '' : 's'}. Sync now?
         </p>
-        <div class="flex gap-3">
-          <button id="sync-now-btn" class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-2 px-4 rounded-lg font-medium transition-colors">
+        <div class="flex flex-col gap-2">
+          <button id="sync-now-btn" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-2 px-4 rounded-lg font-medium transition-colors">
             Sync Now
           </button>
-          <button id="stay-offline-btn" class="flex-1 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 py-2 px-4 rounded-lg font-medium transition-colors">
-            Stay Offline
-          </button>
+          <div class="flex gap-2">
+            <button id="later-btn" class="flex-1 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 py-2 px-4 rounded-lg font-medium transition-colors">
+              Later
+            </button>
+            <button id="stay-offline-btn" class="flex-1 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 py-2 px-4 rounded-lg font-medium transition-colors">
+              Stay Offline
+            </button>
+          </div>
         </div>
       </div>
     `;
@@ -526,22 +575,30 @@ const OfflineSync = (function() {
       checkAndRefreshSession();
     });
 
+    syncPromptModal.querySelector('#later-btn').addEventListener('click', function() {
+      setPromptDismissed();  // Start 15-minute cooldown
+      hideSyncPromptModal();
+      console.log('[OfflineSync] User chose Later - will ask again in 15 minutes');
+    });
+
     syncPromptModal.querySelector('#stay-offline-btn').addEventListener('click', function() {
       hideSyncPromptModal();
-      userChoseStayOffline = true;  // Remember choice to prevent repeated prompts
+      userChoseStayOffline = true;  // Remember choice to prevent repeated prompts (no cooldown needed)
       console.log('[OfflineSync] User chose to stay offline - will not prompt again until offline/online cycle');
     });
 
-    // Close on backdrop click
+    // Close on backdrop click (treat as "Later")
     syncPromptModal.addEventListener('click', function(e) {
       if (e.target === syncPromptModal) {
+        setPromptDismissed();  // Start 15-minute cooldown
         hideSyncPromptModal();
       }
     });
 
-    // Close on Escape key
+    // Close on Escape key (treat as "Later")
     function handleEscape(e) {
       if (e.key === 'Escape') {
+        setPromptDismissed();  // Start 15-minute cooldown
         hideSyncPromptModal();
         document.removeEventListener('keydown', handleEscape);
       }

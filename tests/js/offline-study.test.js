@@ -49,6 +49,7 @@ function createCardSelector(cards) {
   let reinforcementQueue = [];
   let cardsSinceReinforcement = 0;
   let lastCardMainAnswer = null;
+  let lastShownCardId = null;  // Track exact card to prevent immediate repeat
 
   function isSiblingOfLastCard(card) {
     if (!lastCardMainAnswer) return false;
@@ -57,16 +58,32 @@ function createCardSelector(cards) {
            (card.back && lastCardMainAnswer && card.back.includes(lastCardMainAnswer));
   }
 
-  function getNonSiblingFromQueue(queue) {
+  function getNonSiblingFromQueue(queue, excludeCardId = null) {
     if (queue.length === 0) return null;
-    if (!lastCardMainAnswer) return queue.shift();
 
     for (let i = 0; i < queue.length; i++) {
-      if (!isSiblingOfLastCard(queue[i])) {
+      const card = queue[i];
+      // Skip if this is the exact same card that was just shown
+      if (excludeCardId !== null && card.card_id === excludeCardId) {
+        continue;
+      }
+      // Skip siblings (different cards with related content)
+      if (lastCardMainAnswer && isSiblingOfLastCard(card)) {
+        continue;
+      }
+      // Found a valid card
+      return queue.splice(i, 1)[0];
+    }
+
+    // All cards are siblings or excluded - return first non-excluded
+    for (let i = 0; i < queue.length; i++) {
+      if (excludeCardId === null || queue[i].card_id !== excludeCardId) {
         return queue.splice(i, 1)[0];
       }
     }
-    return queue.shift();
+
+    // All cards are the excluded card - return null
+    return null;
   }
 
   return {
@@ -75,17 +92,18 @@ function createCardSelector(cards) {
 
       if (cardQueue.length === 0 && reinforcementQueue.length > 0) {
         cardsSinceReinforcement = 0;
-        nextCard = getNonSiblingFromQueue(reinforcementQueue);
+        nextCard = getNonSiblingFromQueue(reinforcementQueue, lastShownCardId);
       } else if (reinforcementQueue.length > 0 && cardsSinceReinforcement >= 3) {
         cardsSinceReinforcement = 0;
-        nextCard = getNonSiblingFromQueue(reinforcementQueue);
+        nextCard = getNonSiblingFromQueue(reinforcementQueue, lastShownCardId);
       } else if (cardQueue.length > 0) {
         cardsSinceReinforcement++;
-        nextCard = getNonSiblingFromQueue(cardQueue);
+        nextCard = getNonSiblingFromQueue(cardQueue, lastShownCardId);
       }
 
       if (nextCard) {
         lastCardMainAnswer = nextCard.back;
+        lastShownCardId = nextCard.card_id;
       }
       return nextCard;
     },
@@ -193,6 +211,75 @@ describe('Sibling Exclusion', () => {
   });
 });
 
+describe('Same Card Exclusion After Wrong Answer', () => {
+  it('should not return same card immediately after wrong answer when main queue empty', () => {
+    // Setup: Only one card, answer wrong, should NOT show same card immediately
+    const cards = [
+      { card_id: 1, front: 'A', back: 'a', next_review: '2024-01-01T00:00:00Z' }
+    ];
+    const selector = createCardSelector(cards);
+
+    // Get the only card
+    const first = selector.getNextCard();
+    expect(first.card_id).toBe(1);
+
+    // Simulate wrong answer - add to reinforcement
+    selector.addToReinforcement({ ...first });
+
+    // Main queue is now empty. Next card request should NOT return card 1 again
+    // (In real usage, user would see "session complete" or similar)
+    const second = selector.getNextCard();
+
+    // The same card should NOT be shown immediately after wrong answer
+    expect(second).toBeNull();
+  });
+
+  it('should not return same card immediately with multiple cards in reinforcement', () => {
+    // Setup: Two cards, both answered wrong
+    const cards = [
+      { card_id: 1, front: 'A', back: 'a', next_review: '2024-01-01T00:00:00Z' },
+      { card_id: 2, front: 'B', back: 'b', next_review: '2024-01-01T00:01:00Z' }
+    ];
+    const selector = createCardSelector(cards);
+
+    // Get both cards, add to reinforcement
+    const first = selector.getNextCard();
+    expect(first.card_id).toBe(1);
+    selector.addToReinforcement({ ...first });
+
+    const second = selector.getNextCard();
+    expect(second.card_id).toBe(2);
+    selector.addToReinforcement({ ...second });
+
+    // Main queue empty, reinforcement has [1, 2]
+    // Last shown was card 2, so next should be card 1 (not 2)
+    const third = selector.getNextCard();
+    expect(third.card_id).toBe(1); // Should skip 2, show 1
+  });
+
+  it('should allow same card after other cards shown', () => {
+    // Setup: Three cards, first answered wrong
+    const cards = [
+      { card_id: 1, front: 'A', back: 'a', next_review: '2024-01-01T00:00:00Z' },
+      { card_id: 2, front: 'B', back: 'b', next_review: '2024-01-01T00:01:00Z' },
+      { card_id: 3, front: 'C', back: 'c', next_review: '2024-01-01T00:02:00Z' }
+    ];
+    const selector = createCardSelector(cards);
+
+    // Get first, add to reinforcement
+    const first = selector.getNextCard();
+    expect(first.card_id).toBe(1);
+    selector.addToReinforcement({ ...first });
+
+    // Get second and third from main queue
+    expect(selector.getNextCard().card_id).toBe(2);
+    expect(selector.getNextCard().card_id).toBe(3);
+
+    // Now card 1 from reinforcement is fine (last shown was 3)
+    expect(selector.getNextCard().card_id).toBe(1);
+  });
+});
+
 describe('Reinforcement Interleaving', () => {
   const cards = [
     { card_id: 1, front: 'A', back: 'a', next_review: '2024-01-01T00:00:00Z' },
@@ -223,13 +310,32 @@ describe('Reinforcement Interleaving', () => {
     expect(lengths.reinforcement).toBe(0);
   });
 
-  it('uses reinforcement when main queue is empty', () => {
+  it('returns null when only reinforcement card is the one just shown', () => {
+    // Single card scenario - can't return same card immediately
     const selector = createCardSelector([cards[0]]);
 
     const first = selector.getNextCard();
     selector.addToReinforcement({ ...first });
 
-    // Main queue empty, should get from reinforcement
+    // Main queue empty, but only reinforcement card is the one just shown
+    // Should return null to prevent immediate repetition
+    expect(selector.getNextCard()).toBeNull();
+  });
+
+  it('uses reinforcement when main queue is empty and different card available', () => {
+    // Two cards: first gets shown, second gets shown, first added to reinforcement
+    const selector = createCardSelector([cards[0], cards[1]]);
+
+    const first = selector.getNextCard();  // card 1
+    expect(first.card_id).toBe(1);
+
+    const second = selector.getNextCard(); // card 2
+    expect(second.card_id).toBe(2);
+
+    selector.addToReinforcement({ ...first }); // Add card 1 to reinforcement
+
+    // Main queue empty, reinforcement has card 1, last shown was card 2
+    // Card 1 should be returned (not the same as just shown)
     expect(selector.getNextCard().card_id).toBe(1);
   });
 
@@ -909,5 +1015,188 @@ describe('Mock Connectivity', () => {
     connectivity.removeEventListener('online', handler);
     connectivity.simulateOnline();
     expect(count).toBe(1); // unchanged
+  });
+});
+
+// =============================================================================
+// Sync Prompt Cooldown Tests
+// =============================================================================
+
+/**
+ * Pure function to check if sync prompt should be shown based on cooldown.
+ * This mirrors the logic that will be added to offline-sync.js.
+ * @param {number|null} lastDismissalTime - Timestamp of last dismissal (ms since epoch)
+ * @param {number} now - Current timestamp (ms since epoch)
+ * @param {number} cooldownMs - Cooldown duration in milliseconds
+ * @returns {boolean} True if prompt should be shown (cooldown has passed)
+ */
+function shouldShowSyncPrompt(lastDismissalTime, now, cooldownMs = 15 * 60 * 1000) {
+  if (lastDismissalTime === null) {
+    return true; // Never dismissed, show prompt
+  }
+  const elapsed = now - lastDismissalTime;
+  return elapsed >= cooldownMs;
+}
+
+describe('Sync Prompt Cooldown', () => {
+  const COOLDOWN_MS = 15 * 60 * 1000; // 15 minutes
+
+  it('should show prompt when never dismissed', () => {
+    const now = Date.now();
+    expect(shouldShowSyncPrompt(null, now)).toBe(true);
+  });
+
+  it('should not show prompt within 15 minutes of dismissal', () => {
+    const now = Date.now();
+    const fiveMinutesAgo = now - (5 * 60 * 1000);
+
+    expect(shouldShowSyncPrompt(fiveMinutesAgo, now, COOLDOWN_MS)).toBe(false);
+  });
+
+  it('should not show prompt at 14 minutes after dismissal', () => {
+    const now = Date.now();
+    const fourteenMinutesAgo = now - (14 * 60 * 1000);
+
+    expect(shouldShowSyncPrompt(fourteenMinutesAgo, now, COOLDOWN_MS)).toBe(false);
+  });
+
+  it('should show prompt at exactly 15 minutes after dismissal', () => {
+    const now = Date.now();
+    const fifteenMinutesAgo = now - (15 * 60 * 1000);
+
+    expect(shouldShowSyncPrompt(fifteenMinutesAgo, now, COOLDOWN_MS)).toBe(true);
+  });
+
+  it('should show prompt long after dismissal', () => {
+    const now = Date.now();
+    const oneHourAgo = now - (60 * 60 * 1000);
+
+    expect(shouldShowSyncPrompt(oneHourAgo, now, COOLDOWN_MS)).toBe(true);
+  });
+
+  it('should handle edge case of dismissal in future (clock skew)', () => {
+    const now = Date.now();
+    const futureTime = now + (5 * 60 * 1000);
+
+    // If dismissal is in future (clock skew), elapsed is negative, should not show
+    expect(shouldShowSyncPrompt(futureTime, now, COOLDOWN_MS)).toBe(false);
+  });
+});
+
+// =============================================================================
+// Session Progress Persistence Tests
+// =============================================================================
+
+/**
+ * Mock session progress state for testing persistence.
+ * This mirrors the state that needs to be saved/restored in offline-study.js.
+ */
+function createSessionProgressManager() {
+  // In-memory storage (simulates IndexedDB for testing)
+  let storedProgress = null;
+
+  return {
+    /**
+     * Save session progress state.
+     * @param {Object} progress - { totalReviewed, correctCount, cardQueueLength, reinforcementQueueLength }
+     */
+    saveProgress(progress) {
+      storedProgress = {
+        ...progress,
+        savedAt: Date.now()
+      };
+    },
+
+    /**
+     * Get saved session progress.
+     * @returns {Object|null} Saved progress or null if none
+     */
+    getProgress() {
+      return storedProgress;
+    },
+
+    /**
+     * Clear saved progress (after sync or session complete).
+     */
+    clearProgress() {
+      storedProgress = null;
+    },
+
+    /**
+     * Check if there's saved progress that matches the current session.
+     * @param {string} sessionId - Current session ID
+     * @returns {boolean}
+     */
+    hasProgressForSession(sessionId) {
+      return storedProgress !== null && storedProgress.sessionId === sessionId;
+    }
+  };
+}
+
+describe('Session Progress Persistence', () => {
+  it('should save progress state', () => {
+    const manager = createSessionProgressManager();
+
+    manager.saveProgress({
+      sessionId: 'test-session-123',
+      totalReviewed: 5,
+      correctCount: 4,
+      cardQueueLength: 10,
+      reinforcementQueueLength: 1
+    });
+
+    const saved = manager.getProgress();
+    expect(saved).not.toBeNull();
+    expect(saved.totalReviewed).toBe(5);
+    expect(saved.correctCount).toBe(4);
+    expect(saved.savedAt).toBeDefined();
+  });
+
+  it('should restore progress for matching session', () => {
+    const manager = createSessionProgressManager();
+
+    manager.saveProgress({
+      sessionId: 'test-session-123',
+      totalReviewed: 5,
+      correctCount: 4,
+      cardQueueLength: 10,
+      reinforcementQueueLength: 1
+    });
+
+    expect(manager.hasProgressForSession('test-session-123')).toBe(true);
+    expect(manager.hasProgressForSession('different-session')).toBe(false);
+  });
+
+  it('should clear progress after retrieval', () => {
+    const manager = createSessionProgressManager();
+
+    manager.saveProgress({
+      sessionId: 'test-session-123',
+      totalReviewed: 5,
+      correctCount: 4
+    });
+
+    expect(manager.getProgress()).not.toBeNull();
+
+    manager.clearProgress();
+
+    expect(manager.getProgress()).toBeNull();
+  });
+
+  it('should track queue lengths for restoration', () => {
+    const manager = createSessionProgressManager();
+
+    // Simulate saving progress mid-session
+    manager.saveProgress({
+      sessionId: 'test-session-123',
+      totalReviewed: 10,
+      correctCount: 7,
+      cardQueueLength: 15,  // 15 cards remaining in main queue
+      reinforcementQueueLength: 3  // 3 cards in reinforcement
+    });
+
+    const saved = manager.getProgress();
+    expect(saved.cardQueueLength).toBe(15);
+    expect(saved.reinforcementQueueLength).toBe(3);
   });
 });

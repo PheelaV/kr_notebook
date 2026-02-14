@@ -67,6 +67,8 @@ const TEST_SUITES: TestSuite[] = [
   { name: 'offline-sync', testMatch: 'offline-sync.spec.ts' },
   { name: 'lesson-filtering', testMatch: 'lesson-filtering.spec.ts' },
   { name: 'vocabulary-search', testMatch: 'vocabulary-search.spec.ts' },
+  { name: 'lesson-unlock', testMatch: 'lesson-unlock.spec.ts' },
+  { name: 'daily-limit', testMatch: 'daily-limit.spec.ts' },
   {
     name: 'fresh-install',
     testMatch: 'fresh-install.spec.ts',

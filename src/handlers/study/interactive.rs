@@ -213,9 +213,16 @@ pub async fn study_start_interactive(
     }
 
   // No cards available - check for tier and pack lesson unlocks
-  let _ = db::try_auto_unlock_tier(&conn).log_warn("Auto tier unlock failed");
-  let _ = db::try_auto_unlock_all_pack_lessons(&conn, &app_conn)
-    .log_warn("Auto lesson unlock failed");
+  // If any unlock happened, redirect to home to show notification and refresh UI
+  if db::try_auto_unlock_tier(&conn).log_warn("Auto tier unlock failed").flatten().is_some() {
+    return Redirect::to("/").into_response();
+  }
+  let unlocked_lessons = db::try_auto_unlock_all_pack_lessons(&conn, &app_conn)
+    .log_warn("Auto lesson unlock failed")
+    .unwrap_or_default();
+  if !unlocked_lessons.is_empty() {
+    return Redirect::to("/").into_response();
+  }
 
   let template = StudyInteractiveTemplate {
     card_id: 0,
@@ -569,9 +576,13 @@ pub async fn next_card_interactive(
     return Redirect::to("/").into_response();
   }
 
-  // Check if any pack lessons were unlocked
-  let _ = db::try_auto_unlock_all_pack_lessons(&conn, &app_conn)
-    .log_warn("Auto lesson unlock failed");
+  // Check if any pack lessons were unlocked - redirect to home to show notification and refresh filters
+  let unlocked_lessons = db::try_auto_unlock_all_pack_lessons(&conn, &app_conn)
+    .log_warn("Auto lesson unlock failed")
+    .unwrap_or_default();
+  if !unlocked_lessons.is_empty() {
+    return Redirect::to("/").into_response();
+  }
 
   let template = NoCardsTemplate { nav: NavContext::from_auth(&auth) };
   Html(template.render().unwrap_or_default()).into_response()

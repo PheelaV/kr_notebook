@@ -21,8 +21,10 @@ Known gaps in test coverage that should be addressed.
 
 ## Daily New Cards Limit
 
-- [ ] **count_new_cards_today accuracy**: Test that cards reviewed multiple times (learning steps) are still counted as 1 new card
-- [ ] **Limit enforcement**: Test that new cards stop appearing when daily limit is reached
+- [x] **count_new_cards_today accuracy**: Test that cards reviewed multiple times (learning steps) are still counted as 1 new card (db/tiers.rs unit tests)
+- [x] **Limit enforcement**: Test that new cards stop appearing when daily limit is reached (test_daily_limit.py)
+- [x] **Home counter respects limit**: Test that home page shows capped count, not all new cards (test_daily_limit.py)
+- [x] **get_remaining_new_card_slots**: Unit tests for remaining slots calculation (db/tiers.rs unit tests)
 - [ ] **Limit reset at midnight**: Test that the counter resets at local midnight
 - [ ] **Stats bar shows correct count**: Verify "X/Y today" updates correctly as cards are reviewed
 

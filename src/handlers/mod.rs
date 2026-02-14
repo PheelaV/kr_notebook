@@ -58,7 +58,9 @@ pub struct IndexTemplate {
   pub next_review: Option<String>,
   pub next_review_timestamp: Option<i64>, // Unix timestamp in seconds for live countdown
   pub accelerated_mode: bool,
+  pub freeze_introductions: bool, // New card introductions paused
   pub unlocked_tier: Option<u8>, // Tier that was just auto-unlocked
+  pub unlocked_lessons: Vec<(String, u8)>, // Pack lessons that were just auto-unlocked (pack_id, lesson)
   pub testing_mode: bool,
   pub nav: NavContext,
 }
@@ -105,9 +107,10 @@ pub async fn index(State(state): State<AppState>, auth: AuthContext) -> Html<Str
   // Check for auto tier unlock
   let unlocked_tier = db::try_auto_unlock_tier(&conn).log_warn("Auto tier unlock failed").flatten();
 
-  // Check for auto pack lesson unlock
-  let _ = db::try_auto_unlock_all_pack_lessons(&conn, &app_conn)
-    .log_warn("Auto lesson unlock failed");
+  // Check for auto pack lesson unlock - capture result for UI notification
+  let unlocked_lessons = db::try_auto_unlock_all_pack_lessons(&conn, &app_conn)
+    .log_warn("Auto lesson unlock failed")
+    .unwrap_or_default();
 
   #[cfg(feature = "profiling")]
   if let Some(tier) = unlocked_tier {
@@ -119,13 +122,19 @@ pub async fn index(State(state): State<AppState>, auth: AuthContext) -> Html<Str
 
   let accelerated_mode = db::get_all_tiers_unlocked(&conn).log_warn_default("Failed to get all_tiers_unlocked");
 
-  // Check if we can introduce new cards (daily limit)
-  let can_add_new = db::can_introduce_new_card(&conn).unwrap_or(true);
+  // Get remaining new card slots for today (respects daily limit + freeze toggle)
+  let freeze_introductions = db::is_introductions_frozen(&conn).unwrap_or(false);
+  let remaining_new_slots = if freeze_introductions {
+    0
+  } else {
+    db::get_remaining_new_card_slots(&conn).unwrap_or(u32::MAX)
+  };
+  let can_add_new = remaining_new_slots > 0;
 
   // Use filtered counts to include vocabulary pack cards (with permission check)
-  // Use get_available_due_count_filtered to respect daily new card limit
+  // Use get_due_count_with_new_limit to cap new cards at daily limit remaining
   let filter = db::StudyFilterMode::All;
-  let due_count = db::get_available_due_count_filtered(&conn, &app_conn, auth.user_id, &filter, can_add_new)
+  let due_count = db::get_due_count_with_new_limit(&conn, &app_conn, auth.user_id, &filter, remaining_new_slots)
     .log_warn_default("Failed to get due count");
   let unreviewed_count = if accelerated_mode && can_add_new {
     db::get_unreviewed_today_count_filtered(&conn, &app_conn, auth.user_id, &filter).log_warn_default("Failed to get unreviewed count")
@@ -154,7 +163,9 @@ pub async fn index(State(state): State<AppState>, auth: AuthContext) -> Html<Str
     next_review,
     next_review_timestamp,
     accelerated_mode,
+    freeze_introductions,
     unlocked_tier,
+    unlocked_lessons,
     #[cfg(feature = "testing")]
     testing_mode: true,
     #[cfg(not(feature = "testing"))]
