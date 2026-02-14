@@ -9,36 +9,30 @@
  */
 import { test, expect, setupScenario } from '../fixtures/auth';
 
-// Helper to enable offline mode in settings
+// Helper to enable offline mode in settings.
+// Uses direct fetch POST to bypass form timing issues in Firefox/WebKit,
+// then verifies the setting persisted by reloading the page.
 async function enableOfflineMode(page) {
+  // POST the offline mode setting directly via fetch (reliable across browsers)
   await page.goto('/settings', { waitUntil: 'domcontentloaded' });
 
-  // Wait for offline mode section to be visible and ready (WebKit is slower)
-  const offlineSection = page.locator('#offline-mode');
-  await expect(offlineSection).toBeVisible({ timeout: 10000 });
+  await page.evaluate(async () => {
+    const body = new URLSearchParams();
+    body.append('_action', 'offline_mode');
+    body.append('offline_mode_enabled', 'true');
+    await fetch('/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: body.toString(),
+      redirect: 'follow',
+    });
+  });
 
-  // Wait for browser support check to complete (match exact text from passing test)
-  const status = offlineSection.locator('#offline-status');
-  await expect(status).toContainText('All features supported');
+  // Navigate with cache-busting to ensure fresh server render
+  await page.goto('/settings?_t=' + Date.now(), { waitUntil: 'domcontentloaded' });
 
-  const toggle = page.locator('#offlineModeToggle');
-  if (!(await toggle.isChecked())) {
-    // Match the pattern from the passing test: scroll, delay, click with force
-    await toggle.scrollIntoViewIfNeeded();
-    await page.waitForTimeout(100);
-    await toggle.click({ force: true });
-    // Verify the checkbox is now checked with longer timeout for WebKit
-    await expect(toggle).toBeChecked({ timeout: 10000 });
-    // Small delay before form submission for WebKit
-    await page.waitForTimeout(100);
-    // Wait for the form POST response before continuing (matches passing test pattern)
-    await Promise.all([
-      page.waitForResponse(resp => resp.url().includes('/settings') && resp.request().method() === 'POST'),
-      page.locator('#offline-mode button[type="submit"]').click()
-    ]);
-  }
-  // Ensure the offline-download section is visible (matches passing test)
-  await expect(page.locator('#offline-download')).toBeVisible({ timeout: 10000 });
+  const downloadSection = page.locator('#offline-download');
+  await expect(downloadSection).toBeVisible({ timeout: 10000 });
 }
 
 // Helper to download an offline session
@@ -50,6 +44,7 @@ async function downloadSession(page) {
 }
 
 test.describe('Offline Study Mode', () => {
+
   test('can enable offline mode in settings', async ({ authenticatedPage }) => {
     await authenticatedPage.goto('/settings', { waitUntil: 'domcontentloaded' });
 
@@ -142,10 +137,11 @@ test.describe('Offline Study Mode', () => {
     // Wait for card to render
     await expect(authenticatedPage.locator('.offline-card')).toBeVisible({ timeout: 10000 });
 
-    // Answer a card (click first choice if multiple choice)
+    // Answer a card (select choice + click Check for MCQ, or fill + submit for text)
     const choiceBtn = authenticatedPage.locator('.choice-btn').first();
     if (await choiceBtn.isVisible()) {
       await choiceBtn.click();
+      await authenticatedPage.locator('.mcq-submit-btn').click();
     } else {
       // Text input mode
       const input = authenticatedPage.locator('.answer-input');
@@ -191,6 +187,7 @@ test.describe('Offline Study Mode', () => {
     const choiceBtn = authenticatedPage.locator('.choice-btn').first();
     if (await choiceBtn.isVisible()) {
       await choiceBtn.click();
+      await authenticatedPage.locator('.mcq-submit-btn').click();
     } else {
       await authenticatedPage.locator('.answer-input').fill('test');
       await authenticatedPage.locator('.submit-btn').click();
@@ -257,6 +254,7 @@ test.describe('Offline Study Mode', () => {
     const choiceBtn = authenticatedPage.locator('.choice-btn').first();
     if (await choiceBtn.isVisible()) {
       await choiceBtn.click();
+      await authenticatedPage.locator('.mcq-submit-btn').click();
     } else {
       await authenticatedPage.locator('.answer-input').fill('test');
       await authenticatedPage.locator('.submit-btn').click();
@@ -313,7 +311,7 @@ test.describe('Offline Study Mode', () => {
   });
 });
 
-test.describe('Bug 4: Same Card Not Shown Immediately After Wrong Answer', () => {
+test.describe('Card Repetition Prevention', () => {
   test('different card shown after wrong answer when multiple cards available', async ({ authenticatedPage, testUser }) => {
     setupScenario(testUser.username, 'tier1_new', testUser.dataDir);
     await downloadSession(authenticatedPage);
@@ -353,7 +351,7 @@ test.describe('Bug 4: Same Card Not Shown Immediately After Wrong Answer', () =>
   });
 });
 
-test.describe('Bug 7: Session Progress Persists Across Navigation', () => {
+test.describe('Session Progress Persistence', () => {
   test('progress is saved to localStorage on navigation', async ({ authenticatedPage, testUser }) => {
     setupScenario(testUser.username, 'tier1_new', testUser.dataDir);
     await downloadSession(authenticatedPage);
