@@ -202,17 +202,19 @@ pub(crate) fn get_available_study_cards(
     .unwrap_or_else(|| "all".to_string());
   let filter = parse_filter_mode(&filter_str);
 
-  get_available_study_cards_filtered(conn, app_conn, user_id, &filter, last_card_id)
+  get_available_study_cards_filtered(conn, app_conn, user_id, &filter, last_card_id, 50)
 }
 
 /// Get all available cards for study with explicit filter
 /// `last_card_id` is used for sibling exclusion (avoid kr-en right after en-kr of same card)
+/// `limit` controls the SQL LIMIT for DB queries (50 for interactive, higher for batch download)
 pub(crate) fn get_available_study_cards_filtered(
   conn: &std::sync::MutexGuard<'_, rusqlite::Connection>,
   app_conn: &std::sync::MutexGuard<'_, rusqlite::Connection>,
   user_id: i64,
   filter: &db::StudyFilterMode,
   last_card_id: Option<i64>,
+  limit: usize,
 ) -> Vec<Card> {
   let use_interleaving =
     db::get_use_interleaving(conn).log_warn_default("Failed to get interleaving setting");
@@ -227,10 +229,10 @@ pub(crate) fn get_available_study_cards_filtered(
 
   // Get due cards (filtered), with sibling exclusion based on last_card_id
   let due = if use_interleaving {
-    db::get_due_cards_interleaved_filtered(conn, app_conn, user_id, 50, last_card_id, filter)
+    db::get_due_cards_interleaved_filtered(conn, app_conn, user_id, limit, last_card_id, filter)
       .log_warn_default("Failed to get interleaved due cards")
   } else {
-    db::get_due_cards_filtered(conn, app_conn, user_id, 50, last_card_id, filter)
+    db::get_due_cards_filtered(conn, app_conn, user_id, limit, last_card_id, filter)
       .log_warn_default("Failed to get due cards")
   };
 
@@ -243,7 +245,7 @@ pub(crate) fn get_available_study_cards_filtered(
 
   // In accelerated mode, also get unreviewed cards (filtered)
   if accelerated && can_add_new {
-    let unreviewed = db::get_unreviewed_today_filtered(conn, app_conn, user_id, 50, last_card_id, filter)
+    let unreviewed = db::get_unreviewed_today_filtered(conn, app_conn, user_id, limit, last_card_id, filter)
       .log_warn_default("Failed to get unreviewed cards");
     // Avoid duplicates
     for card in unreviewed {
