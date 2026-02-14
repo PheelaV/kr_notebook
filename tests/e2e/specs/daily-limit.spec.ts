@@ -6,7 +6,7 @@ const PROJECT_ROOT = path.resolve(__dirname, '../../..');
 const PY_SCRIPTS_DIR = path.join(PROJECT_ROOT, 'py_scripts');
 
 /**
- * E2E tests for Bug 2: Due Counter Respects Daily New Card Limit
+ * E2E tests for Due Counter Respects Daily New Card Limit
  */
 
 function setSetting(username: string, key: string, value: string, dataDir: string): void {
@@ -16,6 +16,33 @@ function setSetting(username: string, key: string, value: string, dataDir: strin
   } catch (e) {
     console.warn(`Failed to set setting ${key}=${value}: ${e}`);
   }
+}
+
+/**
+ * Answer the currently displayed study card (MCQ or text input).
+ * Waits for input elements with retrying assertions to avoid race conditions
+ * with HTMX swaps and JS event handler setup.
+ */
+async function answerCurrentCard(page) {
+  const textInput = page.locator('[data-testid="answer-input"]');
+  const choiceGrid = page.locator('[data-testid="choice-grid"]');
+
+  // Wait for either input type to appear (retrying, survives HTMX swap timing)
+  await expect(textInput.or(choiceGrid)).toBeVisible({ timeout: 10000 });
+
+  if (await choiceGrid.isVisible()) {
+    // MCQ: select first choice, wait for submit button to be enabled (proves JS handler ran)
+    await page.locator('[data-testid="choice-option"]').first().click();
+    const submitBtn = page.locator('[data-testid="submit-answer"]');
+    await expect(submitBtn).toBeEnabled({ timeout: 5000 });
+    await submitBtn.click();
+  } else {
+    // Text input
+    await textInput.fill('test');
+    await page.locator('[data-testid="submit-answer"]').click();
+  }
+
+  await expect(page.locator('[data-testid="result-phase"]')).toBeVisible({ timeout: 10000 });
 }
 
 test.describe('Due Counter Daily Limit', () => {
@@ -52,18 +79,7 @@ test.describe('Due Counter Daily Limit', () => {
     await expect(authenticatedPage.locator('[data-testid="card-container"]')).toBeVisible();
 
     for (let i = 0; i < 2; i++) {
-      const textInput = authenticatedPage.locator('[data-testid="answer-input"]');
-      const choiceGrid = authenticatedPage.locator('[data-testid="choice-grid"]');
-
-      if (await textInput.isVisible()) {
-        await textInput.fill('test');
-        await authenticatedPage.locator('[data-testid="submit-answer"]').click();
-      } else if (await choiceGrid.isVisible()) {
-        await authenticatedPage.locator('[data-testid="choice-option"]').first().click();
-        await authenticatedPage.locator('[data-testid="submit-answer"]').click();
-      }
-
-      await expect(authenticatedPage.locator('[data-testid="result-phase"]')).toBeVisible();
+      await answerCurrentCard(authenticatedPage);
 
       const nextBtn = authenticatedPage.locator('[data-testid="next-card"]');
       if (await nextBtn.isVisible()) {
@@ -98,31 +114,13 @@ test.describe('Due Counter Daily Limit', () => {
     const hasCard = await cardContainer.isVisible().catch(() => false);
 
     if (hasCard) {
-      const textInput = authenticatedPage.locator('[data-testid="answer-input"]');
-      const choiceGrid = authenticatedPage.locator('[data-testid="choice-grid"]');
-      const hasTextInput = await textInput.isVisible();
+      await answerCurrentCard(authenticatedPage);
 
-      if (hasTextInput) {
-        await textInput.fill('test');
-        await authenticatedPage.locator('[data-testid="submit-answer"]').click();
-        await expect(authenticatedPage.locator('[data-testid="result-phase"]')).toBeVisible();
-
-        const nextBtn = authenticatedPage.locator('[data-testid="next-card"]');
-        if (await nextBtn.isVisible()) {
-          await nextBtn.click();
-          // Wait for next state to load
-          await expect(cardContainer.or(authenticatedPage.locator('[data-testid="no-cards"]'))).toBeVisible();
-        }
-      } else if (await choiceGrid.isVisible()) {
-        await authenticatedPage.locator('[data-testid="choice-option"]').first().click();
-        await authenticatedPage.locator('[data-testid="submit-answer"]').click();
-        await expect(authenticatedPage.locator('[data-testid="result-phase"]')).toBeVisible();
-
-        const nextBtn = authenticatedPage.locator('[data-testid="next-card"]');
-        if (await nextBtn.isVisible()) {
-          await nextBtn.click();
-          await expect(cardContainer.or(authenticatedPage.locator('[data-testid="no-cards"]'))).toBeVisible();
-        }
+      const nextBtn = authenticatedPage.locator('[data-testid="next-card"]');
+      if (await nextBtn.isVisible()) {
+        await nextBtn.click();
+        // Wait for next state to load
+        await expect(cardContainer.or(authenticatedPage.locator('[data-testid="no-cards"]'))).toBeVisible();
       }
     }
 

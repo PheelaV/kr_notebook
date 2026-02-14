@@ -102,7 +102,40 @@ await page.locator('.mcq-submit-btn').click();
 
 Note: `dblclick()` on a choice button auto-submits (the JS has double-tap detection), which is why some tests using `dblclick()` worked fine.
 
-### 4. SQLite Contention with External Tools
+### 4. HTMX Swap Races with `isVisible()` Checks
+
+**Symptom:** A test that answers multiple study cards in a loop fails intermittently. The error context shows an MCQ card with the "Check" button still disabled, and `result-phase` never appears.
+
+**Root cause:** After HTMX swaps in a new card, instantaneous `isVisible()` checks can execute before the new DOM is fully settled. Both the text-input and choice-grid branches are skipped, so no answer is submitted. Additionally, clicking a choice button before `card-interactions.js` event delegation fires means `selectAnswer()` never runs and the submit button stays disabled.
+
+**Fix:** Use retrying assertions (`expect().toBeVisible()`) instead of instant `isVisible()` to wait for the new card's input elements. After clicking an MCQ choice, wait for the submit button to become enabled (proves the JS handler ran):
+
+```typescript
+async function answerCurrentCard(page) {
+  const textInput = page.locator('[data-testid="answer-input"]');
+  const choiceGrid = page.locator('[data-testid="choice-grid"]');
+
+  // Retrying assertion — survives HTMX swap timing
+  await expect(textInput.or(choiceGrid)).toBeVisible({ timeout: 10000 });
+
+  if (await choiceGrid.isVisible()) {
+    await page.locator('[data-testid="choice-option"]').first().click();
+    // Wait for submit button to be enabled (proves JS event handler ran)
+    const submitBtn = page.locator('[data-testid="submit-answer"]');
+    await expect(submitBtn).toBeEnabled({ timeout: 5000 });
+    await submitBtn.click();
+  } else {
+    await textInput.fill('test');
+    await page.locator('[data-testid="submit-answer"]').click();
+  }
+
+  await expect(page.locator('[data-testid="result-phase"]')).toBeVisible({ timeout: 10000 });
+}
+```
+
+**General rule:** Never use bare `isVisible()` to choose a code path after a navigation or HTMX swap. Always gate on a retrying `expect().toBeVisible()` first to ensure the DOM has settled.
+
+### 6. SQLite Contention with External Tools
 
 **Symptom:** Tests that call `setupScenario()` (which invokes Python `db-manager`) before browser interactions fail more than tests without it.
 
@@ -110,7 +143,7 @@ Note: `dblclick()` on a choice button auto-submits (the JS has double-tap detect
 
 **Fix:** Ensure all Python CLI commands that write to the database call `conn.commit()` before `conn.close()`. Check `py_scripts/src/db_manager/cli.py` — every `conn.close()` in a `finally` block should have a corresponding `conn.commit()` if the function wrote data.
 
-### 5. `fullyParallel: false` for SQLite-Heavy Suites
+### 7. `fullyParallel: false` for SQLite-Heavy Suites
 
 **Symptom:** Tests pass individually but fail when run together. Error messages about database being locked or settings not persisting.
 
