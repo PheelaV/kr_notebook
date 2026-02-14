@@ -130,6 +130,7 @@ pub async fn download_session(
         auth.user_id,
         &filter,
         None, // No last_card_id for batch download
+        target_cards,
     );
 
     if all_cards.is_empty() {

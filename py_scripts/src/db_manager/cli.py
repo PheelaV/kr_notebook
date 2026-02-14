@@ -819,6 +819,7 @@ def apply_preset(preset: str, user: str, data_dir: str | None) -> None:
     conn = sqlite3.connect(user_db)
     try:
         apply_fn(conn, click.echo)
+        conn.commit()
         click.echo(click.style(f"Applied preset '{preset}' to {user}", fg="green"))
     finally:
         conn.close()

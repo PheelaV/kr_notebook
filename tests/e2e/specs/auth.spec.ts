@@ -19,14 +19,12 @@ test.describe('Authentication', () => {
 
     test('should show error for invalid credentials', async ({ page }) => {
       await page.goto('/login');
-      await page.fill('[data-testid="username-input"]', 'nonexistent');
-      await page.fill('[data-testid="password-input"]', 'wrongpassword');
-      await page.click('[data-testid="login-submit"]');
+      await page.locator('[data-testid="username-input"]').fill('nonexistent');
+      await page.locator('[data-testid="password-input"]').fill('wrongpassword');
+      await page.locator('[data-testid="login-submit"]').click();
 
-      // Should stay on login page with error
       await expect(page).toHaveURL(/\/login/);
 
-      // VERIFY: Error message is visible with meaningful content
       const errorMessage = page.locator('[data-testid="error-message"]');
       await expect(errorMessage).toBeVisible();
       await expect(errorMessage).toContainText(/invalid|incorrect|wrong|failed/i);
@@ -62,24 +60,19 @@ test.describe('Authentication', () => {
 
   test.describe('Logout', () => {
     test('should clear session and redirect to login', async ({ authenticatedPage }) => {
-      // Start from home page
       await authenticatedPage.goto('/');
 
-      // Find logout button - check multiple possible locations/testids
       const logoutButton = authenticatedPage.locator(
         '[data-testid="logout-button"], [data-testid="logout-btn"], button:has-text("Logout"), a:has-text("Logout")'
       ).first();
 
-      // VERIFY: Logout button exists and is accessible
-      await expect(logoutButton).toBeVisible({ timeout: 5000 });
+      await expect(logoutButton).toBeVisible();
 
-      // Click logout
       await Promise.all([
         authenticatedPage.waitForURL(/\/login/),
         logoutButton.click(),
       ]);
 
-      // VERIFY: Session is cleared - accessing protected route redirects to login
       await authenticatedPage.goto('/study');
       await expect(authenticatedPage).toHaveURL(/\/login/);
     });
@@ -90,9 +83,8 @@ test.describe('Authentication', () => {
       await page.goto('/guest');
       await expect(page.locator('[data-testid="guest-submit"]')).toBeVisible();
 
-      await page.click('[data-testid="guest-submit"]');
+      await page.locator('[data-testid="guest-submit"]').click();
 
-      // Should redirect to home as authenticated guest
       await expect(page).toHaveURL('/');
     });
   });

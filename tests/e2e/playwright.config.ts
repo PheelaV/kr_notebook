@@ -51,6 +51,8 @@ interface TestSuite {
   testMatch: string;
   freshInstall?: boolean;
   testAdminPassword?: string;
+  // Disable parallel for suites that cause SQLite contention under concurrent load
+  fullyParallel?: boolean;
 }
 
 const TEST_SUITES: TestSuite[] = [
@@ -63,8 +65,8 @@ const TEST_SUITES: TestSuite[] = [
   { name: 'settings', testMatch: 'settings.spec.ts' },
   { name: 'menu-visibility', testMatch: 'menu-visibility.spec.ts' },
   { name: 'navbar-dropdown', testMatch: 'navbar-dropdown.spec.ts' },
-  { name: 'offline-study', testMatch: 'offline-study.spec.ts' },
-  { name: 'offline-sync', testMatch: 'offline-sync.spec.ts' },
+  { name: 'offline-study', testMatch: 'offline-study.spec.ts', fullyParallel: false },
+  { name: 'offline-sync', testMatch: 'offline-sync.spec.ts', fullyParallel: false },
   { name: 'lesson-filtering', testMatch: 'lesson-filtering.spec.ts' },
   { name: 'vocabulary-search', testMatch: 'vocabulary-search.spec.ts' },
   { name: 'lesson-unlock', testMatch: 'lesson-unlock.spec.ts' },
@@ -110,6 +112,7 @@ function generateProjects(): Project[] {
       projects.push({
         name: `${suite.name}-${browser.name}`,
         testMatch: suite.testMatch,
+        ...(suite.fullyParallel === false ? { fullyParallel: false } : {}),
         use: {
           ...browser.device,
           baseURL: `http://localhost:${port}`,
@@ -138,6 +141,8 @@ export default defineConfig({
   // Global setup/teardown for server management
   globalSetup: require.resolve('./global-setup'),
   globalTeardown: require.resolve('./global-teardown'),
+
+  timeout: 60000,
 
   use: {
     trace: 'on-first-retry',

@@ -40,7 +40,7 @@ function fetchWithTimeout(request, options) {
 }
 
 // Bump version to trigger update
-const CACHE_VERSION = '31';
+const CACHE_VERSION = '32';
 const CACHE_NAMES = {
   static: `kr-static-${CACHE_VERSION}`,
   pages: `kr-pages-${CACHE_VERSION}`,
