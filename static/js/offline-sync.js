@@ -111,7 +111,6 @@ const OfflineSync = (function() {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          duration_minutes: DEFAULT_SESSION_MINUTES,
           filter_mode: 'all'
         }),
         credentials: 'same-origin'

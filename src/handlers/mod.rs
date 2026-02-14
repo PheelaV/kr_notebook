@@ -58,6 +58,7 @@ pub struct IndexTemplate {
   pub next_review: Option<String>,
   pub next_review_timestamp: Option<i64>, // Unix timestamp in seconds for live countdown
   pub accelerated_mode: bool,
+  pub freeze_introductions: bool, // New card introductions paused
   pub unlocked_tier: Option<u8>, // Tier that was just auto-unlocked
   pub unlocked_lessons: Vec<(String, u8)>, // Pack lessons that were just auto-unlocked (pack_id, lesson)
   pub testing_mode: bool,
@@ -121,8 +122,13 @@ pub async fn index(State(state): State<AppState>, auth: AuthContext) -> Html<Str
 
   let accelerated_mode = db::get_all_tiers_unlocked(&conn).log_warn_default("Failed to get all_tiers_unlocked");
 
-  // Get remaining new card slots for today (respects daily limit)
-  let remaining_new_slots = db::get_remaining_new_card_slots(&conn).unwrap_or(u32::MAX);
+  // Get remaining new card slots for today (respects daily limit + freeze toggle)
+  let freeze_introductions = db::is_introductions_frozen(&conn).unwrap_or(false);
+  let remaining_new_slots = if freeze_introductions {
+    0
+  } else {
+    db::get_remaining_new_card_slots(&conn).unwrap_or(u32::MAX)
+  };
   let can_add_new = remaining_new_slots > 0;
 
   // Use filtered counts to include vocabulary pack cards (with permission check)
@@ -157,6 +163,7 @@ pub async fn index(State(state): State<AppState>, auth: AuthContext) -> Html<Str
     next_review,
     next_review_timestamp,
     accelerated_mode,
+    freeze_introductions,
     unlocked_tier,
     unlocked_lessons,
     #[cfg(feature = "testing")]

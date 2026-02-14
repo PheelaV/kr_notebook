@@ -112,6 +112,22 @@ fn calculate_learning_phase(
     };
   }
 
+  // Hard (quality=2) in learning phase: stay at current step, don't advance
+  // This gives the card another chance at the same interval
+  if quality == 2 {
+    let current_step = card.learning_step as usize;
+    let minutes = learning_steps[current_step];
+    let next_review = now + Duration::minutes(minutes);
+    return FsrsResult {
+      next_review,
+      stability: card.fsrs_stability.unwrap_or(0.0),
+      difficulty: card.fsrs_difficulty.unwrap_or(5.0),
+      state: FsrsState::Learning,
+      learning_step: card.learning_step,
+      repetitions: 0,
+    };
+  }
+
   // Passed: advance to next step
   let next_step = card.learning_step + 1;
 
@@ -346,6 +362,35 @@ mod tests {
     // Should be scheduled for 1 minute
     let minutes_until = (result.next_review - Utc::now()).num_seconds();
     assert!(minutes_until >= 55 && minutes_until <= 65);
+  }
+
+  #[test]
+  fn test_hard_learning_stays_at_step() {
+    let mut card = make_test_card();
+    card.learning_step = 1; // In learning at step 1
+
+    let result = calculate_fsrs_review(&card, 2, 0.9, false); // Hard
+
+    // Hard should stay at current step, not advance
+    assert_eq!(result.learning_step, 1, "Hard should stay at step 1");
+    assert_eq!(result.state, FsrsState::Learning);
+    // Should be scheduled for step 1 interval (10 min in normal mode)
+    let minutes_until = (result.next_review - Utc::now()).num_minutes();
+    assert!(minutes_until >= 9 && minutes_until <= 11);
+  }
+
+  #[test]
+  fn test_hard_learning_at_step_0() {
+    let card = make_test_card();
+
+    let result = calculate_fsrs_review(&card, 2, 0.9, false); // Hard at step 0
+
+    // Hard at step 0 should stay at step 0
+    assert_eq!(result.learning_step, 0, "Hard at step 0 should stay");
+    assert_eq!(result.state, FsrsState::Learning);
+    // Should be scheduled for step 0 interval (1 min)
+    let seconds_until = (result.next_review - Utc::now()).num_seconds();
+    assert!(seconds_until >= 55 && seconds_until <= 65);
   }
 
   #[test]

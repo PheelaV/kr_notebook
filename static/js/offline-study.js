@@ -441,7 +441,7 @@ const OfflineStudy = (function() {
 
     // Update content
     document.getElementById('last-card-front').textContent = card.front;
-    document.getElementById('last-card-answer').textContent = card.back;
+    document.getElementById('last-card-answer').innerHTML = formatAnswerDisplay(card.back);
 
     // Show user's wrong answer if incorrect
     const userAnswerEl = document.getElementById('last-card-user-answer');
@@ -971,7 +971,11 @@ const OfflineStudy = (function() {
       <div class="result-display ${resultClass} text-center">
         ${resultIcon}
         <div class="text-xl font-bold mt-2">${resultText}</div>
-        ${!isCorrect ? `<div class="correct-answer mt-2">Correct answer: <strong>${escapeHtml(currentCard.back)}</strong></div>` : ''}
+        <div class="text-xl text-gray-600 dark:text-gray-300 mt-2">
+          ${!isCorrect ? `<span class="text-gray-500 dark:text-gray-400">You answered: </span><span class="text-red-500">${escapeHtml(lastUserAnswer)}</span><br>` : ''}
+          <span class="text-gray-500 dark:text-gray-400">Correct answer: </span>
+          <span class="text-indigo-600 dark:text-indigo-400 font-semibold">${formatAnswerDisplay(currentCard.back)}</span>
+        </div>
         ${descriptionHtml}
       </div>
 
@@ -992,18 +996,22 @@ const OfflineStudy = (function() {
         <p class="text-sm text-gray-600 dark:text-gray-400 mb-2">How would you rate your answer?</p>
         <div class="flex flex-wrap justify-center gap-2">
           <button type="button" onclick="OfflineStudy.submitOverride(0)"
+                  title="Reset card to beginning. You'll see it again soon."
                   class="px-3 py-1.5 text-sm bg-red-100 hover:bg-red-200 dark:bg-red-900/30 dark:hover:bg-red-900/50 text-red-800 dark:text-red-300 rounded">
             Wrong
           </button>
           <button type="button" onclick="OfflineStudy.submitOverride(2)"
+                  title="Correct but difficult. Shorter interval, stays at current step."
                   class="px-3 py-1.5 text-sm bg-yellow-100 hover:bg-yellow-200 dark:bg-yellow-900/30 dark:hover:bg-yellow-900/50 text-yellow-800 dark:text-yellow-300 rounded">
             Hard
           </button>
           <button type="button" onclick="OfflineStudy.submitOverride(4)"
+                  title="Your answer was actually right."
                   class="px-3 py-1.5 text-sm bg-green-100 hover:bg-green-200 dark:bg-green-900/30 dark:hover:bg-green-900/50 text-green-800 dark:text-green-300 rounded">
             Correct
           </button>
           <button type="button" onclick="OfflineStudy.submitOverride(5)"
+                  title="Too easy. Push further out."
                   class="px-3 py-1.5 text-sm bg-blue-100 hover:bg-blue-200 dark:bg-blue-900/30 dark:hover:bg-blue-900/50 text-blue-800 dark:text-blue-300 rounded">
             Easy
           </button>
@@ -1210,6 +1218,87 @@ const OfflineStudy = (function() {
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#039;');
+  }
+
+  /**
+   * Format answer display with visual markers for grammar syntax.
+   * Mirrors the Rust format_answer_display filter (src/filters.rs).
+   *
+   * Transforms:
+   * - [a, b, c] → styled variant marker
+   * - word(s) → styled optional suffix
+   * - (info) (space before) → styled info marker
+   * - <context> → styled disambiguation marker
+   *
+   * @param {string} answer - Raw answer string
+   * @returns {string} HTML string with styled markers
+   */
+  function formatAnswerDisplay(answer) {
+    if (!answer) return '';
+    var result = '';
+    var chars = Array.from(answer);
+    var i = 0;
+
+    function findClosing(start, open, close) {
+      var depth = 0;
+      for (var j = start; j < chars.length; j++) {
+        if (chars[j] === open) depth++;
+        else if (chars[j] === close) {
+          depth--;
+          if (depth === 0) return j;
+        }
+      }
+      return -1;
+    }
+
+    while (i < chars.length) {
+      if (chars[i] === '[') {
+        var end = findClosing(i, '[', ']');
+        if (end !== -1) {
+          var content = escapeHtml(chars.slice(i, end + 1).join(''));
+          result += '<span class="variant-marker" title="Acceptable variants">' + content + '</span>';
+          i = end + 1;
+        } else {
+          result += escapeHtml(chars[i]);
+          i++;
+        }
+      } else if (chars[i] === '<') {
+        var end = findClosing(i, '<', '>');
+        if (end !== -1) {
+          var content = escapeHtml(chars.slice(i + 1, end).join(''));
+          result += '<span class="disambig-marker" title="Disambiguation">&lt;' + content + '&gt;</span>';
+          i = end + 1;
+        } else {
+          result += '&lt;';
+          i++;
+        }
+      } else if (chars[i] === '(') {
+        var end = findClosing(i, '(', ')');
+        if (end !== -1) {
+          var content = escapeHtml(chars.slice(i, end + 1).join(''));
+          var hasSpaceBefore = i > 0 && chars[i - 1] === ' ';
+          if (hasSpaceBefore) {
+            result += '<span class="info-marker" title="Additional info">' + content + '</span>';
+          } else if (i > 0) {
+            result += '<span class="variant-marker" title="Optional suffix">' + content + '</span>';
+          } else {
+            result += '<span class="info-marker" title="Additional info">' + content + '</span>';
+          }
+          i = end + 1;
+        } else {
+          result += escapeHtml(chars[i]);
+          i++;
+        }
+      } else if (chars[i] === '>') {
+        result += '&gt;';
+        i++;
+      } else {
+        result += escapeHtml(chars[i]);
+        i++;
+      }
+    }
+
+    return result;
   }
 
   /**

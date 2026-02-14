@@ -210,6 +210,25 @@ pub fn set_daily_new_cards_limit(conn: &Connection, limit: u32) -> Result<()> {
     set_setting(conn, "daily_new_cards", &limit.to_string())
 }
 
+/// Check if new card introductions are frozen.
+/// When frozen, only already-reviewed cards appear in study sessions.
+pub fn is_introductions_frozen(conn: &Connection) -> Result<bool> {
+    Ok(
+        get_setting(conn, "freeze_new_introductions")?
+            .as_deref()
+            == Some("true"),
+    )
+}
+
+/// Set whether new card introductions are frozen.
+pub fn set_introductions_frozen(conn: &Connection, frozen: bool) -> Result<()> {
+    set_setting(
+        conn,
+        "freeze_new_introductions",
+        if frozen { "true" } else { "false" },
+    )
+}
+
 /// Count new cards introduced today (first review was today)
 /// A "new card" is one where the first review happened today
 pub fn count_new_cards_today(conn: &Connection) -> Result<u32> {

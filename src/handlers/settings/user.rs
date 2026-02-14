@@ -150,6 +150,7 @@ pub struct SettingsTemplate {
   pub enabled_tiers: Vec<u8>,
   pub desired_retention: u8, // 80, 85, 90, or 95
   pub daily_new_cards: u32,  // 0 = unlimited, else limit
+  pub freeze_introductions: bool, // Pause new card introductions
   pub focus_mode_enabled: bool, // Simple focus mode toggle
   pub offline_mode_enabled: bool,
   pub offline_session_duration: u32, // minutes
@@ -202,6 +203,7 @@ pub async fn settings_page(auth: AuthContext, State(state): State<AppState>) -> 
   let desired_retention_f64 = db::get_desired_retention(&conn).log_warn_default("Failed to get desired retention");
   let desired_retention = (desired_retention_f64 * 100.0).round() as u8;
   let daily_new_cards = db::get_daily_new_cards_limit(&conn).log_warn_default("Failed to get daily new cards limit");
+  let freeze_introductions = db::is_introductions_frozen(&conn).unwrap_or(false);
   let focus_mode_enabled = db::is_focus_mode_enabled(&conn).log_warn_default("Failed to get focus mode");
 
   // Offline mode settings
@@ -360,6 +362,7 @@ pub async fn settings_page(auth: AuthContext, State(state): State<AppState>) -> 
     enabled_tiers,
     desired_retention,
     daily_new_cards,
+    freeze_introductions,
     focus_mode_enabled,
     offline_mode_enabled,
     offline_session_duration,
@@ -402,6 +405,8 @@ pub struct SettingsForm {
   pub desired_retention: Option<u8>,
   #[serde(default)]
   pub daily_new_cards: Option<u32>, // 0 = off/unlimited
+  #[serde(default)]
+  pub freeze_introductions: Option<String>, // "true" if checked
   #[serde(default)]
   pub focus_mode: Option<String>, // "true" if checked
   // Offline mode settings
@@ -501,6 +506,11 @@ pub async fn update_settings(
       username: auth.username.clone(),
     });
   }
+
+  // Update freeze introductions (checkbox)
+  let freeze = form.freeze_introductions.is_some();
+  db::set_introductions_frozen(&conn, freeze)
+    .log_warn("Failed to save freeze_introductions setting");
 
   // Update focus mode (checkbox)
   let focus_mode = form.focus_mode.is_some();
