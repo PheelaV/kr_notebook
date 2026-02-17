@@ -177,6 +177,7 @@ async fn main() {
         .route("/library", get(handlers::library_index))
         .route("/library/characters", get(handlers::library_characters))
         .route("/library/vocabulary", get(handlers::vocabulary_library))
+        .route("/api/vocabulary/srs", get(handlers::vocabulary_srs_statuses))
         .route("/listen", get(handlers::listen_index))
         .route("/listen/start", get(handlers::listen_start))
         .route("/listen/answer", post(handlers::listen_answer))

@@ -81,15 +81,38 @@
         </p>
       </div>
 
-      <!-- Hide Romanization Toggle -->
-      <label class="flex items-center gap-2 cursor-pointer select-none shrink-0">
-        <span class="text-sm text-gray-600 dark:text-gray-400">Hide romanization</span>
-        <div class="relative">
-          <input type="checkbox" id="hide-romanization-toggle" class="sr-only peer">
-          <div class="w-10 h-6 bg-gray-200 dark:bg-gray-700 rounded-full peer peer-checked:bg-indigo-600 transition-colors"></div>
-          <div class="absolute left-1 top-1 w-4 h-4 bg-white rounded-full shadow peer-checked:translate-x-4 transition-transform"></div>
+      <div class="flex flex-col gap-2 items-end shrink-0">
+        <!-- Hide Romanization Toggle -->
+        <label class="flex items-center gap-2 cursor-pointer select-none">
+          <span class="text-sm text-gray-600 dark:text-gray-400">Hide romanization</span>
+          <div class="relative">
+            <input type="checkbox" id="hide-romanization-toggle" class="sr-only peer">
+            <div class="w-10 h-6 bg-gray-200 dark:bg-gray-700 rounded-full peer peer-checked:bg-indigo-600 transition-colors"></div>
+            <div class="absolute left-1 top-1 w-4 h-4 bg-white rounded-full shadow peer-checked:translate-x-4 transition-transform"></div>
+          </div>
+        </label>
+        <!-- Show Learning Toggle -->
+        <label class="flex items-center gap-2 cursor-pointer select-none">
+          <span class="text-sm text-gray-600 dark:text-gray-400">Show learning</span>
+          <span id="srs-learning-count" class="text-xs text-gray-400 dark:text-gray-500 tabular-nums"></span>
+          <div class="relative">
+            <input type="checkbox" id="srs-learning-toggle" class="sr-only peer">
+            <div class="w-10 h-6 bg-gray-200 dark:bg-gray-700 rounded-full peer peer-checked:bg-yellow-500 transition-colors"></div>
+            <div class="absolute left-1 top-1 w-4 h-4 bg-white rounded-full shadow peer-checked:translate-x-4 transition-transform"></div>
+          </div>
+        </label>
+        <!-- Legend -->
+        <div id="srs-legend" class="hidden items-center gap-3 text-xs text-gray-500 dark:text-gray-400">
+          <span class="flex items-center gap-1">
+            <span class="w-2.5 h-2.5 rounded-sm bg-yellow-400 dark:bg-yellow-500 inline-block"></span>
+            Learning
+          </span>
+          <span class="flex items-center gap-1">
+            <span class="w-2.5 h-2.5 rounded-sm bg-green-400 dark:bg-green-500 inline-block"></span>
+            Graduated
+          </span>
         </div>
-      </label>
+      </div>
     </div>
 
     <!-- Search Input -->
@@ -296,6 +319,133 @@
         el.classList.remove('hidden');
       } else {
         el.classList.add('hidden');
+      }
+    });
+  }
+})();
+</script>
+
+<script>
+(function() {
+  var toggle = document.getElementById('srs-learning-toggle');
+  if (!toggle) return;
+
+  var STORAGE_KEY = 'library-srs-filter';
+  var srsData = null; // Cached SRS status map
+  var srsLoaded = false;
+
+  // Always fetch SRS data eagerly so indicators show without toggle
+  loadSrsData(function() {
+    // After data loads, apply filter if toggle was saved as active
+    var savedPref = localStorage.getItem(STORAGE_KEY);
+    if (savedPref === 'true') {
+      toggle.checked = true;
+      applyFilter(true);
+    }
+  });
+
+  toggle.addEventListener('change', function() {
+    var isFiltered = toggle.checked;
+    localStorage.setItem(STORAGE_KEY, isFiltered);
+    if (isFiltered && !srsLoaded) {
+      loadSrsData(function() { applyFilter(true); });
+    } else {
+      applyFilter(isFiltered);
+    }
+  });
+
+  function loadSrsData(callback) {
+    if (srsLoaded) {
+      if (callback) callback();
+      return;
+    }
+    fetch('/api/vocabulary/srs')
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        srsData = data;
+        srsLoaded = true;
+        annotateCards();
+        if (callback) callback();
+      })
+      .catch(function() {
+        srsLoaded = false;
+      });
+  }
+
+  function annotateCards() {
+    if (!srsData || !window.VocabularyData) return;
+
+    var learningCount = 0;
+    var graduatedCount = 0;
+
+    window.VocabularyData.forEach(function(entry) {
+      var key = entry.pack_id + '|' + entry.lesson + '|' + entry.term;
+      var status = srsData[key] || 'new';
+      entry.srs_status = status;
+
+      if (status === 'learning') learningCount++;
+      if (status === 'graduated') graduatedCount++;
+
+      var el = document.querySelector('[data-vocab-id="' + entry.id + '"]');
+      if (!el) return;
+      el.dataset.srs = status;
+      if (status === 'learning') {
+        el.style.borderLeftWidth = '4px';
+        el.style.borderLeftColor = '#facc15'; // yellow-400
+      } else if (status === 'graduated') {
+        el.style.borderLeftWidth = '4px';
+        el.style.borderLeftColor = '#4ade80'; // green-400
+      }
+    });
+
+    // Show legend and count
+    var legend = document.getElementById('srs-legend');
+    if (legend) legend.classList.remove('hidden');
+    legend.classList.add('flex');
+    var countEl = document.getElementById('srs-learning-count');
+    if (countEl) countEl.textContent = '(' + learningCount + ')';
+  }
+
+  function applyFilter(showLearningOnly) {
+    document.querySelectorAll('[data-srs]').forEach(function(el) {
+      if (showLearningOnly && el.dataset.srs !== 'learning') {
+        el.classList.add('hidden');
+        el.classList.add('srs-filtered');
+      } else {
+        el.classList.remove('hidden');
+        el.classList.remove('srs-filtered');
+      }
+    });
+
+    // Update word count
+    var countEl = document.getElementById('vocab-result-count');
+    if (countEl) {
+      if (showLearningOnly) {
+        var visible = document.querySelectorAll('[data-srs="learning"]').length;
+        countEl.textContent = visible + ' learning words';
+      } else {
+        var total = document.querySelectorAll('[data-vocab-id]').length;
+        countEl.textContent = total + ' words';
+      }
+    }
+
+    // Hide empty lesson groups
+    document.querySelectorAll('[data-lesson-section]').forEach(function(lesson) {
+      var visibleEntries = lesson.querySelectorAll('[data-vocab-id]:not(.srs-filtered)');
+      if (showLearningOnly && visibleEntries.length === 0) {
+        lesson.classList.add('hidden');
+      } else {
+        lesson.classList.remove('hidden');
+      }
+    });
+
+    // Hide empty pack sections
+    document.querySelectorAll('[data-pack-section]').forEach(function(pack) {
+      var visibleLessons = pack.querySelectorAll('[data-lesson-section]:not(.hidden)');
+      if (showLearningOnly && visibleLessons.length === 0) {
+        pack.classList.add('hidden');
+      } else {
+        pack.classList.remove('hidden');
       }
     });
   }

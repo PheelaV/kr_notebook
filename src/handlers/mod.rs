@@ -205,7 +205,7 @@ pub use study::{
   toggle_focus_mode, validate_answer_handler,
   download_session, sync_session,
 };
-pub use vocabulary::vocabulary_library;
+pub use vocabulary::{vocabulary_library, vocabulary_srs_statuses};
 
 // ============================================================================
 // Offline / Service Worker Handlers
