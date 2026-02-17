@@ -448,7 +448,7 @@ fn matches_permutation(user_input: &str, expected: &str) -> bool {
     .split([',', ' '])
     .map(|s| s.trim())
     .filter(|s| !s.is_empty())
-    .map(|s| s.to_string())
+    .map(|s| s.to_lowercase())
     .collect();
 
   // Match if all input words are found in expected words (subset check)
@@ -951,6 +951,11 @@ mod tests {
     assert_eq!(validate_answer("I, me (formal)", "I, me (formal)"), AnswerResult::Correct); // User types exact answer
     assert_eq!(validate_answer("I, me", "I, me (formal)"), AnswerResult::Correct);
     assert_eq!(validate_answer("formal", "I, me (formal)"), AnswerResult::Incorrect);
+
+    // Reversed order of comma-separated synonyms should also match
+    assert_eq!(validate_answer("me, I", "I, me (formal)"), AnswerResult::Correct);
+    assert_eq!(validate_answer("Me, I (formal)", "I, me (formal)"), AnswerResult::Correct);
+    assert_eq!(validate_answer("me I", "I, me (formal)"), AnswerResult::Correct);
   }
 
   #[test]

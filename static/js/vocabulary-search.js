@@ -238,6 +238,13 @@
 
     results.forEach(function(result, index) {
       var item = result.item;
+      // SRS status indicator dot (populated by lazy fetch)
+      var srsIndicator = '';
+      if (item.srs_status === 'learning') {
+        srsIndicator = '<span class="inline-block w-2.5 h-2.5 rounded-full bg-yellow-400 shrink-0" title="Learning"></span>';
+      } else if (item.srs_status === 'graduated') {
+        srsIndicator = '<span class="inline-block w-2.5 h-2.5 rounded-full bg-green-400 shrink-0" title="Graduated"></span>';
+      }
       html += '<li>' +
         '<button type="button" ' +
         'class="vocab-result w-full text-left px-4 py-3 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 focus:bg-indigo-50 dark:focus:bg-indigo-900/30 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-indigo-500 transition-colors" ' +
@@ -245,6 +252,7 @@
         'data-index="' + index + '" ' +
         'onclick="window.VocabSearch.navigateToEntry(\'' + escapeHtml(item.id) + '\')">' +
         '<div class="flex items-center gap-3">' +
+        srsIndicator +
         '<span class="text-xl font-bold text-gray-900 dark:text-white">' + escapeHtml(item.term) + '</span>' +
         '<span class="text-gray-500 dark:text-gray-400 text-sm">(' + escapeHtml(item.romanization) + ')</span>' +
         '</div>' +

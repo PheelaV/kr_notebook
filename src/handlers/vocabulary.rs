@@ -6,8 +6,9 @@
 use askama::Template;
 use axum::extract::State;
 use axum::response::{Html, IntoResponse, Redirect, Response};
+use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::env;
 use std::fs;
 use std::path::Path;
@@ -17,6 +18,27 @@ use crate::filters;
 use crate::handlers::NavContext;
 use crate::services::pack_manager::{self, PackFilter};
 use crate::state::AppState;
+
+/// SRS learning status for a vocabulary entry
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub enum SrsStatus {
+    /// Never reviewed
+    New,
+    /// Actively being drilled (total_reviews > 0, learning_step < 4)
+    Learning,
+    /// Graduated from learning steps (learning_step >= 4)
+    Graduated,
+}
+
+impl SrsStatus {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            SrsStatus::New => "new",
+            SrsStatus::Learning => "learning",
+            SrsStatus::Graduated => "graduated",
+        }
+    }
+}
 
 /// Vocabulary entry with full metadata from vocabulary.json
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -197,6 +219,72 @@ fn build_searchable_entries(packs: &[PackGroup]) -> Vec<SearchableEntry> {
     entries
 }
 
+/// Fetch SRS status for vocabulary cards in the given packs.
+/// Returns a map of (pack_id, lesson, front) -> SrsStatus.
+/// Uses the user's learning.db connection which has app.db attached.
+fn fetch_vocab_srs_statuses(
+    conn: &Connection,
+    pack_ids: &[String],
+) -> HashMap<(String, u8, String), SrsStatus> {
+    let mut map = HashMap::new();
+    if pack_ids.is_empty() {
+        return map;
+    }
+
+    let placeholders: Vec<String> = (1..=pack_ids.len()).map(|i| format!("?{i}")).collect();
+    let sql = format!(
+        r#"SELECT cd.pack_id, cd.lesson, cd.front,
+                  COALESCE(cp.total_reviews, 0) as total_reviews,
+                  COALESCE(cp.learning_step, 0) as learning_step
+           FROM app.card_definitions cd
+           LEFT JOIN card_progress cp ON cp.card_id = cd.id
+           WHERE cd.pack_id IN ({})
+             AND cd.is_reverse = 0"#,
+        placeholders.join(",")
+    );
+
+    let mut stmt = match conn.prepare(&sql) {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::warn!("Failed to prepare SRS status query: {e}");
+            return map;
+        }
+    };
+
+    let params: Vec<&dyn rusqlite::ToSql> =
+        pack_ids.iter().map(|s| s as &dyn rusqlite::ToSql).collect();
+
+    let rows = match stmt.query_map(params.as_slice(), |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, u8>(1)?,
+            row.get::<_, String>(2)?,
+            row.get::<_, i64>(3)?,
+            row.get::<_, i64>(4)?,
+        ))
+    }) {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::warn!("Failed to query SRS statuses: {e}");
+            return map;
+        }
+    };
+
+    for row in rows.flatten() {
+        let (pack_id, lesson, front, total_reviews, learning_step) = row;
+        let status = if total_reviews == 0 {
+            SrsStatus::New
+        } else if learning_step >= 4 {
+            SrsStatus::Graduated
+        } else {
+            SrsStatus::Learning
+        };
+        map.insert((pack_id, lesson, front), status);
+    }
+
+    map
+}
+
 /// Vocabulary library page handler
 pub async fn vocabulary_library(
     State(state): State<AppState>,
@@ -312,4 +400,310 @@ pub async fn vocabulary_library(
     };
 
     Html(template.render().unwrap_or_default()).into_response()
+}
+
+/// API endpoint to lazily fetch SRS statuses for vocabulary cards.
+/// Returns JSON map of "pack_id|lesson|term" -> status string.
+/// Called on-demand by client-side JS when the "Show Learning" toggle is activated.
+pub async fn vocabulary_srs_statuses(auth: AuthContext) -> Response {
+    let conn = match auth.user_db.lock() {
+        Ok(conn) => conn,
+        Err(_) => {
+            return axum::Json(HashMap::<String, String>::new()).into_response();
+        }
+    };
+
+    // Get all accessible pack IDs for this user
+    let pack_ids: Vec<String> = match conn.prepare(
+        "SELECT DISTINCT cd.pack_id FROM app.card_definitions cd WHERE cd.pack_id IS NOT NULL",
+    ) {
+        Ok(mut stmt) => stmt
+            .query_map([], |row| row.get(0))
+            .ok()
+            .map(|rows| rows.flatten().collect())
+            .unwrap_or_default(),
+        Err(_) => return axum::Json(HashMap::<String, String>::new()).into_response(),
+    };
+
+    let statuses = fetch_vocab_srs_statuses(&conn, &pack_ids);
+
+    // Convert to JSON-friendly format: "pack_id|lesson|term" -> "learning"
+    let json_map: HashMap<String, String> = statuses
+        .into_iter()
+        .filter(|(_, status)| *status != SrsStatus::New)
+        .map(|((pack_id, lesson, term), status)| {
+            (format!("{pack_id}|{lesson}|{term}"), status.as_str().to_string())
+        })
+        .collect();
+
+    axum::Json(json_map).into_response()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rusqlite::params;
+
+    /// Helper: create a TestEnv and ATTACH app.db to user_conn for cross-DB queries
+    fn setup_test_env() -> crate::testing::TestEnv {
+        let env = crate::testing::TestEnv::new().unwrap();
+
+        // ATTACH app.db to user_conn (same as production middleware does)
+        let app_db_path = env.temp.path().join("app.db");
+        env.user_conn
+            .execute(
+                &format!(
+                    "ATTACH DATABASE '{}' AS app",
+                    app_db_path.to_str().unwrap()
+                ),
+                [],
+            )
+            .unwrap();
+
+        env
+    }
+
+    /// Helper: insert a content pack into app.db
+    fn insert_pack(conn: &Connection, pack_id: &str) {
+        conn.execute(
+            "INSERT INTO content_packs (id, name, pack_type, scope, source_path, installed_at)
+             VALUES (?1, ?1, 'cards', 'standard', '/test', datetime('now'))",
+            params![pack_id],
+        )
+        .unwrap();
+    }
+
+    /// Helper: insert a card definition into app.db
+    fn insert_card(
+        conn: &Connection,
+        id: i64,
+        front: &str,
+        main_answer: &str,
+        pack_id: &str,
+        lesson: u8,
+        is_reverse: bool,
+    ) {
+        conn.execute(
+            "INSERT INTO card_definitions (id, front, main_answer, description, card_type, tier, pack_id, lesson, is_reverse)
+             VALUES (?1, ?2, ?3, '', 'Vocabulary', 5, ?4, ?5, ?6)",
+            params![id, front, main_answer, pack_id, lesson, is_reverse as i32],
+        )
+        .unwrap();
+    }
+
+    /// Helper: insert card progress into learning.db
+    fn insert_progress(conn: &Connection, card_id: i64, learning_step: i64, total_reviews: i64) {
+        conn.execute(
+            "INSERT INTO card_progress (card_id, learning_step, total_reviews, correct_reviews, ease_factor, interval_days, repetitions, next_review)
+             VALUES (?1, ?2, ?3, 0, 2.5, 0, 0, datetime('now'))",
+            params![card_id, learning_step, total_reviews],
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn test_srs_status_as_str() {
+        assert_eq!(SrsStatus::New.as_str(), "new");
+        assert_eq!(SrsStatus::Learning.as_str(), "learning");
+        assert_eq!(SrsStatus::Graduated.as_str(), "graduated");
+    }
+
+    #[test]
+    fn test_fetch_srs_statuses_empty_packs() {
+        let env = setup_test_env();
+        let result = fetch_vocab_srs_statuses(&env.user_conn, &[]);
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_fetch_srs_statuses_no_progress() {
+        let env = setup_test_env();
+        insert_pack(&env.app_conn, "test_pack");
+        insert_card(&env.app_conn, 1, "음식", "food", "test_pack", 3, false);
+        insert_card(&env.app_conn, 2, "food", "음식", "test_pack", 3, true);
+
+        let result =
+            fetch_vocab_srs_statuses(&env.user_conn, &["test_pack".to_string()]);
+
+        // Only forward card (is_reverse=0) should appear
+        assert_eq!(result.len(), 1);
+        assert_eq!(
+            result[&("test_pack".to_string(), 3, "음식".to_string())],
+            SrsStatus::New
+        );
+    }
+
+    #[test]
+    fn test_fetch_srs_statuses_learning() {
+        let env = setup_test_env();
+        insert_pack(&env.app_conn, "test_pack");
+        insert_card(&env.app_conn, 1, "음식", "food", "test_pack", 3, false);
+
+        // Card has reviews but hasn't graduated (learning_step < 4)
+        insert_progress(&env.user_conn, 1, 2, 3);
+
+        let result =
+            fetch_vocab_srs_statuses(&env.user_conn, &["test_pack".to_string()]);
+
+        assert_eq!(
+            result[&("test_pack".to_string(), 3, "음식".to_string())],
+            SrsStatus::Learning
+        );
+    }
+
+    #[test]
+    fn test_fetch_srs_statuses_graduated() {
+        let env = setup_test_env();
+        insert_pack(&env.app_conn, "test_pack");
+        insert_card(&env.app_conn, 1, "음식", "food", "test_pack", 3, false);
+
+        // Card has graduated (learning_step >= 4)
+        insert_progress(&env.user_conn, 1, 4, 10);
+
+        let result =
+            fetch_vocab_srs_statuses(&env.user_conn, &["test_pack".to_string()]);
+
+        assert_eq!(
+            result[&("test_pack".to_string(), 3, "음식".to_string())],
+            SrsStatus::Graduated
+        );
+    }
+
+    #[test]
+    fn test_fetch_srs_statuses_mixed_states() {
+        let env = setup_test_env();
+        insert_pack(&env.app_conn, "test_pack");
+        insert_card(&env.app_conn, 1, "음식", "food", "test_pack", 3, false);
+        insert_card(&env.app_conn, 2, "케이크", "cake", "test_pack", 3, false);
+        insert_card(&env.app_conn, 3, "공항", "airport", "test_pack", 3, false);
+
+        // 음식: learning (step 1, 2 reviews)
+        insert_progress(&env.user_conn, 1, 1, 2);
+        // 케이크: graduated (step 4, 8 reviews)
+        insert_progress(&env.user_conn, 2, 4, 8);
+        // 공항: new (no progress row)
+
+        let result =
+            fetch_vocab_srs_statuses(&env.user_conn, &["test_pack".to_string()]);
+
+        assert_eq!(result.len(), 3);
+        assert_eq!(
+            result[&("test_pack".to_string(), 3, "음식".to_string())],
+            SrsStatus::Learning
+        );
+        assert_eq!(
+            result[&("test_pack".to_string(), 3, "케이크".to_string())],
+            SrsStatus::Graduated
+        );
+        assert_eq!(
+            result[&("test_pack".to_string(), 3, "공항".to_string())],
+            SrsStatus::New
+        );
+    }
+
+    #[test]
+    fn test_fetch_srs_statuses_excludes_reverse_cards() {
+        let env = setup_test_env();
+        insert_pack(&env.app_conn, "test_pack");
+        // Forward card
+        insert_card(&env.app_conn, 1, "음식", "food", "test_pack", 3, false);
+        // Reverse card (English -> Korean)
+        insert_card(&env.app_conn, 2, "food", "음식", "test_pack", 3, true);
+
+        insert_progress(&env.user_conn, 1, 2, 5);
+        insert_progress(&env.user_conn, 2, 4, 10);
+
+        let result =
+            fetch_vocab_srs_statuses(&env.user_conn, &["test_pack".to_string()]);
+
+        // Should only include forward card
+        assert_eq!(result.len(), 1);
+        assert!(result.contains_key(&("test_pack".to_string(), 3, "음식".to_string())));
+        assert!(!result.contains_key(&("test_pack".to_string(), 3, "food".to_string())));
+    }
+
+    #[test]
+    fn test_fetch_srs_statuses_multiple_lessons() {
+        let env = setup_test_env();
+        insert_pack(&env.app_conn, "test_pack");
+        insert_card(&env.app_conn, 1, "음식", "food", "test_pack", 3, false);
+        insert_card(&env.app_conn, 2, "한국", "Korea", "test_pack", 1, false);
+
+        insert_progress(&env.user_conn, 1, 2, 3);
+        insert_progress(&env.user_conn, 2, 4, 12);
+
+        let result =
+            fetch_vocab_srs_statuses(&env.user_conn, &["test_pack".to_string()]);
+
+        assert_eq!(result.len(), 2);
+        assert_eq!(
+            result[&("test_pack".to_string(), 3, "음식".to_string())],
+            SrsStatus::Learning
+        );
+        assert_eq!(
+            result[&("test_pack".to_string(), 1, "한국".to_string())],
+            SrsStatus::Graduated
+        );
+    }
+
+    #[test]
+    fn test_fetch_srs_statuses_multiple_packs() {
+        let env = setup_test_env();
+        insert_pack(&env.app_conn, "pack_a");
+        insert_pack(&env.app_conn, "pack_b");
+        insert_card(&env.app_conn, 1, "음식", "food", "pack_a", 3, false);
+        insert_card(&env.app_conn, 2, "한국", "Korea", "pack_b", 1, false);
+
+        insert_progress(&env.user_conn, 1, 1, 2);
+
+        let result = fetch_vocab_srs_statuses(
+            &env.user_conn,
+            &["pack_a".to_string(), "pack_b".to_string()],
+        );
+
+        assert_eq!(result.len(), 2);
+        assert_eq!(
+            result[&("pack_a".to_string(), 3, "음식".to_string())],
+            SrsStatus::Learning
+        );
+        assert_eq!(
+            result[&("pack_b".to_string(), 1, "한국".to_string())],
+            SrsStatus::New
+        );
+    }
+
+    #[test]
+    fn test_fetch_srs_statuses_boundary_learning_step() {
+        let env = setup_test_env();
+        insert_pack(&env.app_conn, "test_pack");
+        insert_card(&env.app_conn, 1, "a", "x", "test_pack", 1, false);
+        insert_card(&env.app_conn, 2, "b", "y", "test_pack", 1, false);
+        insert_card(&env.app_conn, 3, "c", "z", "test_pack", 1, false);
+
+        // Step 3 = still learning (boundary)
+        insert_progress(&env.user_conn, 1, 3, 4);
+        // Step 4 = graduated (boundary)
+        insert_progress(&env.user_conn, 2, 4, 5);
+        // Step 0 with reviews = learning (relearning case)
+        insert_progress(&env.user_conn, 3, 0, 6);
+
+        let result =
+            fetch_vocab_srs_statuses(&env.user_conn, &["test_pack".to_string()]);
+
+        assert_eq!(
+            result[&("test_pack".to_string(), 1, "a".to_string())],
+            SrsStatus::Learning,
+            "step 3 should be Learning"
+        );
+        assert_eq!(
+            result[&("test_pack".to_string(), 1, "b".to_string())],
+            SrsStatus::Graduated,
+            "step 4 should be Graduated"
+        );
+        assert_eq!(
+            result[&("test_pack".to_string(), 1, "c".to_string())],
+            SrsStatus::Learning,
+            "step 0 with reviews should be Learning (relearning)"
+        );
+    }
 }

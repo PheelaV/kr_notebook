@@ -89,11 +89,11 @@ docker compose run --rm py-tools kr-scraper lesson1  # Run Python tools
 
 ### Debugging with Production Data
 
-To investigate bugs with real user data, fetch the database from production and run locally:
+To investigate bugs with real user data, fetch the database from production and run locally. See `.rpi-deploy.conf` for SSH and path configuration.
 
 ```bash
-# 1. Fetch production data (from Raspberry Pi)
-scp -r pi@rpi:/path/to/data ./MY_LOCAL_debug/
+# 1. Fetch production data (see .rpi-deploy.conf for connection details)
+scp -r <ssh-host>:<install-dir>/data ./MY_LOCAL_debug/
 
 # 2. Run server with production data
 DATA_DIR=./MY_LOCAL_debug cargo run
